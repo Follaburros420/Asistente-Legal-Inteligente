@@ -306,7 +306,7 @@ export const useChatHandler = () => {
           chatImages
         )
 
-        const response = await fetch("/api/chat/independent", {
+        const response = await fetch("/api/chat/web-only", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
