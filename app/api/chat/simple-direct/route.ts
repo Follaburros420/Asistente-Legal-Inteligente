@@ -280,7 +280,7 @@ ${sources}`
       timestamp: new Date().toISOString(),
       searchExecuted: true,
       resultsFound: searchResults?.results?.length || 0
-    })
+    });
 
   } catch (error: any) {
     console.error("Error en chat simple directo:", error)
