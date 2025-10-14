@@ -306,15 +306,14 @@ export const useChatHandler = () => {
           chatImages
         )
 
-        const response = await fetch("/api/chat/tools", {
+        const response = await fetch("/api/chat/robust", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
             chatSettings: payload.chatSettings,
-            messages: formattedMessages,
-            selectedTools
+            messages: formattedMessages
           })
         })
 
