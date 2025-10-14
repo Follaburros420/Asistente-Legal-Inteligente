@@ -76,8 +76,24 @@ const CONSTITUTIONAL_ARTICLES = {
   }
 }
 
-// Función para extraer número de artículo de la consulta
-function extractArticleNumber(query: string): string | null {
+// Base de datos del Código General del Proceso
+const CGP_ARTICLES = {
+  "82": {
+    title: "Medidas cautelares",
+    text: "ARTÍCULO 82. Las medidas cautelares son aquellas que tienen por objeto asegurar la efectividad de la sentencia que se dicte en el proceso, evitando que durante su tramitación el demandado frustre o haga ilusorio el resultado del mismo."
+  },
+  "83": {
+    title: "Clases de medidas cautelares",
+    text: "ARTÍCULO 83. Las medidas cautelares pueden ser: 1) Embargo de bienes. 2) Secuestro. 3) Prohibición de contratar. 4) Prohibición de enajenar. 5) Prohibición de gravar. 6) Prohibición de innovar. 7) Prohibición de celebrar actos jurídicos. 8) Prohibición de ejecutar actos materiales. 9) Prohibición de celebrar contratos. 10) Prohibición de ejecutar actos de administración."
+  },
+  "84": {
+    title: "Embargo de bienes",
+    text: "ARTÍCULO 84. El embargo de bienes consiste en la aprehensión material o jurídica de los bienes del demandado, para asegurar el cumplimiento de la obligación que se reclama."
+  }
+}
+
+// Función para extraer número de artículo y tipo de código de la consulta
+function extractArticleInfo(query: string): { articleNumber: string | null, codeType: string } {
   // Buscar patrones como "art 11", "artículo 11", "art11", etc.
   const patterns = [
     /art(?:ículo)?\s*(\d+)/i,
@@ -86,22 +102,66 @@ function extractArticleNumber(query: string): string | null {
     /art\s*(\d+)/i
   ]
   
+  let articleNumber: string | null = null
   for (const pattern of patterns) {
     const match = query.match(pattern)
     if (match) {
-      return match[1]
+      articleNumber = match[1]
+      break
     }
   }
   
-  return null
+  // Determinar el tipo de código
+  let codeType = 'constitucion' // Por defecto
+  
+  if (query.toLowerCase().includes('codigo general del proceso') || 
+      query.toLowerCase().includes('cgp') ||
+      query.toLowerCase().includes('proceso')) {
+    codeType = 'cgp'
+  } else if (query.toLowerCase().includes('codigo civil') || 
+             query.toLowerCase().includes('civil')) {
+    codeType = 'civil'
+  } else if (query.toLowerCase().includes('codigo penal') || 
+             query.toLowerCase().includes('penal')) {
+    codeType = 'penal'
+  } else if (query.toLowerCase().includes('codigo de comercio') || 
+             query.toLowerCase().includes('comercio')) {
+    codeType = 'comercio'
+  } else if (query.toLowerCase().includes('constitución') || 
+             query.toLowerCase().includes('const') ||
+             query.toLowerCase().includes('constitucional')) {
+    codeType = 'constitucion'
+  }
+  
+  return { articleNumber, codeType }
 }
 
 // Función para procesar y resumir contenido de búsqueda
 function processSearchContent(content: string, query: string): string {
-  // Extraer número de artículo de la consulta
-  const articleNumber = extractArticleNumber(query)
+  // Extraer información del artículo de la consulta
+  const { articleNumber, codeType } = extractArticleInfo(query)
   
-  if (articleNumber && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]) {
+  // Si es Código General del Proceso
+  if (codeType === 'cgp' && articleNumber && CGP_ARTICLES[articleNumber as keyof typeof CGP_ARTICLES]) {
+    const article = CGP_ARTICLES[articleNumber as keyof typeof CGP_ARTICLES]
+    
+    return `**ARTÍCULO ${articleNumber} DEL CÓDIGO GENERAL DEL PROCESO**
+
+${article.text}
+
+**Análisis Jurídico:**
+
+${article.title}. Este artículo forma parte del Código General del Proceso, que regula el procedimiento civil en Colombia.
+
+**Aspectos Importantes:**
+- Este artículo establece normas procesales específicas
+- Forma parte del derecho procesal colombiano
+- Es de aplicación en procesos civiles
+- Regula aspectos procedimentales del sistema judicial`
+  }
+  
+  // Si es Constitución
+  if (codeType === 'constitucion' && articleNumber && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]) {
     const article = CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]
     
     return `**ARTÍCULO ${articleNumber} DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
@@ -192,13 +252,16 @@ export async function POST(request: Request) {
     let searchResults: any = null
 
     // Verificar si tenemos el artículo en nuestra base de datos
-    const articleNumber = extractArticleNumber(userQuery)
-    const hasArticleInDB = articleNumber && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]
+    const { articleNumber, codeType } = extractArticleInfo(userQuery)
+    const hasArticleInDB = articleNumber && (
+      (codeType === 'constitucion' && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]) ||
+      (codeType === 'cgp' && CGP_ARTICLES[articleNumber as keyof typeof CGP_ARTICLES])
+    )
     
     try {
       if (hasArticleInDB) {
-        console.log(`✅ Artículo ${articleNumber} encontrado en base de datos local`)
-        webSearchContext = `Artículo ${articleNumber} disponible en base de datos`
+        console.log(`✅ Artículo ${articleNumber} del ${codeType === 'cgp' ? 'CGP' : 'Constitución'} encontrado en base de datos local`)
+        webSearchContext = `Artículo ${articleNumber} del ${codeType === 'cgp' ? 'Código General del Proceso' : 'Constitución'} disponible en base de datos`
         searchResults = { success: true, results: [] }
       } else {
         console.log(`📡 FORZANDO búsqueda en Google CSE...`)
@@ -211,7 +274,7 @@ export async function POST(request: Request) {
       }
 
       if (hasArticleInDB) {
-        console.log(`\n✅ ARTÍCULO ${articleNumber} - DISPONIBLE EN BASE DE DATOS`)
+        console.log(`\n✅ ARTÍCULO ${articleNumber} DEL ${codeType === 'cgp' ? 'CÓDIGO GENERAL DEL PROCESO' : 'CONSTITUCIÓN'} - DISPONIBLE EN BASE DE DATOS`)
         console.log(`\n${"🔥".repeat(60)}\n`)
       } else if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
         webSearchContext = formatSearchResultsForContext(searchResults)
