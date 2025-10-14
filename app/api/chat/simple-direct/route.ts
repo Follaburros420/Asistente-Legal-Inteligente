@@ -4,55 +4,69 @@ import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/we
 export const runtime = "nodejs"
 export const maxDuration = 60
 
+// Base de datos de artículos constitucionales colombianos
+const CONSTITUTIONAL_ARTICLES = {
+  "15": {
+    title: "Derecho a la intimidad personal y familiar",
+    text: "ARTÍCULO 15. Todas las personas tienen derecho a su intimidad personal y familiar y a su buen nombre, y el Estado debe respetarlos y hacerlos respetar. De igual modo, tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en los bancos de datos y en archivos de entidades públicas y privadas. En la recolección, tratamiento y circulación de datos se respetarán la libertad y demás garantías consagradas en la Constitución. La correspondencia y demás formas de comunicación privada son inviolables. Solo pueden ser interceptados o registrados mediante orden judicial, en los casos y con las formalidades que establezca la ley."
+  },
+  "82": {
+    title: "Protección del espacio público",
+    text: "ARTÍCULO 82. Es deber del Estado velar por la protección de la integridad del espacio público y por su destinación al uso común, el cual prevalece sobre el interés particular. Las entidades públicas participarán en la plusvalía que genere su acción urbanística y regularán la utilización del suelo y del espacio aéreo urbano en defensa del interés común."
+  },
+  "67": {
+    title: "Derecho a la educación",
+    text: "ARTÍCULO 67. La educación es un derecho de la persona y un servicio público que tiene una función social; con ella se busca el acceso al conocimiento, a la ciencia, a la técnica, y a los demás bienes y valores de la cultura. La educación formará al colombiano en el respeto a los derechos humanos, a la paz y a la democracia; y en la práctica del trabajo y la recreación, para el mejoramiento cultural, científico, tecnológico y para la protección del ambiente."
+  },
+  "1": {
+    title: "Estado social de derecho",
+    text: "ARTÍCULO 1. Colombia es un Estado social de derecho, organizado en forma de República unitaria, descentralizada, con autonomía de sus entidades territoriales, democrática, participativa y pluralista, fundada en el respeto de la dignidad humana, en el trabajo y la solidaridad de las personas que la integran y en la prevalencia del interés general."
+  },
+  "2": {
+    title: "Fines esenciales del Estado",
+    text: "ARTÍCULO 2. Son fines esenciales del Estado: servir a la comunidad, promover la prosperidad general y garantizar la efectividad de los principios, derechos y deberes consagrados en la Constitución; facilitar la participación de todos en las decisiones que los afectan y en la vida económica, política, administrativa y cultural de la Nación; defender la independencia nacional, mantener la integridad territorial y asegurar la convivencia pacífica y la vigencia de un orden justo."
+  },
+  "3": {
+    title: "Soberanía popular",
+    text: "ARTÍCULO 3. La soberanía reside exclusivamente en el pueblo, del cual emana el poder público. El pueblo la ejerce en forma directa o por medio de sus representantes, en los términos que la Constitución establece."
+  },
+  "4": {
+    title: "Supremacía constitucional",
+    text: "ARTÍCULO 4. La Constitución es norma de normas. En todo caso de incompatibilidad entre la Constitución y la ley u otra norma jurídica, se aplicarán las disposiciones constitucionales. Es deber de los nacionales y de los extranjeros en Colombia acatar la Constitución y las leyes, y respetar y obedecer a las autoridades."
+  },
+  "5": {
+    title: "Primacía de los derechos inalienables",
+    text: "ARTÍCULO 5. El Estado reconoce, sin discriminación alguna, la primacía de los derechos inalienables de la persona y ampara a la familia como institución básica de la sociedad."
+  }
+}
+
+// Función para extraer número de artículo de la consulta
+function extractArticleNumber(query: string): string | null {
+  const match = query.match(/art(?:ículo)?\s*(\d+)/i)
+  return match ? match[1] : null
+}
+
 // Función para procesar y resumir contenido de búsqueda
 function processSearchContent(content: string, query: string): string {
-  // Buscar específicamente el artículo 15 de la Constitución colombiana
-  const article15Match = content.match(/ARTÍCULO\s+15[^A-Z]*?(?=ARTÍCULO|\n\n|$)/i)
+  // Extraer número de artículo de la consulta
+  const articleNumber = extractArticleNumber(query)
   
-  if (article15Match) {
-    const articleText = article15Match[0]
-    // Limpiar el texto del artículo
-    const cleanText = articleText
-      .replace(/Title:.*?\n/g, '')
-      .replace(/URL Source:.*?\n/g, '')
-      .replace(/Published Time:.*?\n/g, '')
-      .replace(/Markdown Content:/g, '')
-      .replace(/Image \d+:.*?\n/g, '')
-      .replace(/\[!\[.*?\]\(.*?\)\]/g, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
+  if (articleNumber && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]) {
+    const article = CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]
     
-    return `**ARTÍCULO 15 DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
+    return `**ARTÍCULO ${articleNumber} DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
 
-${cleanText}
-
-**Análisis Jurídico:**
-
-Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.
-
-**Aspectos Importantes:**
-- La correspondencia y demás formas de comunicación privada son inviolables
-- Solo pueden ser interceptadas mediante orden judicial
-- En casos de terrorismo, se permite interceptación sin orden previa pero con control judicial posterior
-- Los funcionarios que abusen de estas medidas incurren en falta gravísima`
-  }
-  
-  // Si no encuentra el artículo 15, buscar información específica sobre intimidad
-  const intimidadMatch = content.match(/intimidad[^.]*personal[^.]*familiar[^.]*buen nombre[^.]*/i)
-  if (intimidadMatch) {
-    return `**ARTÍCULO 15 DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
-
-ARTÍCULO 15. Todas las personas tienen derecho a su intimidad personal y familiar y a su buen nombre, y el Estado debe respetarlos y hacerlos respetar. De igual modo, tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en los bancos de datos y en archivos de entidades públicas y privadas. En la recolección, tratamiento y circulación de datos se respetarán la libertad y demás garantías consagradas en la Constitución. La correspondencia y demás formas de comunicación privada son inviolables. Solo pueden ser interceptados o registrados mediante orden judicial, en los casos y con las formalidades que establezca la ley.
+${article.text}
 
 **Análisis Jurídico:**
 
-Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.
+${article.title}. Este artículo forma parte de los derechos fundamentales consagrados en la Constitución Política de Colombia de 1991.
 
 **Aspectos Importantes:**
-- La correspondencia y demás formas de comunicación privada son inviolables
-- Solo pueden ser interceptadas mediante orden judicial
-- En casos de terrorismo, se permite interceptación sin orden previa pero con control judicial posterior
-- Los funcionarios que abusen de estas medidas incurren en falta gravísima`
+- Este artículo establece principios fundamentales del Estado colombiano
+- Forma parte del bloque de constitucionalidad
+- Es de aplicación inmediata y prevalente sobre otras normas
+- Puede ser protegido mediante acción de tutela`
   }
   
   // Si no se encuentra el artículo específico, buscar información relevante en español
@@ -103,19 +117,9 @@ ${relevantLines}
 Esta información se basa en la Constitución Política de Colombia de 1991 y la legislación vigente.`
   }
   
-  return `**ARTÍCULO 15 DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
+  return `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${query}". 
 
-ARTÍCULO 15. Todas las personas tienen derecho a su intimidad personal y familiar y a su buen nombre, y el Estado debe respetarlos y hacerlos respetar. De igual modo, tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en los bancos de datos y en archivos de entidades públicas y privadas. En la recolección, tratamiento y circulación de datos se respetarán la libertad y demás garantías consagradas en la Constitución. La correspondencia y demás formas de comunicación privada son inviolables. Solo pueden ser interceptados o registrados mediante orden judicial, en los casos y con las formalidades que establezca la ley.
-
-**Análisis Jurídico:**
-
-Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.
-
-**Aspectos Importantes:**
-- La correspondencia y demás formas de comunicación privada son inviolables
-- Solo pueden ser interceptadas mediante orden judicial
-- En casos de terrorismo, se permite interceptación sin orden previa pero con control judicial posterior
-- Los funcionarios que abusen de estas medidas incurren en falta gravísima`
+Para consultas específicas sobre artículos constitucionales, por favor especifica el número del artículo (ej: "artículo 15", "art 82").`
 }
 
 export async function POST(request: Request) {
