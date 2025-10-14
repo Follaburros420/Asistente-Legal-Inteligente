@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+import { extractWithFirecrawl } from "@/lib/tools/firecrawl-extractor"
 import OpenAI from "openai"
 import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completions.mjs"
 
@@ -102,6 +103,37 @@ export async function POST(request: Request) {
         console.log(`\n✅ BÚSQUEDA FORZADA - COMPLETADA CON ÉXITO:`)
         console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
         console.log(`   📝 Caracteres de contexto: ${webSearchContext.length}`)
+        
+        // Usar Firecrawl para extraer contenido detallado de los mejores resultados
+        console.log(`🔥 FIRECRAWL: Extrayendo contenido detallado de sitios oficiales...`)
+        
+        const officialResults = searchResults.results.filter((result: any) => 
+          result.url.includes('.gov.co') || 
+          result.url.includes('secretariasenado.gov.co') ||
+          result.url.includes('funcionpublica.gov.co') ||
+          result.url.includes('ramajudicial.gov.co') ||
+          result.url.includes('minjusticia.gov.co')
+        ).slice(0, 3) // Top 3 sitios oficiales
+        
+        let detailedContent = ''
+        for (const result of officialResults) {
+          try {
+            console.log(`🔥 Firecrawl: Extrayendo ${result.url}`)
+            const firecrawlResult = await extractWithFirecrawl(result.url)
+            if (firecrawlResult.success && firecrawlResult.content) {
+              detailedContent += `\n\n--- CONTENIDO DETALLADO DE ${result.url} ---\n${firecrawlResult.content}\n`
+              console.log(`✅ Firecrawl: Extraídos ${firecrawlResult.content.length} caracteres`)
+            }
+          } catch (error) {
+            console.log(`⚠️ Firecrawl falló para ${result.url}:`, error)
+          }
+        }
+        
+        if (detailedContent) {
+          webSearchContext += `\n\n--- CONTENIDO DETALLADO EXTRAÍDO CON FIRECRAWL ---\n${detailedContent}`
+          console.log(`🔥 FIRECRAWL: Total contenido detallado: ${detailedContent.length} caracteres`)
+        }
+        
         console.log(`\n${"🔥".repeat(60)}\n`)
       } else {
         console.log(`\n⚠️ BÚSQUEDA FORZADA - SIN RESULTADOS`)
@@ -149,8 +181,8 @@ export async function POST(request: Request) {
       return `${index + 1}. [${cleanTitle}](${result.url})`
     }).join('\n')
 
-    // Crear prompt mejorado para la IA
-    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet y proporcionar una respuesta ESPECÍFICA y DETALLADA sobre la consulta exacta del usuario.
+    // Crear prompt mejorado para la IA con contenido detallado de Firecrawl
+    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet (incluyendo contenido detallado extraído con Firecrawl) y proporcionar una respuesta ESPECÍFICA y DETALLADA sobre la consulta exacta del usuario.
 
 INFORMACIÓN ENCONTRADA EN INTERNET:
 ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
@@ -162,16 +194,17 @@ CONSULTA ESPECÍFICA DEL USUARIO: "${userQuery}"
 INSTRUCCIONES CRÍTICAS:
 1. DEBES responder específicamente sobre "${userQuery}" - NO respuestas genéricas
 2. Si la consulta es sobre un artículo específico (ej: "art 90 codigo civil"), DEBES explicar ese artículo específico
-3. Analiza la información encontrada arriba y extrae datos relevantes para la consulta
+3. Analiza TODO el contenido encontrado arriba, incluyendo el contenido detallado extraído con Firecrawl
 4. NO uses frases genéricas como "puedo ayudarte con información sobre..."
 5. Proporciona información CONCRETA y ESPECÍFICA sobre lo que se pregunta
-6. Si encuentras el artículo específico, explica su contenido, alcance y aplicación
+6. Si encuentras el artículo específico, explica su contenido completo, alcance y aplicación
 7. Usa terminología jurídica precisa
 8. Si la información no es suficiente para responder específicamente, indícalo claramente
+9. PRIORIZA el contenido detallado extraído con Firecrawl sobre los snippets de búsqueda
 
 EJEMPLO DE RESPUESTA CORRECTA:
 Si preguntan "art 90 codigo civil", responde:
-"El artículo 90 del Código Civil establece que [explicación específica del artículo]. Este artículo regula [alcance específico] y se aplica en [casos específicos]."
+"El artículo 90 del Código Civil establece que [explicación específica del artículo]. Este artículo regula [alcance específico] y se aplica en [casos específicos]. Según la información oficial encontrada, [detalles adicionales del contenido extraído con Firecrawl]."
 
 EJEMPLO DE RESPUESTA INCORRECTA:
 "Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre..."
@@ -183,10 +216,10 @@ Responde en español colombiano con terminología jurídica precisa.`
         model: "openai/gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Analiza la información encontrada y responde específicamente sobre: ${userQuery}` }
+          { role: "user", content: `Analiza la información encontrada (incluyendo contenido detallado de Firecrawl) y responde específicamente sobre: ${userQuery}` }
         ],
         temperature: 0.1, // Muy baja para respuestas más precisas
-        max_tokens: 1500 // Más tokens para respuestas detalladas
+        max_tokens: 2000 // Más tokens para respuestas detalladas con Firecrawl
       })
 
       const aiResponse = completion.choices[0].message.content || "No se pudo generar respuesta"
