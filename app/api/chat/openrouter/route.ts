@@ -18,7 +18,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const profile = await getServerProfile()
+    let profile
+    try {
+      profile = await getServerProfile()
+    } catch (error) {
+      console.log('⚠️ Usuario no autenticado, usando configuración por defecto')
+      profile = {
+        email: 'usuario-anonimo',
+        openrouter_api_key: process.env.OPENROUTER_API_KEY || ''
+      }
+    }
 
     // Usar API key de OpenRouter desde variables de entorno o perfil
     const openrouterApiKey = process.env.OPENROUTER_API_KEY || profile.openrouter_api_key || ""
@@ -46,7 +55,7 @@ export async function POST(request: Request) {
     console.log(`\n${"🔥".repeat(60)}`)
     console.log(`🔍 BÚSQUEDA WEB OBLIGATORIA - FORZADA`)
     console.log(`   Query: "${userQuery.substring(0, 50)}..."`)
-    console.log(`   Usuario: ${profile.email}`)
+    console.log(`   Usuario: ${profile?.email || 'usuario-anonimo'}`)
     console.log(`${"🔥".repeat(60)}\n`)
     
     // FORZAR BÚSQUEDA - NO HAY EXCEPCIONES

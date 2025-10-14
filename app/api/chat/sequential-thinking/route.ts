@@ -12,7 +12,16 @@ export const maxDuration = 60 // 60 segundos para búsquedas completas
 
 export async function POST(request: Request) {
   try {
-    const profile = await getServerProfile()
+    let profile
+    try {
+      profile = await getServerProfile()
+    } catch (error) {
+      console.log('⚠️ Usuario no autenticado, usando configuración por defecto')
+      profile = {
+        email: 'usuario-anonimo',
+        openrouter_api_key: process.env.OPENROUTER_API_KEY || ''
+      }
+    }
 
     if (!profile) {
       return new Response(
