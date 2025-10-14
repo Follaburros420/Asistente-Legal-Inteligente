@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/browser-client"
+import { supabase } from "@/lib/supabase/robust-client"
 import { toast } from "sonner"
 
 export const uploadFile = async (

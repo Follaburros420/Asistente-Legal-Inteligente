@@ -1,34 +1,34 @@
 import { ChatbotUIContext } from "@/context/context"
 import { Tables } from "@/supabase/types"
 import { ContentType } from "@/types"
-import { FC, useContext } from "react"
+import { FC, useContext, useState } from "react"
 import { SIDEBAR_WIDTH } from "../ui/dashboard"
 import { TabsContent } from "../ui/tabs"
 import { WorkspaceSwitcher } from "../utility/workspace-switcher"
 import { WorkspaceSettings } from "../workspace/workspace-settings"
 import { SidebarContent } from "./sidebar-content"
+import { ModernSidebar } from "./modern/ModernSidebar"
+import { motion, AnimatePresence } from "framer-motion"
 
 interface SidebarProps {
   contentType: ContentType
   showSidebar: boolean
+  onContentTypeChange?: (type: ContentType) => void
 }
 
-export const Sidebar: FC<SidebarProps> = ({ contentType, showSidebar }) => {
+export const Sidebar: FC<SidebarProps> = ({ contentType, showSidebar, onContentTypeChange }) => {
   const {
     folders,
     chats,
-    presets,
-    prompts,
     files,
     collections,
     assistants,
-    tools,
-    models
+    tools
   } = useContext(ChatbotUIContext)
+  
+  const [useModernDesign] = useState(true) // Flag para activar el diseño moderno
 
   const chatFolders = folders.filter(folder => folder.type === "chats")
-  const presetFolders = folders.filter(folder => folder.type === "presets")
-  const promptFolders = folders.filter(folder => folder.type === "prompts")
   const filesFolders = folders.filter(folder => folder.type === "files")
   const collectionFolders = folders.filter(
     folder => folder.type === "collections"
@@ -37,7 +37,6 @@ export const Sidebar: FC<SidebarProps> = ({ contentType, showSidebar }) => {
     folder => folder.type === "assistants"
   )
   const toolFolders = folders.filter(folder => folder.type === "tools")
-  const modelFolders = folders.filter(folder => folder.type === "models")
 
   const renderSidebarContent = (
     contentType: ContentType,
@@ -49,6 +48,30 @@ export const Sidebar: FC<SidebarProps> = ({ contentType, showSidebar }) => {
     )
   }
 
+  // Si está activado el diseño moderno, usar ModernSidebar
+  if (useModernDesign) {
+    return (
+      <AnimatePresence>
+        {showSidebar && (
+          <motion.div
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -20, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className="w-full h-full"
+          >
+            <ModernSidebar
+              contentType={contentType}
+              showSidebar={showSidebar}
+              onContentTypeChange={onContentTypeChange}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+  }
+
+  // Diseño original como fallback
   return (
     <TabsContent
       className="m-0 w-full space-y-2"
@@ -72,12 +95,6 @@ export const Sidebar: FC<SidebarProps> = ({ contentType, showSidebar }) => {
             case "chats":
               return renderSidebarContent("chats", chats, chatFolders)
 
-            case "presets":
-              return renderSidebarContent("presets", presets, presetFolders)
-
-            case "prompts":
-              return renderSidebarContent("prompts", prompts, promptFolders)
-
             case "files":
               return renderSidebarContent("files", files, filesFolders)
 
@@ -97,9 +114,6 @@ export const Sidebar: FC<SidebarProps> = ({ contentType, showSidebar }) => {
 
             case "tools":
               return renderSidebarContent("tools", tools, toolFolders)
-
-            case "models":
-              return renderSidebarContent("models", models, modelFolders)
 
             default:
               return null

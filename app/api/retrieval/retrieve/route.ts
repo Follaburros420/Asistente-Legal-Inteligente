@@ -1,4 +1,5 @@
 import { generateLocalEmbedding } from "@/lib/generate-local-embedding"
+import { generateOpenRouterEmbedding } from "@/lib/generate-openrouter-embedding"
 import { checkApiKey, getServerProfile } from "@/lib/server/server-chat-helpers"
 import { Database } from "@/supabase/types"
 import { createClient } from "@supabase/supabase-js"
@@ -6,11 +7,18 @@ import OpenAI from "openai"
 
 export async function POST(request: Request) {
   const json = await request.json()
-  const { userInput, fileIds, embeddingsProvider, sourceCount } = json as {
+  let { userInput, fileIds, embeddingsProvider, sourceCount } = json as {
     userInput: string
     fileIds: string[]
-    embeddingsProvider: "openai" | "local"
+    embeddingsProvider: "openai" | "local" | "openrouter"
     sourceCount: number
+  }
+  
+  // 🔥 FORZAR OpenAI Embeddings para retrieval
+  // OpenRouter no tiene API de embeddings, local tiene problemas
+  if (embeddingsProvider === "openrouter" || embeddingsProvider === "local") {
+    embeddingsProvider = "openai"
+    console.log("🔍 Cambiando a 'openai' para retrieval (más confiable)")
   }
 
   const uniqueFileIds = [...new Set(fileIds)]
@@ -28,6 +36,15 @@ export async function POST(request: Request) {
         checkApiKey(profile.azure_openai_api_key, "Azure OpenAI")
       } else {
         checkApiKey(profile.openai_api_key, "OpenAI")
+      }
+    } else if (embeddingsProvider === "openrouter") {
+      try {
+        checkApiKey(profile.openrouter_api_key, "OpenRouter")
+      } catch (error: any) {
+        error.message =
+          error.message +
+          ", make sure it is configured or else use local embeddings"
+        throw error
       }
     }
 
@@ -68,6 +85,37 @@ export async function POST(request: Request) {
       }
 
       chunks = openaiFileItems
+    } else if (embeddingsProvider === "openrouter") {
+      try {
+        const openrouterKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY
+        console.log('🔍 Generando embedding de búsqueda con OpenRouter...')
+        
+        const openrouterEmbedding = await generateOpenRouterEmbedding(
+          userInput, 
+          openrouterKey!, 
+          'text-embedding-3-small'
+        )
+
+        console.log('✅ Embedding generado, buscando en base de datos...')
+        
+        const { data: openrouterFileItems, error: openrouterError } =
+          await supabaseAdmin.rpc("match_file_items_openai", {
+            query_embedding: openrouterEmbedding as any,
+            match_count: sourceCount,
+            file_ids: uniqueFileIds
+          })
+
+        if (openrouterError) {
+          console.error('❌ Error en búsqueda de Supabase:', openrouterError)
+          throw openrouterError
+        }
+
+        console.log(`✅ Encontrados ${openrouterFileItems?.length || 0} chunks relevantes`)
+        chunks = openrouterFileItems
+      } catch (error) {
+        console.error('❌ OpenRouter retrieval error:', error)
+        throw new Error('Failed to retrieve with OpenRouter embeddings')
+      }
     } else if (embeddingsProvider === "local") {
       const localEmbedding = await generateLocalEmbedding(userInput)
 

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/browser-client"
+import { supabase } from "@/lib/supabase/robust-client"
 import { TablesInsert, TablesUpdate } from "@/supabase/types"
 import mammoth from "mammoth"
 import { toast } from "sonner"
@@ -62,7 +62,7 @@ export const createFileBasedOnExtension = async (
   file: File,
   fileRecord: TablesInsert<"files">,
   workspace_id: string,
-  embeddingsProvider: "openai" | "local"
+  embeddingsProvider: "openai" | "local" | "openrouter"
 ) => {
   const fileExtension = file.name.split(".").pop()
 
@@ -89,7 +89,7 @@ export const createFile = async (
   file: File,
   fileRecord: TablesInsert<"files">,
   workspace_id: string,
-  embeddingsProvider: "openai" | "local"
+  embeddingsProvider: "openai" | "local" | "openrouter"
 ) => {
   let validFilename = fileRecord.name.replace(/[^a-z0-9.]/gi, "_").toLowerCase()
   const extension = file.name.split(".").pop()
@@ -159,7 +159,7 @@ export const createDocXFile = async (
   file: File,
   fileRecord: TablesInsert<"files">,
   workspace_id: string,
-  embeddingsProvider: "openai" | "local"
+  embeddingsProvider: "openai" | "local" | "openrouter"
 ) => {
   const { data: createdFile, error } = await supabase
     .from("files")

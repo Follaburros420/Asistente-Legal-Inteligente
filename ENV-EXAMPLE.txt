@@ -1,0 +1,39 @@
+# ============================================
+# ARCHIVO DE EJEMPLO PARA .env.local
+# ============================================
+
+# Instrucciones:
+# 1. Crea un archivo llamado ".env.local" en la raíz del proyecto
+# 2. Copia el contenido de abajo
+# 3. Reemplaza "sk-or-v1-your-api-key-here" con tu API Key real
+# 4. Guarda el archivo
+# 5. Reinicia el servidor: npm run dev
+
+# ============================================
+# CONTENIDO DEL ARCHIVO .env.local
+# ============================================
+
+# OpenRouter API Key
+# Obtén tu clave en: https://openrouter.ai/keys
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
+
+# ============================================
+# NOTAS IMPORTANTES
+# ============================================
+
+# - La API Key debe empezar con "sk-or-v1-"
+# - NO compartas este archivo con nadie
+# - El archivo .env.local no se sube a GitHub (está en .gitignore)
+# - Si no tienes API Key, créala en: https://openrouter.ai/keys
+# - Algunos modelos requieren créditos: https://openrouter.ai/activity
+
+# ============================================
+# VERIFICAR CONFIGURACIÓN
+# ============================================
+
+# Una vez configurado:
+# 1. Reinicia el servidor
+# 2. Ve a: http://localhost:3000/es/login
+# 3. Envía un mensaje
+# 4. Debe funcionar sin error "invalid model ID"
+

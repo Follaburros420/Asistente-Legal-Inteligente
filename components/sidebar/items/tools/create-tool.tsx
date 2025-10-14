@@ -44,10 +44,10 @@ export const CreateTool: FC<CreateToolProps> = ({ isOpen, onOpenChange }) => {
       renderInputs={() => (
         <>
           <div className="space-y-1">
-            <Label>Name</Label>
+            <Label>Nombre</Label>
 
             <Input
-              placeholder="Tool name..."
+              placeholder="Nombre de la herramienta..."
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={TOOL_NAME_MAX}
@@ -55,10 +55,10 @@ export const CreateTool: FC<CreateToolProps> = ({ isOpen, onOpenChange }) => {
           </div>
 
           <div className="space-y-1">
-            <Label>Description</Label>
+            <Label>Descripción</Label>
 
             <Input
-              placeholder="Tool description..."
+              placeholder="Descripción de la herramienta..."
               value={description}
               onChange={e => setDescription(e.target.value)}
               maxLength={TOOL_DESCRIPTION_MAX}
@@ -96,7 +96,7 @@ export const CreateTool: FC<CreateToolProps> = ({ isOpen, onOpenChange }) => {
           </div> */}
 
           <div className="space-y-1">
-            <Label>Custom Headers</Label>
+            <Label>Encabezados Personalizados</Label>
 
             <TextareaAutosize
               placeholder={`{"X-api-key": "1234567890"}`}
@@ -107,31 +107,31 @@ export const CreateTool: FC<CreateToolProps> = ({ isOpen, onOpenChange }) => {
           </div>
 
           <div className="space-y-1">
-            <Label>Schema</Label>
+            <Label>Esquema</Label>
 
             <TextareaAutosize
               placeholder={`{
                 "openapi": "3.1.0",
                 "info": {
-                  "title": "Get weather data",
-                  "description": "Retrieves current weather data for a location.",
+                  "title": "Consulta Jurisprudencia Colombiana",
+                  "description": "Busca jurisprudencia y normativa legal colombiana.",
                   "version": "v1.0.0"
                 },
                 "servers": [
                   {
-                    "url": "https://weather.example.com"
+                    "url": "https://api.ramajudicial.gov.co"
                   }
                 ],
                 "paths": {
-                  "/location": {
+                  "/jurisprudencia": {
                     "get": {
-                      "description": "Get temperature for a specific location",
-                      "operationId": "GetCurrentWeather",
+                      "description": "Busca jurisprudencia por tema legal",
+                      "operationId": "BuscarJurisprudencia",
                       "parameters": [
                         {
-                          "name": "location",
+                          "name": "tema",
                           "in": "query",
-                          "description": "The city and state to retrieve the weather for",
+                          "description": "Tema legal a buscar en la jurisprudencia colombiana",
                           "required": true,
                           "schema": {
                             "type": "string"
@@ -156,7 +156,7 @@ export const CreateTool: FC<CreateToolProps> = ({ isOpen, onOpenChange }) => {
                     .then(() => setSchemaError("")) // Clear error if validation is successful
                     .catch(error => setSchemaError(error.message)) // Set specific validation error message
                 } catch (error) {
-                  setSchemaError("Invalid JSON format") // Set error for invalid JSON format
+                  setSchemaError("Formato JSON inválido") // Set error for invalid JSON format
                 }
               }}
               minRows={15}

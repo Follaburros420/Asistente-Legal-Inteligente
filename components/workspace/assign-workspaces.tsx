@@ -61,7 +61,7 @@ export const AssignWorkspaces: FC<AssignWorkspaces> = ({
         >
           <div className="flex items-center">
             <div className="ml-2 flex items-center">
-              {selectedWorkspaces.length} workspaces selected
+              {selectedWorkspaces.length} espacio{selectedWorkspaces.length !== 1 ? 's' : ''} seleccionado{selectedWorkspaces.length !== 1 ? 's' : ''}
             </div>
           </div>
 

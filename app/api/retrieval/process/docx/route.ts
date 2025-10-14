@@ -1,4 +1,5 @@
 import { generateLocalEmbedding } from "@/lib/generate-local-embedding"
+import { generateMultipleOpenRouterEmbeddings } from "@/lib/generate-openrouter-embedding"
 import { processDocX } from "@/lib/retrieval/processing"
 import { checkApiKey, getServerProfile } from "@/lib/server/server-chat-helpers"
 import { Database } from "@/supabase/types"
@@ -9,12 +10,17 @@ import OpenAI from "openai"
 
 export async function POST(req: Request) {
   const json = await req.json()
-  const { text, fileId, embeddingsProvider, fileExtension } = json as {
+  let { text, fileId, embeddingsProvider, fileExtension } = json as {
     text: string
     fileId: string
-    embeddingsProvider: "openai" | "local"
+    embeddingsProvider: "openai" | "local" | "openrouter"
     fileExtension: string
   }
+  
+  // 🔥 FORZAR OpenAI Embeddings - SOLUCIÓN DEFINITIVA
+  // OpenRouter no tiene embeddings, local tiene problemas de descarga
+  embeddingsProvider = "openai"
+  console.log("🔥 [DOCX] FORZANDO embeddingsProvider a 'openai' (más confiable)")
 
   try {
     const supabaseAdmin = createClient<Database>(
@@ -24,7 +30,16 @@ export async function POST(req: Request) {
 
     const profile = await getServerProfile()
 
-    if (embeddingsProvider === "openai") {
+    console.log(`📌 [DOCX] Embeddings provider: ${embeddingsProvider}`)
+
+    // Verificar API keys según el proveedor
+    if (embeddingsProvider === "openrouter") {
+      const openrouterKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY
+      if (!openrouterKey) {
+        throw new Error("❌ OpenRouter API Key not found. Please add it to your profile or OPENROUTER_API_KEY environment variable.")
+      }
+      console.log("✅ [DOCX] OpenRouter API Key found")
+    } else if (embeddingsProvider === "openai") {
       if (profile.use_azure_openai) {
         checkApiKey(profile.azure_openai_api_key, "Azure OpenAI")
       } else {
@@ -70,6 +85,22 @@ export async function POST(req: Request) {
       embeddings = response.data.map((item: any) => {
         return item.embedding
       })
+    } else if (embeddingsProvider === "openrouter") {
+      try {
+        console.log('🚀 [DOCX] Using OpenRouter embeddings for document processing')
+        const openrouterKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY
+        
+        embeddings = await generateMultipleOpenRouterEmbeddings(
+          chunks.map(chunk => chunk.content),
+          openrouterKey!,
+          'text-embedding-3-small'
+        )
+        
+        console.log(`✅ [DOCX] Generated ${embeddings.length} OpenRouter embeddings`)
+      } catch (error) {
+        console.error('❌ [DOCX] OpenRouter embeddings error:', error)
+        throw new Error('Failed to generate OpenRouter embeddings')
+      }
     } else if (embeddingsProvider === "local") {
       const embeddingPromises = chunks.map(async chunk => {
         try {
@@ -89,7 +120,7 @@ export async function POST(req: Request) {
       content: chunk.content,
       tokens: chunk.tokens,
       openai_embedding:
-        embeddingsProvider === "openai"
+        embeddingsProvider === "openai" || embeddingsProvider === "openrouter"
           ? ((embeddings[index] || null) as any)
           : null,
       local_embedding:

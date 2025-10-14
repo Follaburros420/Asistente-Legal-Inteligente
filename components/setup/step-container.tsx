@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card"
 import { FC, useRef } from "react"
 
-export const SETUP_STEP_COUNT = 3
+export const SETUP_STEP_COUNT = 2
 
 interface StepContainerProps {
   stepDescription: string
@@ -67,7 +67,7 @@ export const StepContainer: FC<StepContainerProps> = ({
               variant="outline"
               onClick={() => onShouldProceed(false)}
             >
-              Back
+              Atrás
             </Button>
           )}
         </div>
@@ -79,7 +79,7 @@ export const StepContainer: FC<StepContainerProps> = ({
               size="sm"
               onClick={() => onShouldProceed(true)}
             >
-              Next
+              Siguiente
             </Button>
           )}
         </div>

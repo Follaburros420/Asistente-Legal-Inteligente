@@ -65,7 +65,7 @@ export const ProfileStep: FC<ProfileStepProps> = ({
       if (!usernameRegex.test(username)) {
         onUsernameAvailableChange(false)
         toast.error(
-          "Username must be letters, numbers, or underscores only - no other characters or spacing allowed."
+          "El nombre de usuario debe contener solo letras, números o guiones bajos - no se permiten otros caracteres o espacios."
         )
         return
       }
@@ -91,13 +91,13 @@ export const ProfileStep: FC<ProfileStepProps> = ({
     <>
       <div className="space-y-1">
         <div className="flex items-center space-x-2">
-          <Label>Username</Label>
+          <Label>Nombre de Usuario</Label>
 
           <div className="text-xs">
             {usernameAvailable ? (
-              <div className="text-green-500">AVAILABLE</div>
+              <div className="text-green-500">DISPONIBLE</div>
             ) : (
-              <div className="text-red-500">UNAVAILABLE</div>
+              <div className="text-red-500">NO DISPONIBLE</div>
             )}
           </div>
         </div>
@@ -105,7 +105,7 @@ export const ProfileStep: FC<ProfileStepProps> = ({
         <div className="relative">
           <Input
             className="pr-10"
-            placeholder="username"
+            placeholder="nombre de usuario"
             value={username}
             onChange={e => {
               onUsernameChange(e.target.value)
@@ -130,10 +130,10 @@ export const ProfileStep: FC<ProfileStepProps> = ({
       </div>
 
       <div className="space-y-1">
-        <Label>Chat Display Name</Label>
+        <Label>Nombre para Mostrar en Chat</Label>
 
         <Input
-          placeholder="Your Name"
+          placeholder="Tu Nombre"
           value={displayName}
           onChange={e => onDisplayNameChange(e.target.value)}
           maxLength={PROFILE_DISPLAY_NAME_MAX}

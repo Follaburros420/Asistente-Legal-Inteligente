@@ -116,6 +116,7 @@ export const QuickSettings: FC<QuickSettingsProps> = ({}) => {
           embeddingsProvider: selectedWorkspace.embeddings_provider as
             | "openai"
             | "local"
+            | "openrouter"
         })
       }
       return
@@ -128,7 +129,7 @@ export const QuickSettings: FC<QuickSettingsProps> = ({}) => {
       contextLength: item.context_length,
       includeProfileContext: item.include_profile_context,
       includeWorkspaceInstructions: item.include_workspace_instructions,
-      embeddingsProvider: item.embeddings_provider as "openai" | "local"
+      embeddingsProvider: item.embeddings_provider as "openai" | "local" | "openrouter"
     })
   }
 
@@ -217,17 +218,17 @@ export const QuickSettings: FC<QuickSettingsProps> = ({}) => {
             ))}
 
           {loading ? (
-            <div className="animate-pulse">Loading assistant...</div>
+            <div className="animate-pulse">Cargando agente...</div>
           ) : (
             <>
               <div className="overflow-hidden text-ellipsis">
                 {isModified &&
                   (selectedPreset || selectedAssistant) &&
-                  "Modified "}
+                  "Modificado "}
 
                 {selectedPreset?.name ||
                   selectedAssistant?.name ||
-                  t("Quick Settings")}
+                  "Configuración Rápida"}
               </div>
 
               <IconChevronDown className="ml-1" />
@@ -241,13 +242,13 @@ export const QuickSettings: FC<QuickSettingsProps> = ({}) => {
         align="start"
       >
         {presets.length === 0 && assistants.length === 0 ? (
-          <div className="p-8 text-center">No items found.</div>
+          <div className="p-8 text-center">No se encontraron agentes.</div>
         ) : (
           <>
             <Input
               ref={inputRef}
               className="w-full"
-              placeholder="Search..."
+              placeholder="Buscar..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => e.stopPropagation()}

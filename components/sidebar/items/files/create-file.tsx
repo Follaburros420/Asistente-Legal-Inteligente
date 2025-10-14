@@ -56,20 +56,21 @@ export const CreateFile: FC<CreateFileProps> = ({ isOpen, onOpenChange }) => {
       renderInputs={() => (
         <>
           <div className="space-y-1">
-            <Label>File</Label>
+            <Label>Archivo</Label>
 
-            <Input
+            <input
               type="file"
               onChange={handleSelectedFile}
               accept={ACCEPTED_FILE_TYPES}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
 
           <div className="space-y-1">
-            <Label>Name</Label>
+            <Label>Nombre</Label>
 
             <Input
-              placeholder="File name..."
+              placeholder="Nombre del archivo..."
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={FILE_NAME_MAX}
@@ -77,11 +78,11 @@ export const CreateFile: FC<CreateFileProps> = ({ isOpen, onOpenChange }) => {
           </div>
 
           <div className="space-y-1">
-            <Label>Description</Label>
+            <Label>Descripción</Label>
 
             <Input
-              placeholder="File description..."
-              value={name}
+              placeholder="Descripción del archivo..."
+              value={description}
               onChange={e => setDescription(e.target.value)}
               maxLength={FILE_DESCRIPTION_MAX}
             />

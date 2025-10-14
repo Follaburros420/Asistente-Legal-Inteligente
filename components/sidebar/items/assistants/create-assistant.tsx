@@ -136,10 +136,10 @@ export const CreateAssistant: FC<CreateAssistantProps> = ({
       renderInputs={() => (
         <>
           <div className="space-y-1">
-            <Label>Name</Label>
+            <Label>Nombre</Label>
 
             <Input
-              placeholder="Assistant name..."
+              placeholder="Nombre del agente..."
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={ASSISTANT_NAME_MAX}
@@ -147,10 +147,10 @@ export const CreateAssistant: FC<CreateAssistantProps> = ({
           </div>
 
           <div className="space-y-1 pt-2">
-            <Label>Description</Label>
+            <Label>Descripción</Label>
 
             <Input
-              placeholder="Assistant description..."
+              placeholder="Descripción del agente..."
               value={description}
               onChange={e => setDescription(e.target.value)}
               maxLength={ASSISTANT_DESCRIPTION_MAX}
@@ -159,9 +159,9 @@ export const CreateAssistant: FC<CreateAssistantProps> = ({
 
           <div className="space-y-1 pt-2">
             <Label className="flex space-x-1">
-              <div>Image</div>
+              <div>Imagen</div>
 
-              <div className="text-xs">(optional)</div>
+              <div className="text-xs">(opcional)</div>
             </Label>
 
             <ImagePicker
@@ -181,7 +181,7 @@ export const CreateAssistant: FC<CreateAssistantProps> = ({
           />
 
           <div className="space-y-1 pt-2">
-            <Label>Files & Collections</Label>
+            <Label>Archivos y Colecciones</Label>
 
             <AssistantRetrievalSelect
               selectedAssistantRetrievalItems={selectedAssistantRetrievalItems}

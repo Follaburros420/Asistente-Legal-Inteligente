@@ -1,8 +1,8 @@
-# Chatbot UI
+# Asistente Legal Inteligente
 
-The open-source AI chat app for everyone.
+Un asistente de inteligencia artificial especializado en asuntos legales.
 
-<img src="./public/readme/screenshot.png" alt="Chatbot UI" width="600">
+<img src="./public/robot-logo.svg" alt="Asistente Legal Inteligente" width="600">
 
 ## Demo
 

@@ -46,8 +46,22 @@ export const useSelectFileHandler = () => {
   }
 
   const handleSelectDeviceFile = async (file: File) => {
-    if (!profile || !selectedWorkspace || !chatSettings) return
+    // Validar que el archivo existe
+    if (!file) {
+      console.log('No se proporcionó archivo')
+      return
+    }
+    
+    console.log('handleSelectDeviceFile llamado con archivo:', file.name, file.type, file.size)
+    console.log('profile:', profile)
+    console.log('selectedWorkspace:', selectedWorkspace)
+    
+    if (!profile || !selectedWorkspace) {
+      console.log('Faltan profile o selectedWorkspace')
+      return
+    }
 
+    console.log('Configurando archivo para mostrar...')
     setShowFilesDisplay(true)
     setUseRetrieval(true)
 

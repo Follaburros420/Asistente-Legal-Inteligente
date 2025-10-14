@@ -8,6 +8,20 @@ interface SidebarSearchProps {
   setSearchTerm: Function
 }
 
+const getSearchPlaceholder = (contentType: ContentType): string => {
+  const labels: Record<ContentType, string> = {
+    chats: "conversaciones",
+    presets: "preajustes",
+    prompts: "instrucciones",
+    files: "archivos",
+    collections: "colecciones",
+    assistants: "agentes",
+    tools: "herramientas",
+    models: "modelos"
+  }
+  return `Buscar ${labels[contentType] || contentType}...`
+}
+
 export const SidebarSearch: FC<SidebarSearchProps> = ({
   contentType,
   searchTerm,
@@ -15,7 +29,7 @@ export const SidebarSearch: FC<SidebarSearchProps> = ({
 }) => {
   return (
     <Input
-      placeholder={`Search ${contentType}...`}
+      placeholder={getSearchPlaceholder(contentType)}
       value={searchTerm}
       onChange={e => setSearchTerm(e.target.value)}
     />

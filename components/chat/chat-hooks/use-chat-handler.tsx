@@ -196,6 +196,12 @@ export const useChatHandler = () => {
     const startingInput = messageContent
 
     try {
+      console.log('handleSendMessage iniciado')
+      console.log('messageContent:', messageContent)
+      console.log('chatSettings:', chatSettings)
+      console.log('profile:', profile)
+      console.log('selectedWorkspace:', selectedWorkspace)
+      
       setUserInput("")
       setIsGenerating(true)
       setIsPromptPickerOpen(false)
@@ -205,7 +211,8 @@ export const useChatHandler = () => {
       const newAbortController = new AbortController()
       setAbortController(newAbortController)
 
-      const modelData = [
+      // Usar GPT-4o por defecto para asegurar funcionalidad
+      let modelData = [
         ...models.map(model => ({
           modelId: model.model_id as LLMID,
           modelName: model.name,
@@ -219,6 +226,22 @@ export const useChatHandler = () => {
         ...availableOpenRouterModels
       ].find(llm => llm.modelId === chatSettings?.model)
 
+      // Si no se encuentra el modelo, usar Tongyi Deep Research por defecto
+      if (!modelData) {
+        modelData = {
+          modelId: "alibaba/tongyi-deepresearch-30b-a3b" as LLMID,
+          modelName: "Tongyi Deep Research 30B",
+          provider: "openrouter" as ModelProvider,
+          hostedId: "alibaba/tongyi-deepresearch-30b-a3b",
+          platformLink: "https://openrouter.ai",
+          imageInput: false
+        }
+        
+        console.log('✅ Usando Tongyi Deep Research por defecto:', modelData)
+      }
+
+      console.log('✅ Modelo configurado:', modelData.modelId, '- Proveedor:', modelData.provider)
+
       validateChatSettings(
         chatSettings,
         modelData,
@@ -226,6 +249,8 @@ export const useChatHandler = () => {
         selectedWorkspace,
         messageContent
       )
+      
+      console.log('Validación de chat settings pasada')
 
       let currentChat = selectedChat ? { ...selectedChat } : null
 
@@ -383,6 +408,7 @@ export const useChatHandler = () => {
       setIsGenerating(false)
       setFirstTokenReceived(false)
     } catch (error) {
+      console.error('Error en handleSendMessage:', error)
       setIsGenerating(false)
       setFirstTokenReceived(false)
       setUserInput(startingInput)

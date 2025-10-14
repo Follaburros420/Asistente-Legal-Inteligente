@@ -39,23 +39,14 @@ export const ChatSettingsForm: FC<ChatSettingsFormProps> = ({
 
   return (
     <div className="space-y-3">
-      <div className="space-y-1">
-        <Label>Model</Label>
-
-        <ModelSelect
-          selectedModelId={chatSettings.model}
-          onSelectModel={model => {
-            onChangeChatSettings({ ...chatSettings, model })
-          }}
-        />
-      </div>
+      {/* Selector de modelo oculto - siempre usa Tongyi */}
 
       <div className="space-y-1">
-        <Label>Prompt</Label>
+        <Label>Instrucciones del Sistema</Label>
 
         <TextareaAutosize
           className="bg-background border-input border-2"
-          placeholder="You are a helpful AI assistant."
+          placeholder="Eres un asistente legal inteligente especializado en derecho colombiano."
           onValueChange={prompt => {
             onChangeChatSettings({ ...chatSettings, prompt })
           }}
@@ -226,7 +217,7 @@ const AdvancedContent: FC<AdvancedContentProps> = ({
 
         <Select
           value={chatSettings.embeddingsProvider}
-          onValueChange={(embeddingsProvider: "openai" | "local") => {
+          onValueChange={(embeddingsProvider: "openai" | "local" | "openrouter") => {
             onChangeChatSettings({
               ...chatSettings,
               embeddingsProvider
@@ -241,6 +232,8 @@ const AdvancedContent: FC<AdvancedContentProps> = ({
             <SelectItem value="openai">
               {profile?.use_azure_openai ? "Azure OpenAI" : "OpenAI"}
             </SelectItem>
+
+            <SelectItem value="openrouter">OpenRouter</SelectItem>
 
             {window.location.hostname === "localhost" && (
               <SelectItem value="local">Local</SelectItem>

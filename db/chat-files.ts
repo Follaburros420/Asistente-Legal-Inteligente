@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/browser-client"
+import { supabase } from "@/lib/supabase/robust-client"
 import { TablesInsert } from "@/supabase/types"
 
 export const getChatFilesByChatId = async (chatId: string) => {
@@ -12,10 +12,19 @@ export const getChatFilesByChatId = async (chatId: string) => {
     `
     )
     .eq("id", chatId)
-    .single()
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
 
   if (!chatFiles) {
-    throw new Error(error.message)
+    // Si no se encuentra el chat, retornar un objeto vacío con estructura válida
+    return {
+      id: chatId,
+      name: "",
+      files: []
+    }
   }
 
   return chatFiles

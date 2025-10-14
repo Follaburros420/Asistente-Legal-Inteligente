@@ -34,8 +34,9 @@ export const validateChatSettings = (
     throw new Error("Chat settings not found")
   }
 
+  // Permitir que el modelo no se encuentre - usar configuración por defecto
   if (!modelData) {
-    throw new Error("Model not found")
+    console.log("Model not found, using default configuration")
   }
 
   if (!profile) {
@@ -55,7 +56,7 @@ export const handleRetrieval = async (
   userInput: string,
   newMessageFiles: ChatFile[],
   chatFiles: ChatFile[],
-  embeddingsProvider: "openai" | "local",
+  embeddingsProvider: "openai" | "local" | "openrouter",
   sourceCount: number
 ) => {
   const response = await fetch("/api/retrieval/retrieve", {

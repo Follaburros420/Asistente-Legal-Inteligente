@@ -23,6 +23,11 @@ import { TextareaAutosize } from "../ui/textarea-autosize"
 import { WithTooltip } from "../ui/with-tooltip"
 import { MessageActions } from "./message-actions"
 import { MessageMarkdown } from "./message-markdown"
+import { DocumentViewer } from "../chat/document-viewer"
+import { MessageBubble } from "../chat/modern/MessageBubble"
+import { BibliographySection } from "../chat/bibliography-section"
+import { useBibliographyParser } from "../chat/use-bibliography-parser"
+import { toast } from "sonner"
 
 const ICON_SIZE = 32
 
@@ -71,6 +76,9 @@ export const Message: FC<MessageProps> = ({
 
   const [showImagePreview, setShowImagePreview] = useState(false)
   const [selectedImage, setSelectedImage] = useState<MessageImage | null>(null)
+  
+  // Parsear bibliografía del mensaje
+  const { bibliographyItems } = useBibliographyParser(message.content)
 
   const [showFileItemPreview, setShowFileItemPreview] = useState(false)
   const [selectedFileItem, setSelectedFileItem] =
@@ -81,6 +89,7 @@ export const Message: FC<MessageProps> = ({
   const handleCopy = () => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(message.content)
+      toast.success("Copiado al portapapeles")
     } else {
       const textArea = document.createElement("textarea")
       textArea.value = message.content
@@ -89,6 +98,7 @@ export const Message: FC<MessageProps> = ({
       textArea.select()
       document.execCommand("copy")
       document.body.removeChild(textArea)
+      toast.success("Copiado al portapapeles")
     }
   }
 
@@ -150,6 +160,21 @@ export const Message: FC<MessageProps> = ({
 
   const modelDetails = LLM_LIST.find(model => model.modelId === message.model)
 
+  // Detectar si el mensaje es un documento legal estructurado
+  const isLegalDocument = 
+    message.role === "assistant" && 
+    (message.content.includes("<h1>") || message.content.includes("<h2>")) &&
+    (message.content.includes("demanda") ||
+     message.content.includes("tutela") ||
+     message.content.includes("contrato") ||
+     message.content.includes("documento legal") ||
+     message.content.includes("memorial") ||
+     message.content.includes("derecho de petición") ||
+     message.assistant_id && assistants.find(a => 
+       a.id === message.assistant_id && 
+       (a.name.toLowerCase().includes("redacción") || a.name.toLowerCase().includes("redaccion"))
+     ))
+
   const fileAccumulator: Record<
     string,
     {
@@ -179,137 +204,125 @@ export const Message: FC<MessageProps> = ({
     return acc
   }, fileAccumulator)
 
+  // Determinar la imagen del avatar
+  const getAvatarImage = () => {
+    if (message.role === "assistant") {
+      return messageAssistantImage || selectedAssistantImage || undefined
+    }
+    return profile?.image_url || undefined
+  }
+
+  // Determinar el nombre
+  const getUserName = () => {
+    if (message.role === "assistant") {
+      return message.assistant_id
+        ? assistants.find(assistant => assistant.id === message.assistant_id)?.name
+        : selectedAssistant?.name || MODEL_DATA?.modelName || "Asistente Legal"
+    }
+    return profile?.display_name || profile?.username || "Usuario"
+  }
+
+  // Contenido del mensaje
+  const renderMessageContent = () => {
+    if (!firstTokenReceived && isGenerating && isLast && message.role === "assistant") {
+      return (
+        <>
+          {(() => {
+            switch (toolInUse) {
+              case "none":
+                return <IconCircleFilled className="animate-pulse" size={20} />
+              case "retrieval":
+                return (
+                  <div className="flex animate-pulse items-center space-x-2">
+                    <IconFileText size={20} />
+                    <div>Buscando archivos...</div>
+                  </div>
+                )
+              default:
+                return (
+                  <div className="flex flex-col animate-pulse space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <IconBolt size={20} />
+                      <div>Pensando a profundidad...</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground ml-7">
+                      Buscando en fuentes oficiales colombianas
+                    </div>
+                  </div>
+                )
+            }
+          })()}
+        </>
+      )
+    }
+    
+    if (isEditing) {
+      return (
+        <div className="space-y-4">
+          <TextareaAutosize
+            textareaRef={editInputRef}
+            className="text-md"
+            value={editedMessage}
+            onValueChange={setEditedMessage}
+            maxRows={20}
+          />
+          <div className="flex justify-center space-x-2">
+            <Button size="sm" onClick={handleSendEdit}>
+              Guardar y Enviar
+            </Button>
+            <Button size="sm" variant="outline" onClick={onCancelEdit}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )
+    }
+    
+    if (isLegalDocument) {
+      return <DocumentViewer content={message.content} messageId={message.id} />
+    }
+    
+    return <MessageMarkdown content={message.content} />
+  }
+
+  // Si es mensaje del sistema, usar el diseño simple
+  if (message.role === "system") {
+    return (
+      <MessageBubble
+        variant="system"
+        content={message.content}
+        timestamp={new Date(message.created_at)}
+      />
+    )
+  }
+
   return (
     <div
-      className={cn(
-        "flex w-full justify-center",
-        message.role === "user" ? "" : "bg-secondary"
-      )}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
       onKeyDown={handleKeyDown}
     >
-      <div className="relative flex w-full flex-col p-6 sm:w-[550px] sm:px-0 md:w-[650px] lg:w-[650px] xl:w-[700px]">
-        <div className="absolute right-5 top-7 sm:right-0">
-          <MessageActions
-            onCopy={handleCopy}
-            onEdit={handleStartEdit}
-            isAssistant={message.role === "assistant"}
-            isLast={isLast}
-            isEditing={isEditing}
-            isHovering={isHovering}
-            onRegenerate={handleRegenerate}
-          />
-        </div>
+      <MessageBubble
+        variant={message.role === "user" ? "user" : "ai"}
+        content=""
+        timestamp={new Date(message.created_at)}
+        avatar={getAvatarImage()}
+        userName={getUserName()}
+        status={message.role === "user" ? "delivered" : undefined}
+        onCopy={message.role === "assistant" ? handleCopy : undefined}
+        onRegenerate={message.role === "assistant" && isLast ? handleRegenerate : undefined}
+      >
         <div className="space-y-3">
-          {message.role === "system" ? (
-            <div className="flex items-center space-x-4">
-              <IconPencil
-                className="border-primary bg-primary text-secondary rounded border-DEFAULT p-1"
-                size={ICON_SIZE}
-              />
+          {/* Contenido del mensaje */}
+          {renderMessageContent()}
 
-              <div className="text-lg font-semibold">Prompt</div>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-3">
-              {message.role === "assistant" ? (
-                messageAssistantImage ? (
-                  <Image
-                    style={{
-                      width: `${ICON_SIZE}px`,
-                      height: `${ICON_SIZE}px`
-                    }}
-                    className="rounded"
-                    src={messageAssistantImage}
-                    alt="assistant image"
-                    height={ICON_SIZE}
-                    width={ICON_SIZE}
-                  />
-                ) : (
-                  <WithTooltip
-                    display={<div>{MODEL_DATA?.modelName}</div>}
-                    trigger={
-                      <ModelIcon
-                        provider={modelDetails?.provider || "custom"}
-                        height={ICON_SIZE}
-                        width={ICON_SIZE}
-                      />
-                    }
-                  />
-                )
-              ) : profile?.image_url ? (
-                <Image
-                  className={`size-[32px] rounded`}
-                  src={profile?.image_url}
-                  height={32}
-                  width={32}
-                  alt="user image"
-                />
-              ) : (
-                <IconMoodSmile
-                  className="bg-primary text-secondary border-primary rounded border-DEFAULT p-1"
-                  size={ICON_SIZE}
-                />
-              )}
-
-              <div className="font-semibold">
-                {message.role === "assistant"
-                  ? message.assistant_id
-                    ? assistants.find(
-                        assistant => assistant.id === message.assistant_id
-                      )?.name
-                    : selectedAssistant
-                      ? selectedAssistant?.name
-                      : MODEL_DATA?.modelName
-                  : profile?.display_name ?? profile?.username}
-              </div>
-            </div>
+          {/* Bibliografía */}
+          {bibliographyItems.length > 0 && (
+            <BibliographySection items={bibliographyItems} />
           )}
-          {!firstTokenReceived &&
-          isGenerating &&
-          isLast &&
-          message.role === "assistant" ? (
-            <>
-              {(() => {
-                switch (toolInUse) {
-                  case "none":
-                    return (
-                      <IconCircleFilled className="animate-pulse" size={20} />
-                    )
-                  case "retrieval":
-                    return (
-                      <div className="flex animate-pulse items-center space-x-2">
-                        <IconFileText size={20} />
 
-                        <div>Searching files...</div>
-                      </div>
-                    )
-                  default:
-                    return (
-                      <div className="flex animate-pulse items-center space-x-2">
-                        <IconBolt size={20} />
-
-                        <div>Using {toolInUse}...</div>
-                      </div>
-                    )
-                }
-              })()}
-            </>
-          ) : isEditing ? (
-            <TextareaAutosize
-              textareaRef={editInputRef}
-              className="text-md"
-              value={editedMessage}
-              onValueChange={setEditedMessage}
-              maxRows={20}
-            />
-          ) : (
-            <MessageMarkdown content={message.content} />
-          )}
-        </div>
-
-        {fileItems.length > 0 && (
+          {/* File items */}
+          {fileItems.length > 0 && (
           <div className="border-primary mt-6 border-t pt-4 font-bold">
             {!viewSources ? (
               <div
@@ -374,72 +387,65 @@ export const Message: FC<MessageProps> = ({
               </>
             )}
           </div>
-        )}
+          )}
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {message.image_paths.map((path, index) => {
-            const item = chatImages.find(image => image.path === path)
+          {/* Images */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {message.image_paths.map((path, index) => {
+              const item = chatImages.find(image => image.path === path)
 
-            return (
-              <Image
-                key={index}
-                className="cursor-pointer rounded hover:opacity-50"
-                src={path.startsWith("data") ? path : item?.base64}
-                alt="message image"
-                width={300}
-                height={300}
-                onClick={() => {
-                  setSelectedImage({
-                    messageId: message.id,
-                    path,
-                    base64: path.startsWith("data") ? path : item?.base64 || "",
-                    url: path.startsWith("data") ? "" : item?.url || "",
-                    file: null
-                  })
+              return (
+                <Image
+                  key={index}
+                  className="cursor-pointer rounded hover:opacity-50"
+                  src={path.startsWith("data") ? path : item?.base64}
+                  alt="message image"
+                  width={300}
+                  height={300}
+                  onClick={() => {
+                    setSelectedImage({
+                      messageId: message.id,
+                      path,
+                      base64: path.startsWith("data") ? path : item?.base64 || "",
+                      url: path.startsWith("data") ? "" : item?.url || "",
+                      file: null
+                    })
 
-                  setShowImagePreview(true)
-                }}
-                loading="lazy"
-              />
-            )
-          })}
-        </div>
-        {isEditing && (
-          <div className="mt-4 flex justify-center space-x-2">
-            <Button size="sm" onClick={handleSendEdit}>
-              Save & Send
-            </Button>
-
-            <Button size="sm" variant="outline" onClick={onCancelEdit}>
-              Cancel
-            </Button>
+                    setShowImagePreview(true)
+                  }}
+                  loading="lazy"
+                />
+              )
+            })}
           </div>
+        </div>
+      </MessageBubble>
+
+      <>
+        {showImagePreview && selectedImage && (
+          <FilePreview
+            type="image"
+            item={selectedImage}
+            isOpen={showImagePreview}
+            onOpenChange={(isOpen: boolean) => {
+              setShowImagePreview(isOpen)
+              setSelectedImage(null)
+            }}
+          />
         )}
-      </div>
 
-      {showImagePreview && selectedImage && (
-        <FilePreview
-          type="image"
-          item={selectedImage}
-          isOpen={showImagePreview}
-          onOpenChange={(isOpen: boolean) => {
-            setShowImagePreview(isOpen)
-            setSelectedImage(null)
-          }}
-        />
-      )}
-
-      {showFileItemPreview && selectedFileItem && (
-        <FilePreview
-          type="file_item"
-          item={selectedFileItem}
-          isOpen={showFileItemPreview}
-          onOpenChange={(isOpen: boolean) => {
-            setShowFileItemPreview(isOpen)
-            setSelectedFileItem(null)
-          }}
-        />
-      )}
+        {showFileItemPreview && selectedFileItem && (
+          <FilePreview
+            type="file_item"
+            item={selectedFileItem}
+            isOpen={showFileItemPreview}
+            onOpenChange={(isOpen: boolean) => {
+              setShowFileItemPreview(isOpen)
+              setSelectedFileItem(null)
+            }}
+          />
+        )}
+      </>
     </div>
   )
 }

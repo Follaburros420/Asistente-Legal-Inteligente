@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/browser-client"
+import { supabase } from "@/lib/supabase/robust-client"
 import { TablesInsert } from "@/supabase/types"
 
 export const getAssistantCollectionsByAssistantId = async (

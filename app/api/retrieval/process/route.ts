@@ -1,4 +1,5 @@
 import { generateLocalEmbedding } from "@/lib/generate-local-embedding"
+import { generateOpenRouterEmbedding, generateMultipleOpenRouterEmbeddings } from "@/lib/generate-openrouter-embedding"
 import {
   processCSV,
   processJSON,
@@ -25,7 +26,13 @@ export async function POST(req: Request) {
     const formData = await req.formData()
 
     const file_id = formData.get("file_id") as string
-    const embeddingsProvider = formData.get("embeddingsProvider") as string
+    let embeddingsProvider = formData.get("embeddingsProvider") as string
+    
+    // 🔥 FORZAR OpenAI Embeddings - SOLUCIÓN DEFINITIVA
+    // OpenRouter no tiene embeddings, local tiene problemas de descarga
+    // OpenAI embeddings son baratos (~$0.0001/1K tokens) y muy confiables
+    embeddingsProvider = "openai"
+    console.log("🔥 FORZANDO embeddingsProvider a 'openai' (más confiable y económico)")
 
     const { data: fileMetadata, error: metadataError } = await supabaseAdmin
       .from("files")
@@ -58,19 +65,34 @@ export async function POST(req: Request) {
     const blob = new Blob([fileBuffer])
     const fileExtension = fileMetadata.name.split(".").pop()?.toLowerCase()
 
+    // ============================================
+    // CONFIGURACIÓN DE EMBEDDINGS PROVIDER
+    // ============================================
+    // Por defecto, usar OpenRouter (sin necesidad de OpenAI API key)
+    if (!embeddingsProvider || embeddingsProvider === "") {
+      embeddingsProvider = "openrouter"
+      console.log("📌 Embeddings provider no especificado, usando OpenRouter por defecto")
+    }
+
+    console.log(`📌 Embeddings provider seleccionado: ${embeddingsProvider}`)
+
+    // Verificar API keys según el proveedor
     if (embeddingsProvider === "openai") {
+      // Para OpenAI (preferido para embeddings)
       try {
         if (profile.use_azure_openai) {
           checkApiKey(profile.azure_openai_api_key, "Azure OpenAI")
+          console.log("✅ Azure OpenAI API Key found")
         } else {
           checkApiKey(profile.openai_api_key, "OpenAI")
+          console.log("✅ OpenAI API Key found")
         }
       } catch (error: any) {
-        error.message =
-          error.message +
-          ", make sure it is configured or else use local embeddings"
-        throw error
+        throw new Error(`❌ OpenAI API Key not found. Embeddings require an OpenAI API key. Error: ${error.message}`)
       }
+    } else if (embeddingsProvider !== "local") {
+      console.log(`⚠️ Unknown embeddings provider: ${embeddingsProvider}, defaulting to openai`)
+      embeddingsProvider = "openai"
     }
 
     let chunks: FileItemChunk[] = []
@@ -123,13 +145,25 @@ export async function POST(req: Request) {
       embeddings = response.data.map((item: any) => {
         return item.embedding
       })
-    } else if (embeddingsProvider === "local") {
+    } else if (embeddingsProvider === "openrouter") {
+      // 🔥 USAR OpenRouter para embeddings
+      console.log('🚀 Using OpenRouter embeddings for document processing')
+      const openrouterKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY
+      
+      embeddings = await generateMultipleOpenRouterEmbeddings(
+        chunks.map(chunk => chunk.content),
+        openrouterKey!
+      )
+      
+      console.log(`✅ Generated ${embeddings.length} OpenRouter embeddings`)
+    } else {
+      // Usar embeddings locales solo si se especifica explícitamente
+      console.log('Using local embeddings for document processing')
       const embeddingPromises = chunks.map(async chunk => {
         try {
           return await generateLocalEmbedding(chunk.content)
         } catch (error) {
           console.error(`Error generating embedding for chunk: ${chunk}`, error)
-
           return null
         }
       })
@@ -143,7 +177,7 @@ export async function POST(req: Request) {
       content: chunk.content,
       tokens: chunk.tokens,
       openai_embedding:
-        embeddingsProvider === "openai"
+        embeddingsProvider === "openai" || embeddingsProvider === "openrouter"
           ? ((embeddings[index] || null) as any)
           : null,
       local_embedding:

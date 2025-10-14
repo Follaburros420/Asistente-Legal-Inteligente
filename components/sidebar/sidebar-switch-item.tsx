@@ -9,6 +9,20 @@ interface SidebarSwitchItemProps {
   onContentTypeChange: (contentType: ContentType) => void
 }
 
+const getContentTypeLabel = (contentType: ContentType): string => {
+  const labels: Record<ContentType, string> = {
+    chats: "Conversaciones",
+    presets: "Preajustes",
+    prompts: "Instrucciones",
+    files: "Archivos",
+    collections: "Colecciones",
+    assistants: "Agentes",
+    tools: "Herramientas",
+    models: "Modelos"
+  }
+  return labels[contentType] || contentType
+}
+
 export const SidebarSwitchItem: FC<SidebarSwitchItemProps> = ({
   contentType,
   icon,
@@ -17,7 +31,7 @@ export const SidebarSwitchItem: FC<SidebarSwitchItemProps> = ({
   return (
     <WithTooltip
       display={
-        <div>{contentType[0].toUpperCase() + contentType.substring(1)}</div>
+        <div>{getContentTypeLabel(contentType)}</div>
       }
       trigger={
         <TabsTrigger

@@ -8,9 +8,6 @@ import { Button } from "../ui/button"
 import { CreateAssistant } from "./items/assistants/create-assistant"
 import { CreateCollection } from "./items/collections/create-collection"
 import { CreateFile } from "./items/files/create-file"
-import { CreateModel } from "./items/models/create-model"
-import { CreatePreset } from "./items/presets/create-preset"
-import { CreatePrompt } from "./items/prompts/create-prompt"
 import { CreateTool } from "./items/tools/create-tool"
 
 interface SidebarCreateButtonsProps {
@@ -26,13 +23,10 @@ export const SidebarCreateButtons: FC<SidebarCreateButtonsProps> = ({
     useContext(ChatbotUIContext)
   const { handleNewChat } = useChatHandler()
 
-  const [isCreatingPrompt, setIsCreatingPrompt] = useState(false)
-  const [isCreatingPreset, setIsCreatingPreset] = useState(false)
   const [isCreatingFile, setIsCreatingFile] = useState(false)
   const [isCreatingCollection, setIsCreatingCollection] = useState(false)
   const [isCreatingAssistant, setIsCreatingAssistant] = useState(false)
   const [isCreatingTool, setIsCreatingTool] = useState(false)
-  const [isCreatingModel, setIsCreatingModel] = useState(false)
 
   const handleCreateFolder = async () => {
     if (!profile) return
@@ -41,11 +35,25 @@ export const SidebarCreateButtons: FC<SidebarCreateButtonsProps> = ({
     const createdFolder = await createFolder({
       user_id: profile.user_id,
       workspace_id: selectedWorkspace.id,
-      name: "New Folder",
+      name: "Nueva Carpeta",
       description: "",
       type: contentType
     })
     setFolders([...folders, createdFolder])
+  }
+
+  const getCreateButtonLabel = (contentType: ContentType): string => {
+    const labels: Record<ContentType, string> = {
+      chats: "Conversación",
+      presets: "Preajuste",
+      prompts: "Instrucción",
+      files: "Archivo",
+      collections: "Colección",
+      assistants: "Agente",
+      tools: "Herramienta",
+      models: "Modelo"
+    }
+    return labels[contentType] || contentType
   }
 
   const getCreateFunction = () => {
@@ -53,16 +61,6 @@ export const SidebarCreateButtons: FC<SidebarCreateButtonsProps> = ({
       case "chats":
         return async () => {
           handleNewChat()
-        }
-
-      case "presets":
-        return async () => {
-          setIsCreatingPreset(true)
-        }
-
-      case "prompts":
-        return async () => {
-          setIsCreatingPrompt(true)
         }
 
       case "files":
@@ -85,11 +83,6 @@ export const SidebarCreateButtons: FC<SidebarCreateButtonsProps> = ({
           setIsCreatingTool(true)
         }
 
-      case "models":
-        return async () => {
-          setIsCreatingModel(true)
-        }
-
       default:
         break
     }
@@ -99,29 +92,13 @@ export const SidebarCreateButtons: FC<SidebarCreateButtonsProps> = ({
     <div className="flex w-full space-x-2">
       <Button className="flex h-[36px] grow" onClick={getCreateFunction()}>
         <IconPlus className="mr-1" size={20} />
-        New{" "}
-        {contentType.charAt(0).toUpperCase() +
-          contentType.slice(1, contentType.length - 1)}
+        Nuevo {getCreateButtonLabel(contentType)}
       </Button>
 
       {hasData && (
         <Button className="size-[36px] p-1" onClick={handleCreateFolder}>
           <IconFolderPlus size={20} />
         </Button>
-      )}
-
-      {isCreatingPrompt && (
-        <CreatePrompt
-          isOpen={isCreatingPrompt}
-          onOpenChange={setIsCreatingPrompt}
-        />
-      )}
-
-      {isCreatingPreset && (
-        <CreatePreset
-          isOpen={isCreatingPreset}
-          onOpenChange={setIsCreatingPreset}
-        />
       )}
 
       {isCreatingFile && (
@@ -144,13 +121,6 @@ export const SidebarCreateButtons: FC<SidebarCreateButtonsProps> = ({
 
       {isCreatingTool && (
         <CreateTool isOpen={isCreatingTool} onOpenChange={setIsCreatingTool} />
-      )}
-
-      {isCreatingModel && (
-        <CreateModel
-          isOpen={isCreatingModel}
-          onOpenChange={setIsCreatingModel}
-        />
       )}
     </div>
   )

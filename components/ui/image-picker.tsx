@@ -28,7 +28,7 @@ const ImagePicker: FC<ImagePickerProps> = ({
       const file = e.target.files[0]
 
       if (file.size > 6000000) {
-        toast.error("Image must be less than 6MB!")
+        toast.error("¡La imagen debe pesar menos de 6MB!")
         return
       }
 
@@ -42,7 +42,7 @@ const ImagePicker: FC<ImagePickerProps> = ({
         const ctx = canvas.getContext("2d")
 
         if (!ctx) {
-          toast.error("Unable to create canvas context.")
+          toast.error("No se pudo crear el contexto del canvas.")
           return
         }
 
@@ -85,8 +85,16 @@ const ImagePicker: FC<ImagePickerProps> = ({
         />
       )}
 
+      <button
+        type="button"
+        className="hover:bg-secondary mt-2 w-full cursor-pointer rounded border-2 px-4 py-2 text-sm transition-colors"
+        onClick={() => document.getElementById(`file-input-${width}`)?.click()}
+      >
+        Seleccionar archivo
+      </button>
       <Input
-        className="mt-1 cursor-pointer hover:opacity-50"
+        id={`file-input-${width}`}
+        className="hidden"
         type="file"
         accept="image/png, image/jpeg, image/jpg"
         onChange={handleImageSelect}

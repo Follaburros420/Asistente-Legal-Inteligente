@@ -98,7 +98,170 @@
   * {
     @apply border-border;
   }
+  
+  html {
+    background-color: hsl(0, 0%, 3.9%);
+    color: hsl(0, 0%, 98%);
+    color-scheme: dark;
+  }
+  
   body {
     @apply bg-background text-foreground;
+    background-color: hsl(0, 0%, 3.9%);
+    color: hsl(0, 0%, 98%);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+  }
+  
+  /* Estilos de respaldo para tema oscuro */
+  html.dark {
+    color-scheme: dark;
+    background-color: hsl(0, 0%, 3.9%);
+    color: hsl(0, 0%, 98%);
+  }
+  
+  html.dark body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+  
+  /* Asegurar que el contenido sea visible */
+  .bg-background {
+    background-color: hsl(var(--background)) !important;
+  }
+  
+  .text-foreground {
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  /* Asegurar que los divs principales tengan el fondo correcto */
+  #__next {
+    background-color: hsl(0, 0%, 3.9%);
+    color: hsl(0, 0%, 98%);
+  }
+  
+  /* Solo aplicar min-height a main cuando NO esté en landing page */
+  main:not([data-landing]) {
+    min-height: 100vh;
+  }
+}
+
+/* Estilos para el editor TipTap */
+.ProseMirror {
+  outline: none;
+  padding: 1rem;
+  min-height: 500px;
+}
+
+.ProseMirror h1 {
+  font-size: 2em;
+  font-weight: bold;
+  margin-top: 0.67em;
+  margin-bottom: 0.67em;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin-top: 0.83em;
+  margin-bottom: 0.83em;
+}
+
+.ProseMirror h3 {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.ProseMirror p {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 2rem;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+
+.ProseMirror li {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.ProseMirror strong {
+  font-weight: bold;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+.ProseMirror u {
+  text-decoration: underline;
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid #ccc;
+  padding-left: 1rem;
+  margin-left: 0;
+  font-style: italic;
+}
+
+.ProseMirror code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.ProseMirror pre {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  border-radius: 5px;
+  overflow-x: auto;
+}
+
+.ProseMirror pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Placeholder text */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #adb5bd;
+  pointer-events: none;
+  height: 0;
+}
+
+/* Landing page styles */
+.custom-screen {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+@media (min-width: 640px) {
+  .custom-screen {
+    padding: 0 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .custom-screen {
+    padding: 0 3rem;
   }
 }

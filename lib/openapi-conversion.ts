@@ -47,6 +47,7 @@ export const validateOpenAPI = async (openapiSpec: any) => {
   })
 
   if (
+    openapiSpec.paths &&
     Object.values(openapiSpec.paths).some((methods: any) =>
       Object.values(methods).some((spec: any) => !spec.operationId)
     )
@@ -55,6 +56,7 @@ export const validateOpenAPI = async (openapiSpec: any) => {
   }
 
   if (
+    openapiSpec.paths &&
     Object.values(openapiSpec.paths).some((methods: any) =>
       Object.values(methods).some(
         (spec: any) => spec.requestBody && !spec.requestBody.content
@@ -67,6 +69,7 @@ export const validateOpenAPI = async (openapiSpec: any) => {
   }
 
   if (
+    openapiSpec.paths &&
     Object.values(openapiSpec.paths).some((methods: any) =>
       Object.values(methods).some((spec: any) => {
         if (spec.requestBody?.content?.["application/json"]?.schema) {

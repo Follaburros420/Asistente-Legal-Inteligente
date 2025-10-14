@@ -13,7 +13,7 @@ import { FC, useContext, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Input } from "../ui/input"
-import { TextareaAutosize } from "../ui/textarea-autosize"
+import { PlaceholdersAndVanishInput } from "../ui/placeholders-and-vanish-input"
 import { ChatCommandInput } from "./chat-command-input"
 import { ChatFilesDisplay } from "./chat-files-display"
 import { useChatHandler } from "./chat-hooks/use-chat-handler"
@@ -80,6 +80,7 @@ export const ChatInput: FC<ChatInputProps> = ({}) => {
       handleFocusChatInput()
     }, 200) // FIX: hacky
   }, [selectedPreset, selectedAssistant])
+
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (!isTyping && event.key === "Enter" && !event.shiftKey) {
@@ -164,29 +165,12 @@ export const ChatInput: FC<ChatInputProps> = ({}) => {
 
   return (
     <>
-      <div className="flex flex-col flex-wrap justify-center gap-2">
+      <div className="flex flex-col flex-wrap justify-center gap-1">
         <ChatFilesDisplay />
+        
+        {/* Selector de Colección - Oculto por defecto */}
 
-        {selectedTools &&
-          selectedTools.map((tool, index) => (
-            <div
-              key={index}
-              className="flex justify-center"
-              onClick={() =>
-                setSelectedTools(
-                  selectedTools.filter(
-                    selectedTool => selectedTool.id !== tool.id
-                  )
-                )
-              }
-            >
-              <div className="flex cursor-pointer items-center justify-center space-x-1 rounded-lg bg-purple-600 px-3 py-1 hover:opacity-50">
-                <IconBolt size={20} />
-
-                <div>{tool.name}</div>
-              </div>
-            </div>
-          ))}
+        {/* Herramientas de búsqueda habilitadas automáticamente - Ocultas */}
 
         {selectedAssistant && (
           <div className="border-primary mx-auto flex w-fit items-center space-x-2 rounded-lg border p-1.5">
@@ -205,76 +189,93 @@ export const ChatInput: FC<ChatInputProps> = ({}) => {
             )}
 
             <div className="text-sm font-bold">
-              Talking to {selectedAssistant.name}
+              Hablando con {selectedAssistant.name}
             </div>
           </div>
         )}
       </div>
 
-      <div className="border-input relative mt-3 flex min-h-[60px] w-full items-center justify-center rounded-xl border-2">
-        <div className="absolute bottom-[76px] left-0 max-h-[300px] w-full overflow-auto rounded-xl dark:border-none">
+      <div className="relative mt-3 w-full">
+        <div className="absolute bottom-[76px] left-0 z-[60] max-h-[300px] w-full overflow-auto rounded-xl dark:border-none">
           <ChatCommandInput />
         </div>
 
-        <>
-          <IconCirclePlus
-            className="absolute bottom-[12px] left-3 cursor-pointer p-1 hover:opacity-50"
-            size={32}
-            onClick={() => fileInputRef.current?.click()}
-          />
+        {/* Hidden input to select files from device */}
+        <Input
+          ref={fileInputRef}
+          className="hidden"
+          type="file"
+          onChange={e => {
+            if (!e.target.files || e.target.files.length === 0) return
+            const file = e.target.files[0]
+            if (file) {
+              handleSelectDeviceFile(file)
+            }
+          }}
+          accept={filesToAccept}
+        />
 
-          {/* Hidden input to select files from device */}
-          <Input
-            ref={fileInputRef}
-            className="hidden"
-            type="file"
-            onChange={e => {
-              if (!e.target.files) return
-              handleSelectDeviceFile(e.target.files[0])
-            }}
-            accept={filesToAccept}
-          />
-        </>
-
-        <TextareaAutosize
+        <PlaceholdersAndVanishInput
+          placeholders={[
+            "¿Cuáles son los requisitos para una demanda de responsabilidad civil?",
+            "Redacta una tutela por violación al debido proceso",
+            "Busca jurisprudencia sobre contratos laborales en Colombia",
+            "¿Qué dice el Código Civil sobre la posesión de inmuebles?",
+            "Analiza este contrato y extrae las cláusulas de penalización",
+            "¿Cuál es el procedimiento para una acción de cumplimiento?",
+            "Escribe un derecho de petición para solicitar información pública"
+          ]}
           textareaRef={chatInputRef}
-          className="ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring text-md flex w-full resize-none rounded-md border-none bg-transparent px-14 py-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          placeholder={t(
-            // `Ask anything. Type "@" for assistants, "/" for prompts, "#" for files, and "!" for tools.`
-            `Ask anything. Type @  /  #  !`
-          )}
-          onValueChange={handleInputChange}
           value={userInput}
-          minRows={1}
-          maxRows={18}
+          onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onCompositionStart={() => setIsTyping(true)}
           onCompositionEnd={() => setIsTyping(false)}
-        />
-
-        <div className="absolute bottom-[14px] right-3 cursor-pointer hover:opacity-50">
-          {isGenerating ? (
-            <IconPlayerStopFilled
-              className="hover:bg-background animate-pulse rounded bg-transparent p-1"
-              onClick={handleStopMessage}
-              size={30}
-            />
-          ) : (
-            <IconSend
-              className={cn(
-                "bg-primary text-secondary rounded p-1",
-                !userInput && "cursor-not-allowed opacity-50"
-              )}
+          disabled={isGenerating}
+          leftElement={
+            <IconCirclePlus
+              className="cursor-pointer p-1 hover:opacity-50"
+              size={32}
               onClick={() => {
-                if (!userInput) return
-
-                handleSendMessage(userInput, chatMessages, false)
+                console.log('Botón de subida de archivos clickeado')
+                console.log('fileInputRef.current:', fileInputRef.current)
+                console.log('filesToAccept:', filesToAccept)
+                fileInputRef.current?.click()
               }}
-              size={30}
             />
-          )}
-        </div>
+          }
+          rightElement={
+            isGenerating ? (
+              <IconPlayerStopFilled
+                className="hover:bg-background animate-pulse cursor-pointer rounded bg-transparent p-1"
+                onClick={handleStopMessage}
+                size={30}
+              />
+            ) : (
+              <IconSend
+                className={cn(
+                  "bg-primary text-secondary cursor-pointer rounded p-1 transition-opacity hover:opacity-80",
+                  !userInput && "cursor-not-allowed opacity-50"
+                )}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('Botón de enviar clickeado')
+                  console.log('userInput:', userInput)
+                  console.log('userInput length:', userInput?.length)
+                  if (!userInput) {
+                    console.log('No hay userInput, no se envía mensaje')
+                    return
+                  }
+                  console.log('Enviando mensaje...')
+                  handleSendMessage(userInput, chatMessages, false)
+                }}
+                size={30}
+              />
+            )
+          }
+        />
       </div>
     </>
   )

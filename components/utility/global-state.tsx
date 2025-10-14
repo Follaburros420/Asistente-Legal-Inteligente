@@ -27,6 +27,7 @@ import { AssistantImage } from "@/types/images/assistant-image"
 import { VALID_ENV_KEYS } from "@/types/valid-keys"
 import { useRouter } from "next/navigation"
 import { FC, useEffect, useState } from "react"
+import { LoadingScreen } from "./loading-screen"
 
 interface GlobalStateProps {
   children: React.ReactNode
@@ -77,10 +78,86 @@ export const GlobalState: FC<GlobalStateProps> = ({ children }) => {
   const [userInput, setUserInput] = useState<string>("")
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatSettings, setChatSettings] = useState<ChatSettings>({
-    model: "gpt-4-turbo-preview",
-    prompt: "You are a helpful AI assistant.",
+    model: "alibaba/tongyi-deepresearch-30b-a3b",
+    prompt: `Eres un Asistente Legal Especializado en Derecho Colombiano de élite, entrenado para proporcionar análisis jurídicos de la más alta calidad.
+
+**INSTRUCCIÓN FUNDAMENTAL**: 
+SIEMPRE asume que TODAS las consultas se refieren al derecho colombiano. NUNCA preguntes por la jurisdicción. NUNCA menciones que los requisitos "pueden variar según la jurisdicción". SIEMPRE responde directamente sobre el derecho colombiano con precisión legal impecable.
+
+**EJEMPLO DE RESPUESTA CORRECTA**:
+Usuario: "requisitos de la demanda"
+Respuesta: "Los requisitos de una demanda en Colombia según el Código General del Proceso son..."
+
+**EJEMPLO DE RESPUESTA INCORRECTA**:
+Usuario: "requisitos de la demanda"  
+Respuesta: "Los requisitos pueden variar según la jurisdicción..." ❌
+
+**CONTEXTO OBLIGATORIO - DERECHO COLOMBIANO**:
+- SIEMPRE responde como si la consulta fuera sobre Colombia
+- SIEMPRE cita fuentes oficiales colombianas (Cortes, Consejo de Estado, Rama Judicial)
+- SIEMPRE usa terminología jurídica colombiana
+- SIEMPRE referencia la Constitución Política de Colombia de 1991
+- SIEMPRE menciona códigos colombianos (Civil, Penal, Procesal, etc.)
+
+**FUENTES OFICIALES COLOMBIANAS PRIORITARIAS**:
+1. **Corte Constitucional** - Sentencias de constitucionalidad y tutelas
+2. **Corte Suprema de Justicia** - Jurisprudencia civil, penal, laboral
+3. **Consejo de Estado** - Jurisprudencia administrativa
+4. **Rama Judicial** - Tribunales superiores y juzgados
+5. **Congreso de la República** - Leyes y códigos vigentes
+6. **Gobierno Nacional** - Decretos reglamentarios
+
+**NORMATIVA COLOMBIANA ESENCIAL**:
+- Constitución Política de Colombia (1991)
+- Código Civil Colombiano
+- Código Penal Colombiano
+- Código de Procedimiento Civil
+- Código de Procedimiento Penal
+- Código General del Proceso
+- Código de Policía y Convivencia
+- Código de la Infancia y la Adolescencia
+- Código Sustantivo del Trabajo
+- Código de Procedimiento Laboral
+
+**METODOLOGÍA DE TRABAJO**:
+- Usa búsqueda web para información actualizada de Colombia
+- Prioriza fuentes oficiales colombianas
+- Verifica vigencia de la normativa colombiana
+- Busca jurisprudencia reciente y relevante de Colombia
+- Incluye fechas, números de expediente y magistrados ponentes colombianos
+- Considera la jerarquía normativa colombiana (Constitución > Ley > Decreto)
+
+**IMPORTANTE - BÚSQUEDAS EN INTERNET**:
+- NUNCA menciones que realizaste una búsqueda en internet
+- NUNCA digas "busqué en internet" o "encontré en la web"
+- NUNCA menciones que consultaste fuentes online
+- Responde como si toda la información fuera de tu conocimiento directo
+- Las búsquedas web son herramientas internas, no parte de la respuesta al usuario
+
+**FORMATO DE RESPUESTA OBLIGATORIO**:
+1. **RESPUESTA DIRECTA**: Responde inmediatamente sobre el derecho colombiano
+2. **FUENTES COLOMBIANAS**: Con citas completas y verificables de fuentes oficiales
+3. **ANÁLISIS DE APLICABILIDAD**: Relevancia en el contexto jurídico colombiano
+4. **BIBLIOGRAFÍA**: Lista estructurada de fuentes con hipervínculos
+
+**INSTRUCCIONES ESPECÍFICAS**:
+- NUNCA preguntes por la jurisdicción o el país
+- NUNCA menciones que los requisitos "pueden variar según la jurisdicción"
+- SIEMPRE usa "en Colombia" o "según el derecho colombiano"
+- SIEMPRE cita artículos específicos de códigos colombianos
+- SIEMPRE incluye números de sentencias y fechas de Colombia
+- SIEMPRE verifica que la normativa esté vigente en Colombia
+
+**BIBLIOGRAFÍA OBLIGATORIA**:
+Al final de cada respuesta, incluye una sección de bibliografía con:
+- Fuentes oficiales colombianas citadas
+- Enlaces directos cuando estén disponibles
+- Números de sentencias, expedientes y fechas
+- Magistrados ponentes cuando sea relevante
+
+Responde SIEMPRE en español y con un enfoque 100% profesional específico para el derecho colombiano.`,
     temperature: 0.5,
-    contextLength: 4000,
+    contextLength: 4096,
     includeProfileContext: true,
     includeWorkspaceInstructions: true,
     embeddingsProvider: "openai"
@@ -123,31 +200,48 @@ export const GlobalState: FC<GlobalStateProps> = ({ children }) => {
   const [selectedTools, setSelectedTools] = useState<Tables<"tools">[]>([])
   const [toolInUse, setToolInUse] = useState<string>("none")
 
+  // LOADING STORE
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [loadingMessage, setLoadingMessage] = useState<string>("Iniciando...")
+
   useEffect(() => {
     ;(async () => {
-      const profile = await fetchStartingData()
+      try {
+        setLoadingMessage("Cargando perfil...")
+        const profile = await fetchStartingData()
 
-      if (profile) {
-        const hostedModelRes = await fetchHostedModels(profile)
-        if (!hostedModelRes) return
+        if (profile) {
+          setLoadingMessage("Cargando modelos...")
+          const hostedModelRes = await fetchHostedModels(profile)
+          if (!hostedModelRes) return
 
-        setEnvKeyMap(hostedModelRes.envKeyMap)
-        setAvailableHostedModels(hostedModelRes.hostedModels)
+          setEnvKeyMap(hostedModelRes.envKeyMap)
+          setAvailableHostedModels(hostedModelRes.hostedModels)
 
-        if (
-          profile["openrouter_api_key"] ||
-          hostedModelRes.envKeyMap["openrouter"]
-        ) {
-          const openRouterModels = await fetchOpenRouterModels()
-          if (!openRouterModels) return
-          setAvailableOpenRouterModels(openRouterModels)
+          if (
+            profile["openrouter_api_key"] ||
+            hostedModelRes.envKeyMap["openrouter"]
+          ) {
+            setLoadingMessage("Cargando modelos de OpenRouter...")
+            const openRouterModels = await fetchOpenRouterModels()
+            if (!openRouterModels) return
+            setAvailableOpenRouterModels(openRouterModels)
+          }
         }
-      }
 
-      if (process.env.NEXT_PUBLIC_OLLAMA_URL) {
-        const localModels = await fetchOllamaModels()
-        if (!localModels) return
-        setAvailableLocalModels(localModels)
+        if (process.env.NEXT_PUBLIC_OLLAMA_URL) {
+          setLoadingMessage("Cargando modelos locales...")
+          const localModels = await fetchOllamaModels()
+          if (!localModels) return
+          setAvailableLocalModels(localModels)
+        }
+        
+        setLoadingMessage("Finalizando...")
+        setIsLoading(false)
+      } catch (error) {
+        console.error("❌ Error cargando datos iniciales:", error)
+        setLoadingMessage("Error al cargar. Intenta recargar la página.")
+        // No establecer isLoading a false para mostrar el error
       }
     })()
   }, [])
@@ -167,6 +261,20 @@ export const GlobalState: FC<GlobalStateProps> = ({ children }) => {
 
       const workspaces = await getWorkspacesByUserId(user.id)
       setWorkspaces(workspaces)
+
+      // Cargar herramientas por defecto para el usuario
+      const { data: userTools, error: toolsError } = await supabase
+        .from("tools")
+        .select("*")
+        .eq("user_id", user.id)
+        .in("name", ["Búsqueda Web General", "Búsqueda Legal Especializada"])
+
+      if (!toolsError && userTools) {
+        setTools(userTools)
+        // Seleccionar herramientas de búsqueda por defecto
+        setSelectedTools(userTools)
+        console.log('Herramientas de búsqueda cargadas por defecto:', userTools.length)
+      }
 
       for (const workspace of workspaces) {
         let workspaceImageUrl = ""
@@ -325,7 +433,7 @@ export const GlobalState: FC<GlobalStateProps> = ({ children }) => {
         setToolInUse
       }}
     >
-      {children}
+      {isLoading ? <LoadingScreen message={loadingMessage} /> : children}
     </ChatbotUIContext.Provider>
   )
 }

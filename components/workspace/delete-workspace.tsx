@@ -66,28 +66,28 @@ export const DeleteWorkspace: FC<DeleteWorkspaceProps> = ({
   return (
     <Dialog open={showWorkspaceDialog} onOpenChange={setShowWorkspaceDialog}>
       <DialogTrigger asChild>
-        <Button variant="destructive">Delete</Button>
+        <Button variant="destructive">Eliminar</Button>
       </DialogTrigger>
 
       <DialogContent onKeyDown={handleKeyDown}>
         <DialogHeader>
-          <DialogTitle>Delete {workspace.name}</DialogTitle>
+          <DialogTitle>Eliminar {workspace.name}</DialogTitle>
 
           <DialogDescription className="space-y-1">
-            WARNING: Deleting a workspace will delete all of its data.
+            ADVERTENCIA: Eliminar un espacio de trabajo eliminará todos sus datos.
           </DialogDescription>
         </DialogHeader>
 
         <Input
           className="mt-4"
-          placeholder="Type the name of this workspace to confirm"
+          placeholder="Escribe el nombre de este espacio para confirmar"
           value={name}
           onChange={e => setName(e.target.value)}
         />
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setShowWorkspaceDialog(false)}>
-            Cancel
+            Cancelar
           </Button>
 
           <Button
@@ -96,7 +96,7 @@ export const DeleteWorkspace: FC<DeleteWorkspaceProps> = ({
             onClick={handleDeleteWorkspace}
             disabled={name !== workspace.name}
           >
-            Delete
+            Eliminar
           </Button>
         </DialogFooter>
       </DialogContent>

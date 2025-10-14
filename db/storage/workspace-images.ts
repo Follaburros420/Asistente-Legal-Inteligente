@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/browser-client"
+import { supabase } from "@/lib/supabase/robust-client"
 import { Tables } from "@/supabase/types"
 
 export const uploadWorkspaceImage = async (

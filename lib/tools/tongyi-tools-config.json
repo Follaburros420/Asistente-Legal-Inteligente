@@ -1,0 +1,81 @@
+{
+  "tools": [
+    {
+      "name": "web_search",
+      "description": "Búsqueda web general para obtener información actualizada de internet",
+      "url": "http://localhost:3000/api/tools/web-search",
+      "method": "POST",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Término de búsqueda o pregunta a investigar",
+          "required": true
+        },
+        "sources": {
+          "type": "array",
+          "description": "Fuentes de búsqueda: duckduckgo, wikipedia, news",
+          "default": ["duckduckgo", "wikipedia"]
+        }
+      },
+      "example": {
+        "query": "leyes de contratos en Colombia",
+        "sources": ["duckduckgo", "wikipedia"]
+      }
+    },
+    {
+      "name": "legal_search",
+      "description": "Búsqueda especializada en jurisprudencia, leyes y doctrina legal",
+      "url": "http://localhost:3000/api/tools/legal-search",
+      "method": "POST",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Consulta legal específica",
+          "required": true
+        },
+        "country": {
+          "type": "string",
+          "description": "País para búsqueda legal",
+          "default": "colombia"
+        },
+        "type": {
+          "type": "string",
+          "description": "Tipo de búsqueda: general, jurisprudencia, leyes, doctrina",
+          "default": "general"
+        }
+      },
+      "examples": [
+        {
+          "query": "contratos de arrendamiento",
+          "country": "colombia",
+          "type": "jurisprudencia"
+        },
+        {
+          "query": "código civil",
+          "country": "colombia", 
+          "type": "leyes"
+        },
+        {
+          "query": "responsabilidad civil",
+          "country": "colombia",
+          "type": "doctrina"
+        }
+      ]
+    }
+  ],
+  "usage_instructions": {
+    "general": "Usa web_search para consultas generales de información legal",
+    "jurisprudence": "Usa legal_search con type='jurisprudencia' para buscar sentencias y precedentes",
+    "laws": "Usa legal_search con type='leyes' para buscar legislación específica",
+    "doctrine": "Usa legal_search con type='doctrina' para buscar doctrina legal especializada"
+  },
+  "best_practices": [
+    "Siempre usa las herramientas de búsqueda antes de responder consultas legales",
+    "Combina información de múltiples fuentes para análisis completo",
+    "Especifica el país cuando sea relevante para la consulta legal",
+    "Usa el tipo de búsqueda apropiado según la naturaleza de la consulta"
+  ]
+}
+
+
+
