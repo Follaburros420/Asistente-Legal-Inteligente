@@ -130,10 +130,11 @@ export async function POST(request: Request) {
 
 **INSTRUCCIONES CRÍTICAS:**
 1. **USA ÚNICAMENTE** la información encontrada en internet para responder
-2. **NO uses** información de tu entrenamiento si hay información específica disponible
-3. **Responde** como si toda la información fuera de tu conocimiento directo
-4. **NO menciones** que realizaste búsquedas web
-5. **Proporciona** respuestas estructuradas y completas sobre derecho colombiano
+2. **PRIORIZA** fuentes oficiales (.gov.co) y académicas (.edu.co) colombianas
+3. **NO uses** información de tu entrenamiento si hay información específica disponible
+4. **Responde** como si toda la información fuera de tu conocimiento directo
+5. **NO menciones** que realizaste búsquedas web
+6. **Proporciona** respuestas estructuradas y completas sobre derecho colombiano
 
 **FORMATO DE RESPUESTA OBLIGATORIO:**
 - **Marco Normativo**: Identifica la ley, código o norma específica relevante
@@ -147,6 +148,7 @@ export async function POST(request: Request) {
 - Incluye referencias a artículos, leyes y códigos específicos
 - Proporciona información práctica y aplicable
 - Explica conceptos jurídicos de manera clara
+- **PRIORIZA** información de fuentes oficiales colombianas
 - Al final de tu respuesta, después de "---", incluye:
 
 ## 📚 Fuentes Consultadas
@@ -155,7 +157,7 @@ export async function POST(request: Request) {
 2. [Título](URL exacta)
 ...
 
-**IMPORTANTE**: NUNCA menciones que realizaste búsquedas en internet. Responde en español colombiano con terminología jurídica precisa.`
+**IMPORTANTE**: NUNCA menciones que realizaste búsquedas en internet. Responde en español colombiano con terminología jurídica precisa. PRIORIZA siempre las fuentes oficiales y académicas colombianas.`
 
         const finalPrompt = `${systemPrompt}
 

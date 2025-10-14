@@ -46,12 +46,12 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
     const cseApiKey = process.env.GOOGLE_CSE_API_KEY || 'AIzaSyD5y97kpgw32Q5C6ujGKB6JafkD4Cv49TA'
     const cseCx = process.env.GOOGLE_CSE_CX || '6464df08faf4548b9'
     
-    // Construir query con enfoque legal colombiano específico
+    // Construir query con enfoque legal colombiano específico y fuentes nacionales prioritarias
     const legalQuery = query.toLowerCase().includes('colombia') || 
                        query.toLowerCase().includes('colombiano') ||
                        query.includes('site:')
       ? query
-      : `${query} Colombia derecho legal legislación`
+      : `${query} Colombia derecho legal legislación site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co OR site:corteconstitucional.gov.co OR site:consejodeestado.gov.co OR site:cortesuprema.gov.co OR site:suin-juriscol.gov.co OR site:imprenta.gov.co`
     
     console.log(`📡 Google CSE: Consultando con query: "${legalQuery}"`)
     
@@ -84,27 +84,50 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
       const title = item.title || 'Sin título'
       const snippet = item.snippet || item.htmlSnippet || 'Sin descripción'
       
-      // Identificar fuentes oficiales colombianas
+      // Identificar fuentes oficiales y confiables colombianas
       const isOfficial = url.includes('.gov.co') || 
                          url.includes('corteconstitucional.gov.co') ||
                          url.includes('consejodeestado.gov.co') ||
                          url.includes('cortesuprema.gov.co') ||
                          url.includes('suin-juriscol.gov.co') ||
-                         url.includes('imprenta.gov.co')
+                         url.includes('imprenta.gov.co') ||
+                         url.includes('secretariasenado.gov.co') ||
+                         url.includes('funcionpublica.gov.co') ||
+                         url.includes('ramajudicial.gov.co') ||
+                         url.includes('alcaldiabogota.gov.co') ||
+                         url.includes('congresovisible.org') ||
+                         url.includes('procuraduria.gov.co') ||
+                         url.includes('contraloria.gov.co') ||
+                         url.includes('fiscalia.gov.co') ||
+                         url.includes('defensoria.gov.co')
+      
+      // Identificar fuentes académicas confiables
+      const isAcademic = url.includes('.edu.co') ||
+                         url.includes('uexternado.edu.co') ||
+                         url.includes('unal.edu.co') ||
+                         url.includes('javeriana.edu.co') ||
+                         url.includes('losandes.edu.co') ||
+                         url.includes('icesi.edu.co')
+      
+      // Calcular score basado en confiabilidad
+      let score = 1
+      if (isOfficial) score = 3  // Máxima prioridad para sitios oficiales
+      else if (isAcademic) score = 2  // Alta prioridad para sitios académicos
       
       return {
-        title: isOfficial ? `⚖️ ${title}` : title,
+        title: isOfficial ? `⚖️ ${title}` : isAcademic ? `🎓 ${title}` : title,
         url: url,
         snippet: snippet,
-        score: isOfficial ? 2 : 1
+        score: score
       }
     })
 
     // Ordenar: fuentes oficiales primero
     results.sort((a, b) => b.score - a.score)
 
-    const officialCount = results.filter(r => r.score === 2).length
-    console.log(`✅ Google CSE completado: ${results.length} resultados (${officialCount} oficiales)`)
+    const officialCount = results.filter(r => r.score === 3).length
+    const academicCount = results.filter(r => r.score === 2).length
+    console.log(`✅ Google CSE completado: ${results.length} resultados (${officialCount} oficiales, ${academicCount} académicas)`)
 
     return {
       success: true,
@@ -307,17 +330,48 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
     return `No se encontraron resultados para: "${searchResponse.query}"`
   }
 
+  // Separar fuentes por confiabilidad
+  const officialSources = searchResponse.results.filter(r => r.score === 3)
+  const academicSources = searchResponse.results.filter(r => r.score === 2)
+  const otherSources = searchResponse.results.filter(r => r.score === 1)
+
   let context = `INFORMACIÓN JURÍDICA ESPECÍFICA ENCONTRADA EN INTERNET:\n\n`
   
-  searchResponse.results.forEach((result, index) => {
-    context += `**${index + 1}. ${result.title}**\n`
-    context += `URL: ${result.url}\n`
-    context += `CONTENIDO COMPLETO:\n${result.snippet}\n\n`
-    context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
-  })
+  // Priorizar fuentes oficiales (máxima confiabilidad)
+  if (officialSources.length > 0) {
+    context += `📚 FUENTES OFICIALES COLOMBIANAS (MÁXIMA CONFIABILIDAD):\n\n`
+    officialSources.forEach((result, index) => {
+      context += `**${index + 1}. ${result.title}**\n`
+      context += `URL: ${result.url}\n`
+      context += `CONTENIDO COMPLETO:\n${result.snippet}\n\n`
+      context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
+    })
+  }
+
+  // Incluir fuentes académicas (alta confiabilidad)
+  if (academicSources.length > 0) {
+    context += `🎓 FUENTES ACADÉMICAS CONFIABLES:\n\n`
+    academicSources.forEach((result, index) => {
+      context += `**${index + 1}. ${result.title}**\n`
+      context += `URL: ${result.url}\n`
+      context += `CONTENIDO COMPLETO:\n${result.snippet}\n\n`
+      context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
+    })
+  }
+
+  // Incluir otras fuentes relevantes (limitadas)
+  if (otherSources.length > 0) {
+    context += `📄 FUENTES ADICIONALES RELEVANTES:\n\n`
+    otherSources.slice(0, 3).forEach((result, index) => { // Limitar a 3 fuentes adicionales
+      context += `**${index + 1}. ${result.title}**\n`
+      context += `URL: ${result.url}\n`
+      context += `CONTENIDO COMPLETO:\n${result.snippet}\n\n`
+      context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
+    })
+  }
 
   context += `INSTRUCCIÓN CRÍTICA: Analiza TODO el contenido arriba y proporciona una respuesta COMPLETA y ESPECÍFICA sobre la consulta del usuario.\n`
-  context += `NO uses información general si hay información específica aquí.\n\n`
+  context += `PRIORIZA la información de fuentes oficiales y académicas. NO uses información general si hay información específica aquí.\n\n`
 
   return context
 }
