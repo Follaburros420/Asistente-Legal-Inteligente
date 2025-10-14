@@ -75,6 +75,72 @@ export async function POST(request: Request) {
     let allRouteMaps = {}
     let schemaDetails = []
 
+    // Si no hay herramientas seleccionadas, usar chat simple
+    if (!selectedTools || selectedTools.length === 0) {
+      console.log('⚠️ No hay herramientas seleccionadas, usando chat simple')
+      
+      const systemMessage = {
+        role: "system",
+        content: `Eres un asistente legal especializado en derecho colombiano.
+
+🔥 BÚSQUEDA WEB EJECUTADA OBLIGATORIAMENTE
+
+He ejecutado una búsqueda en internet sobre "${userQuery}" como parte del proceso obligatorio.
+
+${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
+  `⚠️ RESULTADO DE BÚSQUEDA: ${webSearchContext}
+
+Aunque la búsqueda no encontró resultados específicos, DEBES mencionar que se ejecutó una búsqueda web como parte de tu respuesta.
+
+INSTRUCCIONES:
+1. **MENCIONA** que se ejecutó una búsqueda web
+2. **Responde** basándote en tu conocimiento legal
+3. **NO incluyas** bibliografía web (no hay URLs válidas)
+4. **Explica** que la búsqueda no encontró fuentes específicas` : 
+  `✅ RESULTADO DE BÚSQUEDA: Información encontrada
+
+${webSearchContext}
+
+INSTRUCCIONES:
+1. **USA** la información de búsqueda arriba para responder
+2. **MENCIONA** que se ejecutó una búsqueda web
+3. **AL FINAL** de tu respuesta, después de "---", incluye:
+
+   ## 📚 Fuentes Consultadas
+   
+   1. [Título](URL exacta copiada de arriba)
+   2. [Título](URL exacta copiada de arriba)
+   ...
+
+4. **IMPORTANTE**: Usa SOLO las URLs que aparecen arriba. NO inventes URLs.`}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**OBLIGATORIO**: Siempre menciona que se ejecutó una búsqueda web en tu respuesta.
+
+Responde en español colombiano con terminología jurídica precisa.`
+      }
+
+      // Insertar el mensaje de sistema al inicio
+      if (messages.length === 0 || messages[0].role !== "system") {
+        messages.unshift(systemMessage)
+      } else {
+        // Si ya hay un mensaje de sistema, agregar las instrucciones
+        messages[0].content = `${messages[0].content}\n\n${systemMessage.content}`
+      }
+
+      const response = await openai.chat.completions.create({
+        model: chatSettings.model as ChatCompletionCreateParamsBase["model"],
+        messages,
+        temperature: chatSettings.temperature,
+        max_tokens: undefined,
+        stream: true
+      })
+
+      const stream = OpenAIStream(response)
+      return new StreamingTextResponse(stream)
+    }
+
     for (const selectedTool of selectedTools) {
       try {
         // Verificar que el schema sea válido antes de parsearlo
