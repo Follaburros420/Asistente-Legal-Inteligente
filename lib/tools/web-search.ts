@@ -258,13 +258,28 @@ export async function searchWebEnriched(query: string): Promise<WebSearchRespons
       return searchResults
     }
 
-    // 2. SIMPLIFICADO: Solo usar snippets de Google CSE para evitar timeouts
-    console.log(`📚 Usando solo snippets de Google CSE (sin extracción adicional para evitar timeouts)`)
+    // 2. MEJORADO: Extraer contenido completo de los primeros 3 resultados para mejor calidad
+    console.log(`📚 Extrayendo contenido completo de los primeros 3 resultados para análisis profundo...`)
     
-    const enrichedResults = searchResults.results.map((result) => ({
-      ...result,
-      snippet: result.snippet + '...' // Mantener snippet original
-    }))
+    const enrichedResults = await Promise.all(
+      searchResults.results.slice(0, 3).map(async (result) => {
+        try {
+          const content = await extractUrlContent(result.url)
+          return {
+            ...result,
+            snippet: content.slice(0, 5000) + '...' // Contenido completo extraído
+          }
+        } catch (error) {
+          console.error(`Error enriqueciendo ${result.url}:`, error)
+          return result // Mantener snippet original si falla
+        }
+      })
+    )
+
+    // Agregar los resultados restantes sin enriquecer pero con sus snippets originales
+    for (let i = 3; i < searchResults.results.length; i++) {
+      enrichedResults.push(searchResults.results[i])
+    }
 
     return {
       ...searchResults,
@@ -292,16 +307,16 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
     return `No se encontraron resultados para: "${searchResponse.query}"`
   }
 
-  let context = `INFORMACIÓN ESPECÍFICA ENCONTRADA EN INTERNET:\n\n`
+  let context = `INFORMACIÓN JURÍDICA ESPECÍFICA ENCONTRADA EN INTERNET:\n\n`
   
   searchResponse.results.forEach((result, index) => {
     context += `**${index + 1}. ${result.title}**\n`
     context += `URL: ${result.url}\n`
-    context += `Contenido: ${result.snippet}\n\n`
+    context += `CONTENIDO COMPLETO:\n${result.snippet}\n\n`
+    context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
   })
 
-  context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
-  context += `INSTRUCCIÓN: Usa ÚNICAMENTE esta información específica para responder.\n`
+  context += `INSTRUCCIÓN CRÍTICA: Analiza TODO el contenido arriba y proporciona una respuesta COMPLETA y ESPECÍFICA sobre la consulta del usuario.\n`
   context += `NO uses información general si hay información específica aquí.\n\n`
 
   return context

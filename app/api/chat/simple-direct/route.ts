@@ -181,10 +181,10 @@ export async function POST(request: Request) {
       return `${index + 1}. [${cleanTitle}](${result.url})`
     }).join('\n')
 
-    // Crear prompt inteligente como en N8n para manejar consultas complejas
-    const systemPrompt = `Eres un Agente de Investigación Legal Colombiano. Tu meta es responder con precisión y trazabilidad jurídica. Analiza la información encontrada en internet y proporciona una respuesta completa y específica.
+    // Crear prompt mejorado para procesar información jurídica específica
+    const systemPrompt = `Eres un Agente de Investigación Legal Colombiano especializado en derecho procesal colombiano. Tu meta es analizar la información jurídica encontrada en internet y proporcionar una respuesta COMPLETA y ESPECÍFICA.
 
-INFORMACIÓN ENCONTRADA EN INTERNET:
+INFORMACIÓN JURÍDICA ENCONTRADA EN INTERNET:
 ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
   'No se encontró información específica en internet para esta consulta.' : 
   webSearchContext}
@@ -192,29 +192,35 @@ ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADO
 CONSULTA DEL USUARIO: "${userQuery}"
 
 INSTRUCCIONES CRÍTICAS:
-1. Analiza TODO el contenido encontrado arriba para responder la consulta específica
-2. Si la consulta es sobre "requisitos de la demanda", explica TODOS los requisitos necesarios para interponer una demanda
-3. Si la consulta es sobre un artículo específico, explica ESE artículo específico
-4. Proporciona información CONCRETA y ESPECÍFICA sobre lo que se pregunta
+1. ANALIZA TODO el contenido jurídico encontrado arriba
+2. Si encuentras artículos específicos (ej: Artículo 82 del Código General del Proceso), explica COMPLETAMENTE su contenido
+3. Si la consulta es sobre "requisitos de la demanda", lista TODOS los requisitos específicos encontrados en los artículos
+4. Proporciona información CONCRETA y DETALLADA sobre lo que se pregunta
 5. Usa terminología jurídica precisa
 6. Si encuentras información relevante, explica su contenido completo, alcance y aplicación
-7. Si NO encuentras información suficiente, indícalo claramente y sugiere una nueva búsqueda más específica
-8. NO uses frases genéricas como "puedo ayudarte con información sobre..."
+7. NO uses frases genéricas como "puedo ayudarte con información sobre..."
+8. NO hagas referencias vagas - sé específico con números de artículos, leyes y fechas
 
-FORMATO DE RESPUESTA:
-- Para consultas puntuales: respuesta breve (2-5 líneas) con información específica
-- Para consultas complejas: 
-  * Planteamiento del problema jurídico
-  * Marco normativo aplicable (con identificadores completos)
-  * Análisis (requisitos, procedimientos, alcance)
-  * Conclusión clara
-  * Fuentes consultadas
+FORMATO DE RESPUESTA OBLIGATORIO:
+- **Marco Normativo**: Identifica la ley/código específico (ej: Código General del Proceso, Ley 1564 de 2012)
+- **Artículo Específico**: Menciona el número exacto del artículo (ej: Artículo 82)
+- **Requisitos Detallados**: Lista TODOS los requisitos específicos encontrados
+- **Análisis**: Explica el alcance y aplicación de cada requisito
+- **Conclusión**: Resumen claro de los requisitos
 
 EJEMPLO CORRECTO para "requisitos de la demanda":
-"Los requisitos para interponer una demanda en Colombia incluyen: 1) Identificación completa del demandante y demandado, 2) Descripción clara y precisa de los hechos, 3) Fundamentos de derecho aplicables, 4) Pretensiones específicas, 5) Documentos probatorios, 6) Pago de tasas judiciales correspondientes. Según el Código General del Proceso..."
+"**Marco Normativo**: Según el Código General del Proceso (Ley 1564 de 2012), específicamente el **Artículo 82**, la demanda debe reunir los siguientes requisitos:
+
+**Requisitos Específicos del Artículo 82**:
+1. [Requisito específico encontrado en el artículo]
+2. [Requisito específico encontrado en el artículo]
+3. [Requisito específico encontrado en el artículo]
+...
+
+**Análisis**: Estos requisitos garantizan que la demanda cumpla con los elementos procesales necesarios..."
 
 EJEMPLO INCORRECTO:
-"No se pudo identificar un artículo específico en la consulta..."
+"Basándome en la información encontrada..." (respuesta vaga)
 
 Responde en español colombiano con terminología jurídica precisa.`
 
@@ -252,30 +258,41 @@ ${sources}`
     } catch (aiError: any) {
       console.error("Error en procesamiento de IA:", aiError)
       
-      // Fallback inteligente: intentar extraer información relevante del contexto web
+      // Fallback mejorado: extraer información jurídica específica del contexto
       let fallbackResponse = ""
       
       if (webSearchContext && !webSearchContext.includes('ERROR') && !webSearchContext.includes('SIN RESULTADOS')) {
-        // Buscar información relevante en el contexto
-        const lines = webSearchContext.split('\n').filter(line => {
+        // Buscar artículos específicos y requisitos en el contexto
+        const lines = webSearchContext.split('\n')
+        
+        // Buscar líneas que contengan información jurídica específica
+        const relevantLines = lines.filter(line => {
           const trimmedLine = line.trim()
           return trimmedLine && 
                  !trimmedLine.includes('Title:') && 
                  !trimmedLine.includes('URL Source:') &&
                  !trimmedLine.includes('Published Time:') &&
-                 !trimmedLine.includes('INFORMACIÓN ESPECÍFICA') &&
+                 !trimmedLine.includes('INFORMACIÓN JURÍDICA') &&
                  !trimmedLine.includes('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━') &&
-                 trimmedLine.length > 20 // Filtrar líneas muy cortas
+                 !trimmedLine.includes('INSTRUCCIÓN CRÍTICA') &&
+                 (trimmedLine.includes('ARTÍCULO') || 
+                  trimmedLine.includes('artículo') ||
+                  trimmedLine.includes('Artículo') ||
+                  trimmedLine.includes('REQUISITOS') ||
+                  trimmedLine.includes('requisitos') ||
+                  trimmedLine.includes('Código') ||
+                  trimmedLine.includes('Ley') ||
+                  trimmedLine.includes('demanda') ||
+                  trimmedLine.includes('proceso'))
         })
         
-        if (lines.length > 0) {
-          // Tomar las líneas más relevantes (primeras 8-10 líneas con contenido sustancial)
-          const relevantInfo = lines.slice(0, 10).join('\n')
-          fallbackResponse = `Basándome en la información encontrada en fuentes oficiales sobre "${userQuery}":
+        if (relevantLines.length > 0) {
+          // Construir respuesta estructurada
+          fallbackResponse = `**Marco Normativo**: Según la información encontrada en fuentes oficiales:
 
-${relevantInfo}
+${relevantLines.slice(0, 15).join('\n')}
 
-Esta información se basa en la legislación colombiana vigente.`
+**Análisis**: Esta información se basa en la legislación colombiana vigente y establece los requisitos específicos para la demanda.`
         } else {
           fallbackResponse = `No se encontró información específica sobre "${userQuery}" en las fuentes consultadas. 
 
