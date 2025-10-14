@@ -4,94 +4,6 @@ import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/we
 export const runtime = "nodejs"
 export const maxDuration = 60
 
-// Base de datos de artículos constitucionales colombianos
-const CONSTITUTIONAL_ARTICLES = {
-  "15": {
-    title: "Derecho a la intimidad personal y familiar",
-    text: "ARTÍCULO 15. Todas las personas tienen derecho a su intimidad personal y familiar y a su buen nombre, y el Estado debe respetarlos y hacerlos respetar. De igual modo, tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en los bancos de datos y en archivos de entidades públicas y privadas. En la recolección, tratamiento y circulación de datos se respetarán la libertad y demás garantías consagradas en la Constitución. La correspondencia y demás formas de comunicación privada son inviolables. Solo pueden ser interceptados o registrados mediante orden judicial, en los casos y con las formalidades que establezca la ley."
-  },
-  "82": {
-    title: "Protección del espacio público",
-    text: "ARTÍCULO 82. Es deber del Estado velar por la protección de la integridad del espacio público y por su destinación al uso común, el cual prevalece sobre el interés particular. Las entidades públicas participarán en la plusvalía que genere su acción urbanística y regularán la utilización del suelo y del espacio aéreo urbano en defensa del interés común."
-  },
-  "67": {
-    title: "Derecho a la educación",
-    text: "ARTÍCULO 67. La educación es un derecho de la persona y un servicio público que tiene una función social; con ella se busca el acceso al conocimiento, a la ciencia, a la técnica, y a los demás bienes y valores de la cultura. La educación formará al colombiano en el respeto a los derechos humanos, a la paz y a la democracia; y en la práctica del trabajo y la recreación, para el mejoramiento cultural, científico, tecnológico y para la protección del ambiente."
-  },
-  "1": {
-    title: "Estado social de derecho",
-    text: "ARTÍCULO 1. Colombia es un Estado social de derecho, organizado en forma de República unitaria, descentralizada, con autonomía de sus entidades territoriales, democrática, participativa y pluralista, fundada en el respeto de la dignidad humana, en el trabajo y la solidaridad de las personas que la integran y en la prevalencia del interés general."
-  },
-  "2": {
-    title: "Fines esenciales del Estado",
-    text: "ARTÍCULO 2. Son fines esenciales del Estado: servir a la comunidad, promover la prosperidad general y garantizar la efectividad de los principios, derechos y deberes consagrados en la Constitución; facilitar la participación de todos en las decisiones que los afectan y en la vida económica, política, administrativa y cultural de la Nación; defender la independencia nacional, mantener la integridad territorial y asegurar la convivencia pacífica y la vigencia de un orden justo."
-  },
-  "3": {
-    title: "Soberanía popular",
-    text: "ARTÍCULO 3. La soberanía reside exclusivamente en el pueblo, del cual emana el poder público. El pueblo la ejerce en forma directa o por medio de sus representantes, en los términos que la Constitución establece."
-  },
-  "4": {
-    title: "Supremacía constitucional",
-    text: "ARTÍCULO 4. La Constitución es norma de normas. En todo caso de incompatibilidad entre la Constitución y la ley u otra norma jurídica, se aplicarán las disposiciones constitucionales. Es deber de los nacionales y de los extranjeros en Colombia acatar la Constitución y las leyes, y respetar y obedecer a las autoridades."
-  },
-  "5": {
-    title: "Primacía de los derechos inalienables",
-    text: "ARTÍCULO 5. El Estado reconoce, sin discriminación alguna, la primacía de los derechos inalienables de la persona y ampara a la familia como institución básica de la sociedad."
-  },
-  "11": {
-    title: "Derecho a la vida",
-    text: "ARTÍCULO 11. El derecho a la vida es inviolable. No habrá pena de muerte."
-  },
-  "12": {
-    title: "Prohibición de la desaparición forzada",
-    text: "ARTÍCULO 12. Nadie será sometido a desaparición forzada, a torturas ni a tratos o penas crueles, inhumanos o degradantes."
-  },
-  "13": {
-    title: "Derecho a la igualdad",
-    text: "ARTÍCULO 13. Todas las personas nacen libres e iguales ante la ley, recibirán la misma protección y trato de las autoridades y gozarán de los mismos derechos, libertades y oportunidades sin ninguna discriminación por razones de sexo, raza, origen nacional o familiar, lengua, religión, opinión política o filosófica."
-  },
-  "14": {
-    title: "Derecho al reconocimiento de la personalidad jurídica",
-    text: "ARTÍCULO 14. Toda persona tiene derecho al reconocimiento de su personalidad jurídica."
-  },
-  "16": {
-    title: "Libertad de conciencia",
-    text: "ARTÍCULO 16. Todas las personas tienen derecho al libre desarrollo de su personalidad sin más limitaciones que las que imponen los derechos de los demás y el orden jurídico."
-  },
-  "17": {
-    title: "Prohibición de la esclavitud",
-    text: "ARTÍCULO 17. Se prohíben la esclavitud, la servidumbre y la trata de seres humanos en todas sus formas."
-  },
-  "18": {
-    title: "Libertad de conciencia",
-    text: "ARTÍCULO 18. Se garantiza la libertad de conciencia. Nadie será molestado por razón de sus convicciones o creencias ni compelido a revelarlas ni obligado a actuar contra su conciencia."
-  },
-  "19": {
-    title: "Libertad de cultos",
-    text: "ARTÍCULO 19. Se garantiza la libertad de cultos. Toda persona tiene derecho a profesar libremente su religión y a difundirla en forma individual o colectiva."
-  },
-  "20": {
-    title: "Libertad de expresión",
-    text: "ARTÍCULO 20. Se garantiza a toda persona la libertad de expresar y difundir su pensamiento y opiniones, la de informar y recibir información veraz e imparcial, y la de fundar medios masivos de comunicación."
-  }
-}
-
-// Base de datos del Código General del Proceso
-const CGP_ARTICLES = {
-  "82": {
-    title: "Medidas cautelares",
-    text: "ARTÍCULO 82. Las medidas cautelares son aquellas que tienen por objeto asegurar la efectividad de la sentencia que se dicte en el proceso, evitando que durante su tramitación el demandado frustre o haga ilusorio el resultado del mismo."
-  },
-  "83": {
-    title: "Clases de medidas cautelares",
-    text: "ARTÍCULO 83. Las medidas cautelares pueden ser: 1) Embargo de bienes. 2) Secuestro. 3) Prohibición de contratar. 4) Prohibición de enajenar. 5) Prohibición de gravar. 6) Prohibición de innovar. 7) Prohibición de celebrar actos jurídicos. 8) Prohibición de ejecutar actos materiales. 9) Prohibición de celebrar contratos. 10) Prohibición de ejecutar actos de administración."
-  },
-  "84": {
-    title: "Embargo de bienes",
-    text: "ARTÍCULO 84. El embargo de bienes consiste en la aprehensión material o jurídica de los bienes del demandado, para asegurar el cumplimiento de la obligación que se reclama."
-  }
-}
-
 // Función para extraer número de artículo y tipo de código de la consulta
 function extractArticleInfo(query: string): { articleNumber: string | null, codeType: string } {
   // Buscar patrones como "art 11", "artículo 11", "art11", etc.
@@ -136,50 +48,12 @@ function extractArticleInfo(query: string): { articleNumber: string | null, code
   return { articleNumber, codeType }
 }
 
-// Función para procesar y resumir contenido de búsqueda
+// Función para procesar y resumir contenido de búsqueda web
 function processSearchContent(content: string, query: string): string {
   // Extraer información del artículo de la consulta
   const { articleNumber, codeType } = extractArticleInfo(query)
   
-  // Si es Código General del Proceso
-  if (codeType === 'cgp' && articleNumber && CGP_ARTICLES[articleNumber as keyof typeof CGP_ARTICLES]) {
-    const article = CGP_ARTICLES[articleNumber as keyof typeof CGP_ARTICLES]
-    
-    return `**ARTÍCULO ${articleNumber} DEL CÓDIGO GENERAL DEL PROCESO**
-
-${article.text}
-
-**Análisis Jurídico:**
-
-${article.title}. Este artículo forma parte del Código General del Proceso, que regula el procedimiento civil en Colombia.
-
-**Aspectos Importantes:**
-- Este artículo establece normas procesales específicas
-- Forma parte del derecho procesal colombiano
-- Es de aplicación en procesos civiles
-- Regula aspectos procedimentales del sistema judicial`
-  }
-  
-  // Si es Constitución
-  if (codeType === 'constitucion' && articleNumber && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]) {
-    const article = CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]
-    
-    return `**ARTÍCULO ${articleNumber} DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
-
-${article.text}
-
-**Análisis Jurídico:**
-
-${article.title}. Este artículo forma parte de los derechos fundamentales consagrados en la Constitución Política de Colombia de 1991.
-
-**Aspectos Importantes:**
-- Este artículo establece principios fundamentales del Estado colombiano
-- Forma parte del bloque de constitucionalidad
-- Es de aplicación inmediata y prevalente sobre otras normas
-- Puede ser protegido mediante acción de tutela`
-  }
-  
-  // Si no se encuentra el artículo específico, buscar información relevante en español
+  // Filtrar contenido relevante en español y relacionado con Colombia
   const lines = content.split('\n').filter(line => {
     const trimmedLine = line.trim()
     if (!trimmedLine) return false
@@ -211,25 +85,33 @@ ${article.title}. Este artículo forma parte de los derechos fundamentales consa
             trimmedLine.includes('República') ||
             trimmedLine.includes('Estado') ||
             trimmedLine.includes('derecho') ||
-            trimmedLine.includes('intimidad') ||
-            trimmedLine.includes('personal') ||
-            trimmedLine.includes('familiar'))
+            trimmedLine.includes('código') ||
+            trimmedLine.includes('proceso') ||
+            trimmedLine.includes('civil') ||
+            trimmedLine.includes('penal') ||
+            trimmedLine.includes('comercio'))
   })
   
   // Tomar las primeras líneas relevantes
-  const relevantLines = lines.slice(0, 8).join('\n')
+  const relevantLines = lines.slice(0, 10).join('\n')
   
   if (relevantLines) {
+    const codeName = codeType === 'cgp' ? 'CÓDIGO GENERAL DEL PROCESO' :
+                    codeType === 'constitucion' ? 'CONSTITUCIÓN POLÍTICA DE COLOMBIA' :
+                    codeType === 'civil' ? 'CÓDIGO CIVIL' :
+                    codeType === 'penal' ? 'CÓDIGO PENAL' :
+                    codeType === 'comercio' ? 'CÓDIGO DE COMERCIO' : 'LEGISLACIÓN COLOMBIANA'
+    
     return `**INFORMACIÓN JURÍDICA SOBRE ${query.toUpperCase()}**
 
 ${relevantLines}
 
-Esta información se basa en la Constitución Política de Colombia de 1991 y la legislación vigente.`
+Esta información se basa en la ${codeName} y la legislación vigente en Colombia.`
   }
   
   return `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${query}". 
 
-Para consultas específicas sobre artículos constitucionales, por favor especifica el número del artículo (ej: "artículo 15", "art 82").`
+Basándome en la información encontrada en fuentes oficiales, puedo proporcionarte orientación sobre el tema consultado.`
 }
 
 export async function POST(request: Request) {
@@ -251,32 +133,35 @@ export async function POST(request: Request) {
     let webSearchContext = ''
     let searchResults: any = null
 
-    // Verificar si tenemos el artículo en nuestra base de datos
+    // SIEMPRE hacer búsqueda web - eliminar base de datos local
     const { articleNumber, codeType } = extractArticleInfo(userQuery)
-    const hasArticleInDB = articleNumber && (
-      (codeType === 'constitucion' && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]) ||
-      (codeType === 'cgp' && CGP_ARTICLES[articleNumber as keyof typeof CGP_ARTICLES])
-    )
     
     try {
-      if (hasArticleInDB) {
-        console.log(`✅ Artículo ${articleNumber} del ${codeType === 'cgp' ? 'CGP' : 'Constitución'} encontrado en base de datos local`)
-        webSearchContext = `Artículo ${articleNumber} del ${codeType === 'cgp' ? 'Código General del Proceso' : 'Constitución'} disponible en base de datos`
-        searchResults = { success: true, results: [] }
+      console.log(`📡 BÚSQUEDA WEB OBLIGATORIA - SIEMPRE USAR GOOGLE CSE`)
+      console.log(`   Query original: "${userQuery}"`)
+      console.log(`   Tipo detectado: ${codeType}`)
+      
+      // Crear query mejorada basada en el tipo de código detectado
+      let enhancedQuery = userQuery
+      
+      if (codeType === 'cgp') {
+        enhancedQuery = `${userQuery} código general del proceso colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co`
+      } else if (codeType === 'constitucion') {
+        enhancedQuery = `${userQuery} constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+      } else if (codeType === 'civil') {
+        enhancedQuery = `${userQuery} código civil colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+      } else if (codeType === 'penal') {
+        enhancedQuery = `${userQuery} código penal colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
       } else {
-        console.log(`📡 FORZANDO búsqueda en Google CSE...`)
-        // Mejorar la query para ser más específica en fuentes gubernamentales colombianas
-        const enhancedQuery = userQuery.includes('art') 
-          ? `${userQuery} constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
-          : `${userQuery} derecho colombiano constitución site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
-        
-        searchResults = await searchWebEnriched(enhancedQuery)
+        // Query general mejorada
+        enhancedQuery = `${userQuery} derecho colombiano legislación site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co`
       }
+      
+      console.log(`   Query mejorada: "${enhancedQuery}"`)
+      
+      searchResults = await searchWebEnriched(enhancedQuery)
 
-      if (hasArticleInDB) {
-        console.log(`\n✅ ARTÍCULO ${articleNumber} DEL ${codeType === 'cgp' ? 'CÓDIGO GENERAL DEL PROCESO' : 'CONSTITUCIÓN'} - DISPONIBLE EN BASE DE DATOS`)
-        console.log(`\n${"🔥".repeat(60)}\n`)
-      } else if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
+      if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
         webSearchContext = formatSearchResultsForContext(searchResults)
         console.log(`\n✅ BÚSQUEDA FORZADA - COMPLETADA CON ÉXITO:`)
         console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
@@ -311,9 +196,11 @@ Basándome en mi base de datos jurídica, puedo proporcionarte orientación gene
           result.url.includes('secretariasenado.gov.co') ||
           result.url.includes('funcionpublica.gov.co') ||
           result.url.includes('alcaldiabogota.gov.co') ||
-          result.url.includes('mincit.gov.co')
+          result.url.includes('mincit.gov.co') ||
+          result.url.includes('ramajudicial.gov.co') ||
+          result.url.includes('minjusticia.gov.co')
         )
-        .slice(0, 3) // Primeros 3 resultados nacionales
+        .slice(0, 5) // Primeros 5 resultados nacionales
       
       const sources = results.map((result: any, index: number) => {
         // Limpiar el título de metadatos
@@ -322,7 +209,7 @@ Basándome en mi base de datos jurídica, puedo proporcionarte orientación gene
           .replace(/\s*Title:\s*/g, '')
           .trim()
         
-        const preview = result.snippet ? result.snippet.substring(0, 120) + '...' : 'Información jurídica oficial disponible'
+        const preview = result.snippet ? result.snippet.substring(0, 150) + '...' : 'Información jurídica oficial disponible'
         return `${index + 1}. [${cleanTitle}](${result.url})\n   *${preview}*`
       }).join('\n\n')
 
