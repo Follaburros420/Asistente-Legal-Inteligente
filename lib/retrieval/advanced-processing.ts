@@ -5,7 +5,7 @@
 
 import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
-import * as cheerio from 'cheerio'
+import cheerio from 'cheerio'
 import { TurndownService } from 'turndown'
 
 export interface DocumentChunk {
