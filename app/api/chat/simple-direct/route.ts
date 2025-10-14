@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+import OpenAI from "openai"
+import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completions.mjs"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -46,72 +48,6 @@ function extractArticleInfo(query: string): { articleNumber: string | null, code
   }
   
   return { articleNumber, codeType }
-}
-
-// Función para procesar y resumir contenido de búsqueda web
-function processSearchContent(content: string, query: string): string {
-  // Extraer información del artículo de la consulta
-  const { articleNumber, codeType } = extractArticleInfo(query)
-  
-  // Filtrar contenido relevante en español y relacionado con Colombia
-  const lines = content.split('\n').filter(line => {
-    const trimmedLine = line.trim()
-    if (!trimmedLine) return false
-    
-    // Filtrar metadatos técnicos
-    if (trimmedLine.includes('Title:') || 
-        trimmedLine.includes('URL Source:') || 
-        trimmedLine.includes('Published Time:') ||
-        trimmedLine.includes('Markdown Content:') ||
-        trimmedLine.includes('Image ') ||
-        trimmedLine.includes('[![')) {
-      return false
-    }
-    
-    // Filtrar contenido en inglés
-    if (trimmedLine.includes('The people of Colombia') ||
-        trimmedLine.includes('In the exercise of') ||
-        trimmedLine.includes('National Constituent Assembly') ||
-        trimmedLine.includes('social state under the rule of law') ||
-        trimmedLine.includes('Nevada') ||
-        trimmedLine.includes('Constitute Project')) {
-      return false
-    }
-    
-    // Solo contenido en español y relacionado con Colombia
-    return (trimmedLine.includes('Colombia') || 
-            trimmedLine.includes('Constitución') || 
-            trimmedLine.includes('ARTÍCULO') ||
-            trimmedLine.includes('República') ||
-            trimmedLine.includes('Estado') ||
-            trimmedLine.includes('derecho') ||
-            trimmedLine.includes('código') ||
-            trimmedLine.includes('proceso') ||
-            trimmedLine.includes('civil') ||
-            trimmedLine.includes('penal') ||
-            trimmedLine.includes('comercio'))
-  })
-  
-  // Tomar las primeras líneas relevantes
-  const relevantLines = lines.slice(0, 10).join('\n')
-  
-  if (relevantLines) {
-    const codeName = codeType === 'cgp' ? 'CÓDIGO GENERAL DEL PROCESO' :
-                    codeType === 'constitucion' ? 'CONSTITUCIÓN POLÍTICA DE COLOMBIA' :
-                    codeType === 'civil' ? 'CÓDIGO CIVIL' :
-                    codeType === 'penal' ? 'CÓDIGO PENAL' :
-                    codeType === 'comercio' ? 'CÓDIGO DE COMERCIO' : 'LEGISLACIÓN COLOMBIANA'
-    
-    return `**INFORMACIÓN JURÍDICA SOBRE ${query.toUpperCase()}**
-
-${relevantLines}
-
-Esta información se basa en la ${codeName} y la legislación vigente en Colombia.`
-  }
-  
-  return `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${query}". 
-
-Basándome en la información encontrada en fuentes oficiales, puedo proporcionarte orientación sobre el tema consultado.`
 }
 
 export async function POST(request: Request) {
@@ -178,60 +114,117 @@ export async function POST(request: Request) {
       console.log(`${"🔥".repeat(60)}\n`)
     }
 
-    // Crear respuesta basada en información encontrada
-    let responseText = ''
+    // Usar IA para procesar la información encontrada y dar respuesta inteligente
+    const openrouterApiKey = process.env.OPENROUTER_API_KEY || ""
     
-    if (webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS')) {
-      responseText = `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${userQuery}".
+    if (!openrouterApiKey) {
+      return NextResponse.json({
+        success: false,
+        message: "OpenRouter API Key no configurada",
+        timestamp: new Date().toISOString()
+      }, { status: 500 })
+    }
 
-Basándome en mi base de datos jurídica, puedo proporcionarte orientación general sobre el tema consultado.`
-    } else {
-      // Procesar y resumir la información encontrada
-      const processedContent = processSearchContent(webSearchContext, userQuery)
-      
-      // Extraer información relevante de los resultados - solo fuentes nacionales
-      const results = searchResults.results
-        .filter((result: any) => 
-          result.url.includes('.gov.co') || 
-          result.url.includes('secretariasenado.gov.co') ||
-          result.url.includes('funcionpublica.gov.co') ||
-          result.url.includes('alcaldiabogota.gov.co') ||
-          result.url.includes('mincit.gov.co') ||
-          result.url.includes('ramajudicial.gov.co') ||
-          result.url.includes('minjusticia.gov.co')
-        )
-        .slice(0, 5) // Primeros 5 resultados nacionales
-      
-      const sources = results.map((result: any, index: number) => {
-        // Limpiar el título de metadatos
-        const cleanTitle = result.title
-          .replace(/Title:\s*/g, '')
-          .replace(/\s*Title:\s*/g, '')
-          .trim()
-        
-        const preview = result.snippet ? result.snippet.substring(0, 150) + '...' : 'Información jurídica oficial disponible'
-        return `${index + 1}. [${cleanTitle}](${result.url})\n   *${preview}*`
-      }).join('\n\n')
+    const openai = new OpenAI({
+      apiKey: openrouterApiKey,
+      baseURL: "https://openrouter.ai/api/v1"
+    })
 
-      responseText = `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${userQuery}".
+    // Preparar fuentes para la respuesta
+    const results = searchResults?.results?.filter((result: any) => 
+      result.url.includes('.gov.co') || 
+      result.url.includes('secretariasenado.gov.co') ||
+      result.url.includes('funcionpublica.gov.co') ||
+      result.url.includes('alcaldiabogota.gov.co') ||
+      result.url.includes('mincit.gov.co') ||
+      result.url.includes('ramajudicial.gov.co') ||
+      result.url.includes('minjusticia.gov.co')
+    ).slice(0, 5) || []
 
-${processedContent}
+    const sources = results.map((result: any, index: number) => {
+      const cleanTitle = result.title
+        .replace(/Title:\s*/g, '')
+        .replace(/\s*Title:\s*/g, '')
+        .trim()
+      return `${index + 1}. [${cleanTitle}](${result.url})`
+    }).join('\n')
+
+    // Crear prompt para la IA
+    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet y proporcionar una respuesta específica, clara y resumida sobre la consulta del usuario.
+
+INFORMACIÓN ENCONTRADA EN INTERNET:
+${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
+  'No se encontró información específica en internet para esta consulta.' : 
+  webSearchContext}
+
+CONSULTA DEL USUARIO: "${userQuery}"
+
+INSTRUCCIONES:
+1. Analiza la información encontrada arriba
+2. Responde específicamente a lo que pregunta el usuario
+3. NO copies texto directamente de internet
+4. Proporciona una respuesta clara, resumida y específica
+5. Usa terminología jurídica precisa
+6. Si la información no es suficiente, indícalo claramente
+7. Al final incluye las fuentes consultadas
+
+Responde en español colombiano con terminología jurídica precisa.`
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "openai/gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userQuery }
+        ],
+        temperature: 0.3,
+        max_tokens: 1000
+      })
+
+      const aiResponse = completion.choices[0].message.content || "No se pudo generar respuesta"
+
+      // Agregar fuentes al final de la respuesta
+      const finalResponse = `${aiResponse}
 
 ---
 
 ## 📚 Fuentes Consultadas
 
 ${sources}`
-    }
 
-    // Respuesta directa sin streaming
-    return NextResponse.json({
-      success: true,
-      message: responseText,
-      timestamp: new Date().toISOString(),
-      searchExecuted: true,
-      resultsFound: searchResults?.results?.length || 0
-    });
+      return NextResponse.json({
+        success: true,
+        message: finalResponse,
+        timestamp: new Date().toISOString(),
+        searchExecuted: true,
+        resultsFound: searchResults?.results?.length || 0,
+        aiProcessed: true
+      })
+
+    } catch (aiError: any) {
+      console.error("Error en procesamiento de IA:", aiError)
+      
+      // Fallback: respuesta básica si la IA falla
+      const fallbackResponse = `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${userQuery}".
+
+Basándome en la información encontrada en fuentes oficiales, puedo proporcionarte orientación sobre el tema consultado.
+
+---
+
+## 📚 Fuentes Consultadas
+
+${sources}`
+
+      return NextResponse.json({
+        success: true,
+        message: fallbackResponse,
+        timestamp: new Date().toISOString(),
+        searchExecuted: true,
+        resultsFound: searchResults?.results?.length || 0,
+        aiProcessed: false,
+        error: aiError.message
+      })
+    }
 
   } catch (error: any) {
     console.error("Error en chat simple directo:", error)
