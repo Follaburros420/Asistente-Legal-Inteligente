@@ -195,19 +195,20 @@ export async function POST(request: Request) {
     const articleNumber = extractArticleNumber(userQuery)
     const hasArticleInDB = articleNumber && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]
     
-    if (hasArticleInDB) {
-      console.log(`✅ Artículo ${articleNumber} encontrado en base de datos local`)
-      webSearchContext = `Artículo ${articleNumber} disponible en base de datos`
-      searchResults = { success: true, results: [] }
-    } else {
-      console.log(`📡 FORZANDO búsqueda en Google CSE...`)
-      // Mejorar la query para ser más específica en fuentes gubernamentales colombianas
-      const enhancedQuery = userQuery.includes('art') 
-        ? `${userQuery} constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
-        : `${userQuery} derecho colombiano constitución site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
-      
-      searchResults = await searchWebEnriched(enhancedQuery)
-    }
+    try {
+      if (hasArticleInDB) {
+        console.log(`✅ Artículo ${articleNumber} encontrado en base de datos local`)
+        webSearchContext = `Artículo ${articleNumber} disponible en base de datos`
+        searchResults = { success: true, results: [] }
+      } else {
+        console.log(`📡 FORZANDO búsqueda en Google CSE...`)
+        // Mejorar la query para ser más específica en fuentes gubernamentales colombianas
+        const enhancedQuery = userQuery.includes('art') 
+          ? `${userQuery} constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+          : `${userQuery} derecho colombiano constitución site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+        
+        searchResults = await searchWebEnriched(enhancedQuery)
+      }
 
       if (hasArticleInDB) {
         console.log(`\n✅ ARTÍCULO ${articleNumber} - DISPONIBLE EN BASE DE DATOS`)
