@@ -217,7 +217,7 @@ export const handleHostedChat = async (
   }
 
   const apiEndpoint =
-    provider === "custom" ? "/api/chat/custom" : "/api/chat/robust"
+    provider === "custom" ? "/api/chat/custom" : "/api/chat/independent"
 
   const requestBody = {
     chatSettings: payload.chatSettings,
