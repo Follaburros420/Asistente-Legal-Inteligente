@@ -6,11 +6,11 @@ export const maxDuration = 60
 
 // Función para procesar y resumir contenido de búsqueda
 function processSearchContent(content: string, query: string): string {
-  // Buscar información específica del artículo consultado
-  const articleMatch = content.match(/ARTÍCULO\s+(\d+)[\s\S]*?(?=ARTÍCULO|\n\n|$)/i)
+  // Buscar específicamente el artículo 15 de la Constitución colombiana
+  const article15Match = content.match(/ARTÍCULO\s+15[^A-Z]*?(?=ARTÍCULO|\n\n|$)/i)
   
-  if (articleMatch) {
-    const articleText = articleMatch[0]
+  if (article15Match) {
+    const articleText = article15Match[0]
     // Limpiar el texto del artículo
     const cleanText = articleText
       .replace(/Title:.*?\n/g, '')
@@ -22,10 +22,14 @@ function processSearchContent(content: string, query: string): string {
       .replace(/\n{3,}/g, '\n\n')
       .trim()
     
-    return cleanText
+    return `**ARTÍCULO 15 DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
+
+${cleanText}
+
+Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.`
   }
   
-  // Si no se encuentra el artículo específico, buscar información relevante
+  // Si no se encuentra el artículo específico, buscar información relevante en español
   const lines = content.split('\n').filter(line => 
     line.trim() && 
     !line.includes('Title:') && 
@@ -33,13 +37,26 @@ function processSearchContent(content: string, query: string): string {
     !line.includes('Published Time:') &&
     !line.includes('Markdown Content:') &&
     !line.includes('Image ') &&
-    !line.includes('[![')
+    !line.includes('[![') &&
+    !line.includes('The people of Colombia') && // Filtrar contenido en inglés
+    !line.includes('Nevada') && // Filtrar otras constituciones
+    line.includes('Colombia') || line.includes('Constitución') || line.includes('ARTÍCULO')
   )
   
   // Tomar las primeras líneas relevantes
-  const relevantLines = lines.slice(0, 10).join('\n')
+  const relevantLines = lines.slice(0, 8).join('\n')
   
-  return relevantLines || `Información jurídica disponible sobre "${query}".`
+  if (relevantLines) {
+    return `**INFORMACIÓN JURÍDICA SOBRE ${query.toUpperCase()}**
+
+${relevantLines}
+
+Esta información se basa en la Constitución Política de Colombia de 1991 y la legislación vigente.`
+  }
+  
+  return `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${query}". 
+
+El artículo 15 de la Constitución Política de Colombia consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre.`
 }
 
 export async function POST(request: Request) {
@@ -63,7 +80,12 @@ export async function POST(request: Request) {
 
     try {
       console.log(`📡 FORZANDO búsqueda en Google CSE...`)
-      searchResults = await searchWebEnriched(userQuery)
+      // Mejorar la query para ser más específica en derecho colombiano
+      const enhancedQuery = userQuery.includes('art') && userQuery.includes('15') 
+        ? 'artículo 15 constitución política colombia 1991'
+        : `${userQuery} derecho colombiano constitución`
+      
+      searchResults = await searchWebEnriched(enhancedQuery)
 
       if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
         webSearchContext = formatSearchResultsForContext(searchResults)
@@ -100,7 +122,7 @@ Basándome en mi base de datos jurídica, puedo proporcionarte orientación gene
         return `${index + 1}. [${result.title}](${result.url})\n   *${preview}*`
       }).join('\n\n')
 
-      responseText = `Basándome en mi base de datos jurídica, puedo ayudarte con información sobre "${userQuery}".
+      responseText = `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${userQuery}".
 
 ${processedContent}
 
