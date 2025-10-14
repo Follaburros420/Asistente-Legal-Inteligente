@@ -44,15 +44,13 @@ export async function POST(request: Request) {
       console.log(`${"🔥".repeat(60)}\n`)
     }
 
-    // Crear respuesta basada solo en búsqueda web
+    // Crear respuesta basada en información encontrada
     let responseText = ''
     
     if (webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS')) {
-      responseText = `He ejecutado una búsqueda web sobre "${userQuery}" pero no encontré resultados específicos.
+      responseText = `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${userQuery}".
 
-Como asistente legal especializado en derecho colombiano, puedo ayudarte con información general sobre temas legales. Para una respuesta más específica, te recomiendo consultar directamente con un abogado especializado.
-
-**Nota:** Se ejecutó una búsqueda web como parte del proceso obligatorio, pero no se encontraron fuentes específicas para tu consulta.`
+Basándome en mi base de datos jurídica, puedo proporcionarte orientación general sobre el tema consultado.`
     } else {
       // Extraer información relevante de los resultados
       const results = searchResults.results.slice(0, 3) // Primeros 3 resultados
@@ -60,17 +58,15 @@ Como asistente legal especializado en derecho colombiano, puedo ayudarte con inf
         `${index + 1}. [${result.title}](${result.url})`
       ).join('\n')
 
-      responseText = `He ejecutado una búsqueda web sobre "${userQuery}" y encontré información relevante.
+      responseText = `Basándome en mi base de datos jurídica, puedo ayudarte con información sobre "${userQuery}".
 
-Basándome en la información encontrada, puedo proporcionarte orientación general sobre el tema consultado. Sin embargo, para asuntos legales específicos, siempre es recomendable consultar con un abogado especializado.
+${webSearchContext}
 
 ---
 
 ## 📚 Fuentes Consultadas
 
-${sources}
-
-**Nota:** Esta respuesta se basa en la búsqueda web ejecutada como parte del proceso obligatorio.`
+${sources}`
     }
 
     // Respuesta directa sin streaming

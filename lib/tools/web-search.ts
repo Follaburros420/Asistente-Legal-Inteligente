@@ -307,30 +307,12 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
     return `No se encontraron resultados para: "${searchResponse.query}"`
   }
 
-  let context = `📚 Resultados de búsqueda web para: "${searchResponse.query}"\n\n`
-  context += `⚠️ IMPORTANTE: Estas son las ÚNICAS URLs válidas que puedes usar en la bibliografía.\n`
-  context += `COPIA estas URLs EXACTAMENTE como aparecen a continuación:\n\n`
+  let context = `Información jurídica encontrada:\n\n`
   
   searchResponse.results.forEach((result, index) => {
-    context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
-    context += `RESULTADO ${index + 1}:\n`
-    context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
-    context += `TÍTULO: ${result.title}\n`
-    context += `URL (COPIAR EXACTA): ${result.url}\n`
-    context += `CONTENIDO:\n${result.snippet}\n`
-    context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
+    context += `**${result.title}**\n`
+    context += `${result.snippet}\n\n`
   })
-
-  context += `\n═══════════════════════════════════════════════\n`
-  context += `📋 LISTA DE URLs VÁLIDAS PARA BIBLIOGRAFÍA:\n`
-  context += `═══════════════════════════════════════════════\n\n`
-  
-  searchResponse.results.forEach((result, index) => {
-    context += `${index + 1}. URL: ${result.url}\n`
-    context += `   Título sugerido: "${result.title}"\n\n`
-  })
-
-  context += `\n⚠️ RECUERDA: Usa SOLO estas ${searchResponse.results.length} URLs. NO inventes otras.\n`
 
   return context
 }
