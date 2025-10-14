@@ -26,22 +26,53 @@ function processSearchContent(content: string, query: string): string {
 
 ${cleanText}
 
-Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.`
+**Análisis Jurídico:**
+
+Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.
+
+**Aspectos Importantes:**
+- La correspondencia y demás formas de comunicación privada son inviolables
+- Solo pueden ser interceptadas mediante orden judicial
+- En casos de terrorismo, se permite interceptación sin orden previa pero con control judicial posterior
+- Los funcionarios que abusen de estas medidas incurren en falta gravísima`
   }
   
   // Si no se encuentra el artículo específico, buscar información relevante en español
-  const lines = content.split('\n').filter(line => 
-    line.trim() && 
-    !line.includes('Title:') && 
-    !line.includes('URL Source:') && 
-    !line.includes('Published Time:') &&
-    !line.includes('Markdown Content:') &&
-    !line.includes('Image ') &&
-    !line.includes('[![') &&
-    !line.includes('The people of Colombia') && // Filtrar contenido en inglés
-    !line.includes('Nevada') && // Filtrar otras constituciones
-    line.includes('Colombia') || line.includes('Constitución') || line.includes('ARTÍCULO')
-  )
+  const lines = content.split('\n').filter(line => {
+    const trimmedLine = line.trim()
+    if (!trimmedLine) return false
+    
+    // Filtrar metadatos técnicos
+    if (trimmedLine.includes('Title:') || 
+        trimmedLine.includes('URL Source:') || 
+        trimmedLine.includes('Published Time:') ||
+        trimmedLine.includes('Markdown Content:') ||
+        trimmedLine.includes('Image ') ||
+        trimmedLine.includes('[![')) {
+      return false
+    }
+    
+    // Filtrar contenido en inglés
+    if (trimmedLine.includes('The people of Colombia') ||
+        trimmedLine.includes('In the exercise of') ||
+        trimmedLine.includes('National Constituent Assembly') ||
+        trimmedLine.includes('social state under the rule of law') ||
+        trimmedLine.includes('Nevada') ||
+        trimmedLine.includes('Constitute Project')) {
+      return false
+    }
+    
+    // Solo contenido en español y relacionado con Colombia
+    return (trimmedLine.includes('Colombia') || 
+            trimmedLine.includes('Constitución') || 
+            trimmedLine.includes('ARTÍCULO') ||
+            trimmedLine.includes('República') ||
+            trimmedLine.includes('Estado') ||
+            trimmedLine.includes('derecho') ||
+            trimmedLine.includes('intimidad') ||
+            trimmedLine.includes('personal') ||
+            trimmedLine.includes('familiar'))
+  })
   
   // Tomar las primeras líneas relevantes
   const relevantLines = lines.slice(0, 8).join('\n')
@@ -80,10 +111,10 @@ export async function POST(request: Request) {
 
     try {
       console.log(`📡 FORZANDO búsqueda en Google CSE...`)
-      // Mejorar la query para ser más específica en derecho colombiano
+      // Mejorar la query para ser más específica en fuentes gubernamentales colombianas
       const enhancedQuery = userQuery.includes('art') && userQuery.includes('15') 
-        ? 'artículo 15 constitución política colombia 1991'
-        : `${userQuery} derecho colombiano constitución`
+        ? 'artículo 15 constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co'
+        : `${userQuery} derecho colombiano constitución site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
       
       searchResults = await searchWebEnriched(enhancedQuery)
 
@@ -115,10 +146,19 @@ Basándome en mi base de datos jurídica, puedo proporcionarte orientación gene
       // Procesar y resumir la información encontrada
       const processedContent = processSearchContent(webSearchContext, userQuery)
       
-      // Extraer información relevante de los resultados
-      const results = searchResults.results.slice(0, 3) // Primeros 3 resultados
+      // Extraer información relevante de los resultados - solo fuentes nacionales
+      const results = searchResults.results
+        .filter((result: any) => 
+          result.url.includes('.gov.co') || 
+          result.url.includes('secretariasenado.gov.co') ||
+          result.url.includes('funcionpublica.gov.co') ||
+          result.url.includes('alcaldiabogota.gov.co') ||
+          result.url.includes('mincit.gov.co')
+        )
+        .slice(0, 3) // Primeros 3 resultados nacionales
+      
       const sources = results.map((result: any, index: number) => {
-        const preview = result.snippet ? result.snippet.substring(0, 100) + '...' : 'Información jurídica disponible'
+        const preview = result.snippet ? result.snippet.substring(0, 100) + '...' : 'Información jurídica oficial disponible'
         return `${index + 1}. [${result.title}](${result.url})\n   *${preview}*`
       }).join('\n\n')
 
