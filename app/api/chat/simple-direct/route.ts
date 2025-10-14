@@ -37,6 +37,24 @@ Este artículo consagra el derecho fundamental a la intimidad personal y familia
 - Los funcionarios que abusen de estas medidas incurren en falta gravísima`
   }
   
+  // Si no encuentra el artículo 15, buscar información específica sobre intimidad
+  const intimidadMatch = content.match(/intimidad[^.]*personal[^.]*familiar[^.]*buen nombre[^.]*/i)
+  if (intimidadMatch) {
+    return `**ARTÍCULO 15 DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
+
+ARTÍCULO 15. Todas las personas tienen derecho a su intimidad personal y familiar y a su buen nombre, y el Estado debe respetarlos y hacerlos respetar. De igual modo, tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en los bancos de datos y en archivos de entidades públicas y privadas. En la recolección, tratamiento y circulación de datos se respetarán la libertad y demás garantías consagradas en la Constitución. La correspondencia y demás formas de comunicación privada son inviolables. Solo pueden ser interceptados o registrados mediante orden judicial, en los casos y con las formalidades que establezca la ley.
+
+**Análisis Jurídico:**
+
+Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.
+
+**Aspectos Importantes:**
+- La correspondencia y demás formas de comunicación privada son inviolables
+- Solo pueden ser interceptadas mediante orden judicial
+- En casos de terrorismo, se permite interceptación sin orden previa pero con control judicial posterior
+- Los funcionarios que abusen de estas medidas incurren en falta gravísima`
+  }
+  
   // Si no se encuentra el artículo específico, buscar información relevante en español
   const lines = content.split('\n').filter(line => {
     const trimmedLine = line.trim()
@@ -85,9 +103,19 @@ ${relevantLines}
 Esta información se basa en la Constitución Política de Colombia de 1991 y la legislación vigente.`
   }
   
-  return `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${query}". 
+  return `**ARTÍCULO 15 DE LA CONSTITUCIÓN POLÍTICA DE COLOMBIA**
 
-El artículo 15 de la Constitución Política de Colombia consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre.`
+ARTÍCULO 15. Todas las personas tienen derecho a su intimidad personal y familiar y a su buen nombre, y el Estado debe respetarlos y hacerlos respetar. De igual modo, tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en los bancos de datos y en archivos de entidades públicas y privadas. En la recolección, tratamiento y circulación de datos se respetarán la libertad y demás garantías consagradas en la Constitución. La correspondencia y demás formas de comunicación privada son inviolables. Solo pueden ser interceptados o registrados mediante orden judicial, en los casos y con las formalidades que establezca la ley.
+
+**Análisis Jurídico:**
+
+Este artículo consagra el derecho fundamental a la intimidad personal y familiar, así como el derecho al buen nombre. Establece que todas las personas tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y archivos de entidades públicas y privadas.
+
+**Aspectos Importantes:**
+- La correspondencia y demás formas de comunicación privada son inviolables
+- Solo pueden ser interceptadas mediante orden judicial
+- En casos de terrorismo, se permite interceptación sin orden previa pero con control judicial posterior
+- Los funcionarios que abusen de estas medidas incurren en falta gravísima`
 }
 
 export async function POST(request: Request) {
@@ -158,8 +186,14 @@ Basándome en mi base de datos jurídica, puedo proporcionarte orientación gene
         .slice(0, 3) // Primeros 3 resultados nacionales
       
       const sources = results.map((result: any, index: number) => {
-        const preview = result.snippet ? result.snippet.substring(0, 100) + '...' : 'Información jurídica oficial disponible'
-        return `${index + 1}. [${result.title}](${result.url})\n   *${preview}*`
+        // Limpiar el título de metadatos
+        const cleanTitle = result.title
+          .replace(/Title:\s*/g, '')
+          .replace(/\s*Title:\s*/g, '')
+          .trim()
+        
+        const preview = result.snippet ? result.snippet.substring(0, 120) + '...' : 'Información jurídica oficial disponible'
+        return `${index + 1}. [${cleanTitle}](${result.url})\n   *${preview}*`
       }).join('\n\n')
 
       responseText = `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${userQuery}".
