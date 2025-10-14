@@ -149,24 +149,32 @@ export async function POST(request: Request) {
       return `${index + 1}. [${cleanTitle}](${result.url})`
     }).join('\n')
 
-    // Crear prompt para la IA
-    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet y proporcionar una respuesta específica, clara y resumida sobre la consulta del usuario.
+    // Crear prompt mejorado para la IA
+    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet y proporcionar una respuesta ESPECÍFICA y DETALLADA sobre la consulta exacta del usuario.
 
 INFORMACIÓN ENCONTRADA EN INTERNET:
 ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
   'No se encontró información específica en internet para esta consulta.' : 
   webSearchContext}
 
-CONSULTA DEL USUARIO: "${userQuery}"
+CONSULTA ESPECÍFICA DEL USUARIO: "${userQuery}"
 
-INSTRUCCIONES:
-1. Analiza la información encontrada arriba
-2. Responde específicamente a lo que pregunta el usuario
-3. NO copies texto directamente de internet
-4. Proporciona una respuesta clara, resumida y específica
-5. Usa terminología jurídica precisa
-6. Si la información no es suficiente, indícalo claramente
-7. Al final incluye las fuentes consultadas
+INSTRUCCIONES CRÍTICAS:
+1. DEBES responder específicamente sobre "${userQuery}" - NO respuestas genéricas
+2. Si la consulta es sobre un artículo específico (ej: "art 90 codigo civil"), DEBES explicar ese artículo específico
+3. Analiza la información encontrada arriba y extrae datos relevantes para la consulta
+4. NO uses frases genéricas como "puedo ayudarte con información sobre..."
+5. Proporciona información CONCRETA y ESPECÍFICA sobre lo que se pregunta
+6. Si encuentras el artículo específico, explica su contenido, alcance y aplicación
+7. Usa terminología jurídica precisa
+8. Si la información no es suficiente para responder específicamente, indícalo claramente
+
+EJEMPLO DE RESPUESTA CORRECTA:
+Si preguntan "art 90 codigo civil", responde:
+"El artículo 90 del Código Civil establece que [explicación específica del artículo]. Este artículo regula [alcance específico] y se aplica en [casos específicos]."
+
+EJEMPLO DE RESPUESTA INCORRECTA:
+"Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre..."
 
 Responde en español colombiano con terminología jurídica precisa.`
 
@@ -175,10 +183,10 @@ Responde en español colombiano con terminología jurídica precisa.`
         model: "openai/gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userQuery }
+          { role: "user", content: `Analiza la información encontrada y responde específicamente sobre: ${userQuery}` }
         ],
-        temperature: 0.3,
-        max_tokens: 1000
+        temperature: 0.1, // Muy baja para respuestas más precisas
+        max_tokens: 1500 // Más tokens para respuestas detalladas
       })
 
       const aiResponse = completion.choices[0].message.content || "No se pudo generar respuesta"
@@ -204,10 +212,42 @@ ${sources}`
     } catch (aiError: any) {
       console.error("Error en procesamiento de IA:", aiError)
       
-      // Fallback: respuesta básica si la IA falla
-      const fallbackResponse = `Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre "${userQuery}".
+      // Fallback mejorado: intentar extraer información específica del contexto web
+      let fallbackResponse = ""
+      
+      if (webSearchContext && !webSearchContext.includes('ERROR') && !webSearchContext.includes('SIN RESULTADOS')) {
+        // Intentar extraer información específica del contexto
+        const lines = webSearchContext.split('\n').filter(line => {
+          const trimmedLine = line.trim()
+          return trimmedLine && 
+                 !trimmedLine.includes('Title:') && 
+                 !trimmedLine.includes('URL Source:') &&
+                 !trimmedLine.includes('Published Time:') &&
+                 (trimmedLine.includes('ARTÍCULO') || 
+                  trimmedLine.includes('artículo') ||
+                  trimmedLine.includes('Artículo') ||
+                  trimmedLine.includes(userQuery.toLowerCase()))
+        })
+        
+        if (lines.length > 0) {
+          const relevantInfo = lines.slice(0, 5).join('\n')
+          fallbackResponse = `Basándome en la información encontrada en fuentes oficiales sobre "${userQuery}":
 
-Basándome en la información encontrada en fuentes oficiales, puedo proporcionarte orientación sobre el tema consultado.
+${relevantInfo}
+
+Esta información se basa en la legislación colombiana vigente.`
+        } else {
+          fallbackResponse = `No se encontró información específica sobre "${userQuery}" en las fuentes consultadas. 
+
+La información disponible no contiene detalles específicos sobre la consulta realizada.`
+        }
+      } else {
+        fallbackResponse = `No se pudo encontrar información específica sobre "${userQuery}" en las fuentes oficiales consultadas.
+
+La búsqueda no arrojó resultados relevantes para responder específicamente a tu consulta.`
+      }
+
+      const finalFallbackResponse = `${fallbackResponse}
 
 ---
 
@@ -217,7 +257,7 @@ ${sources}`
 
       return NextResponse.json({
         success: true,
-        message: fallbackResponse,
+        message: finalFallbackResponse,
         timestamp: new Date().toISOString(),
         searchExecuted: true,
         resultsFound: searchResults?.results?.length || 0,
