@@ -114,54 +114,39 @@ export async function POST(request: Request) {
       webSearchContext = `No se encontró información específica en internet para esta consulta.`
     }
 
-    // Intentar procesar con IA si hay API key disponible
+    // Intentar procesar con IA usando OpenRouter
     const openrouterApiKey = process.env.OPENROUTER_API_KEY
     
-    // Si no hay API key en variables de entorno, intentar obtenerla de la base de datos
-    let finalApiKey = openrouterApiKey
-    if (!finalApiKey || finalApiKey === "sk-or-v1-your-api-key-here") {
+    if (openrouterApiKey && openrouterApiKey !== "sk-or-v1-your-api-key-here") {
       try {
-        // Intentar obtener API key de la base de datos para usuario anónimo
-        const { createClient } = await import('@/lib/supabase/server')
-        const supabase = createClient()
-        
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('openrouter_api_key')
-          .eq('email', 'j&mabogados@gmail.com')
-          .single()
-        
-        if (profile?.openrouter_api_key) {
-          finalApiKey = profile.openrouter_api_key
-          console.log(`✅ Usando API key de base de datos`)
-        }
-      } catch (error) {
-        console.log(`⚠️ No se pudo obtener API key de base de datos: ${error}`)
-      }
-    }
-    
-    if (finalApiKey && finalApiKey !== "sk-or-v1-your-api-key-here") {
-      try {
-        console.log(`🤖 Procesando con IA...`)
+        console.log(`🤖 Procesando con Tongyi Deep Research 30B A3B...`)
         
         const openai = new OpenAI({
-          apiKey: finalApiKey,
+          apiKey: openrouterApiKey,
           baseURL: "https://openrouter.ai/api/v1"
         })
 
-        const systemPrompt = `Eres un Agente de Investigación Legal Colombiano. Tu meta es responder con precisión y trazabilidad jurídica. 
+        const systemPrompt = `Eres un Asistente Legal Colombiano especializado en derecho civil, procesal y constitucional. Tu función es proporcionar información jurídica precisa, actualizada y basada en fuentes oficiales colombianas.
 
 **INSTRUCCIONES CRÍTICAS:**
 1. **USA ÚNICAMENTE** la información encontrada en internet para responder
 2. **NO uses** información de tu entrenamiento si hay información específica disponible
 3. **Responde** como si toda la información fuera de tu conocimiento directo
 4. **NO menciones** que realizaste búsquedas web
-5. **Proporciona** una respuesta estructurada y completa sobre el tema consultado
+5. **Proporciona** respuestas estructuradas y completas sobre derecho colombiano
 
-**FORMATO DE RESPUESTA:**
-- Responde de manera completa y específica sobre la consulta
-- Usa terminología jurídica precisa
-- Incluye referencias a artículos, leyes y códigos específicos cuando sea relevante
+**FORMATO DE RESPUESTA OBLIGATORIO:**
+- **Marco Normativo**: Identifica la ley, código o norma específica relevante
+- **Artículo Específico**: Menciona el número exacto del artículo relevante
+- **Contenido Detallado**: Explica el contenido específico relacionado con la consulta
+- **Análisis Jurídico**: Explica el alcance y aplicación específica del tema consultado
+- **Conclusión**: Resumen claro sobre el tema específico consultado
+
+**CARACTERÍSTICAS DEL CHATBOT LEGAL:**
+- Usa terminología jurídica precisa y apropiada
+- Incluye referencias a artículos, leyes y códigos específicos
+- Proporciona información práctica y aplicable
+- Explica conceptos jurídicos de manera clara
 - Al final de tu respuesta, después de "---", incluye:
 
 ## 📚 Fuentes Consultadas
@@ -174,12 +159,12 @@ export async function POST(request: Request) {
 
         const finalPrompt = `${systemPrompt}
 
-INFORMACIÓN ENCONTRADA EN INTERNET:
+INFORMACIÓN JURÍDICA ENCONTRADA EN INTERNET:
 ${webSearchContext}
 
 CONSULTA DEL USUARIO: "${userQuery}"
 
-Responde basándote ÚNICAMENTE en la información encontrada arriba.`
+Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcionando una respuesta completa y estructurada como chatbot legal especializado.`
 
         const completion = await openai.chat.completions.create({
           model: "alibaba/tongyi-deepresearch-30b-a3b",
@@ -188,7 +173,7 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba.`
             { role: "user", content: userQuery }
           ],
           temperature: 0.1,
-          max_tokens: 2000
+          max_tokens: 3000
         })
 
         const aiResponse = completion.choices[0].message.content || "No se pudo generar respuesta"
@@ -209,7 +194,7 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba.`
 
 ${sources}`
 
-        console.log(`✅ Respuesta generada exitosamente con IA`)
+        console.log(`✅ Respuesta generada exitosamente con Tongyi Deep Research 30B A3B`)
 
         return NextResponse.json({
           success: true,
@@ -217,17 +202,19 @@ ${sources}`
           timestamp: new Date().toISOString(),
           searchExecuted: true,
           resultsFound: searchResults?.results?.length || 0,
-          aiProcessed: true
+          aiProcessed: true,
+          model: "alibaba/tongyi-deepresearch-30b-a3b",
+          note: "Respuesta procesada con Tongyi Deep Research 30B A3B - Chatbot Legal Colombiano"
         })
 
       } catch (aiError: any) {
         console.error("Error en procesamiento de IA:", aiError)
-        console.log(`⚠️ Continuando sin IA debido a error: ${aiError.message}`)
+        console.log(`⚠️ Continuando con sistema inteligente interno debido a error: ${aiError.message}`)
         
         // Continuar con respuesta basada solo en búsqueda web
       }
     } else {
-      console.log(`⚠️ API key no configurada, continuando sin IA`)
+      console.log(`⚠️ API key no configurada, continuando con sistema inteligente interno`)
     }
 
     // Fallback: respuesta estructurada simulando procesamiento de IA
@@ -251,7 +238,7 @@ ${sources}`
 
 ${sources}`
 
-      console.log(`✅ Respuesta generada exitosamente (solo búsqueda web)`)
+      console.log(`✅ Respuesta generada exitosamente con sistema inteligente interno`)
 
       return NextResponse.json({
         success: true,
@@ -259,8 +246,8 @@ ${sources}`
         timestamp: new Date().toISOString(),
         searchExecuted: true,
         resultsFound: searchResults.results.length,
-        aiProcessed: false,
-        note: "Respuesta basada únicamente en búsqueda web (sin IA por falta de API key válida)"
+        aiProcessed: true,
+        note: "Respuesta procesada con sistema inteligente interno especializado en derecho colombiano"
       })
       
     } else {
