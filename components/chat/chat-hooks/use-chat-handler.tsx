@@ -306,30 +306,34 @@ export const useChatHandler = () => {
           chatImages
         )
 
-        const response = await fetch("/api/chat/web-only", {
+        const response = await fetch("/api/chat/simple-direct", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            chatSettings: payload.chatSettings,
             messages: formattedMessages
           })
         })
 
         setToolInUse("none")
 
-        generatedText = await processResponse(
-          response,
-          isRegeneration
-            ? payload.chatMessages[payload.chatMessages.length - 1]
-            : tempAssistantChatMessage,
-          true,
-          newAbortController,
-          setFirstTokenReceived,
-          setChatMessages,
-          setToolInUse
-        )
+        // Manejar respuesta JSON del endpoint simple-direct
+        if (response.ok) {
+          const data = await response.json()
+          generatedText = data.message || "No se pudo generar respuesta"
+          
+          // Actualizar el mensaje del asistente
+          const updatedMessage = {
+            ...tempAssistantChatMessage,
+            content: generatedText
+          }
+          
+          setChatMessages(prev => [...prev, updatedMessage])
+        } else {
+          const errorData = await response.json()
+          generatedText = errorData.message || "Error en el chat"
+        }
       } else {
         if (modelData!.provider === "ollama") {
           generatedText = await handleLocalChat(
