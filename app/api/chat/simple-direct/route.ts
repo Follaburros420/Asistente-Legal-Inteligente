@@ -76,6 +76,32 @@ function normalizeQuery(userQuery: string): string {
     return `${userQuery} Colombia acción inconstitucionalidad artículo 241 constitución site:corteconstitucional.gov.co OR site:gov.co`
   }
   
+  // Consultas sobre nacimiento y personalidad jurídica
+  if (query.includes('nacimiento') || query.includes('nace') || query.includes('nacer') || 
+      query.includes('personalidad') || query.includes('persona') || query.includes('vida')) {
+    return `${userQuery} Colombia código civil personalidad jurídica nacimiento artículo 90 91 92 93 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co`
+  }
+  
+  // Consultas sobre capacidad jurídica
+  if (query.includes('capacidad') || query.includes('mayoría') || query.includes('menor')) {
+    return `${userQuery} Colombia código civil capacidad jurídica mayoría edad site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+  }
+  
+  // Consultas sobre contratos
+  if (query.includes('contrato') || query.includes('contratos')) {
+    return `${userQuery} Colombia código civil contratos obligaciones site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+  }
+  
+  // Consultas sobre matrimonio
+  if (query.includes('matrimonio') || query.includes('casamiento') || query.includes('divorcio')) {
+    return `${userQuery} Colombia código civil matrimonio familia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+  }
+  
+  // Consultas sobre sucesiones
+  if (query.includes('sucesión') || query.includes('herencia') || query.includes('testamento')) {
+    return `${userQuery} Colombia código civil sucesiones herencia testamento site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+  }
+  
   // Consultas sobre artículos específicos
   if (query.includes('art') || query.includes('artículo')) {
     const { articleNumber, codeType } = extractArticleInfo(userQuery)
@@ -90,7 +116,7 @@ function normalizeQuery(userQuery: string): string {
     }
   }
   
-  // Consulta general - agregar contexto legal colombiano
+  // Consulta general - agregar contexto legal colombiano específico
   return `${userQuery} Colombia derecho legal legislación site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co OR site:corteconstitucional.gov.co`
 }
 
@@ -182,47 +208,49 @@ export async function POST(request: Request) {
     }).join('\n')
 
     // Crear prompt mejorado para procesar información jurídica específica
-    const systemPrompt = `Eres un Agente de Investigación Legal Colombiano especializado en derecho procesal colombiano. Tu meta es analizar la información jurídica encontrada en internet y proporcionar una respuesta COMPLETA y ESPECÍFICA.
+    const systemPrompt = `Eres un Agente de Investigación Legal Colombiano especializado en derecho civil y procesal colombiano. Tu meta es analizar la información jurídica encontrada en internet y proporcionar una respuesta COMPLETA y ESPECÍFICA sobre el tema exacto de la consulta.
 
 INFORMACIÓN JURÍDICA ENCONTRADA EN INTERNET:
 ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
   'No se encontró información específica en internet para esta consulta.' : 
   webSearchContext}
 
-CONSULTA DEL USUARIO: "${userQuery}"
+CONSULTA ESPECÍFICA DEL USUARIO: "${userQuery}"
 
 INSTRUCCIONES CRÍTICAS:
 1. ANALIZA TODO el contenido jurídico encontrado arriba
-2. Si encuentras artículos específicos (ej: Artículo 82 del Código General del Proceso), explica COMPLETAMENTE su contenido
-3. Si la consulta es sobre "requisitos de la demanda", lista TODOS los requisitos específicos encontrados en los artículos
-4. Proporciona información CONCRETA y DETALLADA sobre lo que se pregunta
-5. Usa terminología jurídica precisa
-6. Si encuentras información relevante, explica su contenido completo, alcance y aplicación
-7. NO uses frases genéricas como "puedo ayudarte con información sobre..."
-8. NO hagas referencias vagas - sé específico con números de artículos, leyes y fechas
+2. RESPONDE ÚNICAMENTE sobre el tema específico de la consulta: "${userQuery}"
+3. Si la consulta es sobre "nacimiento de una persona", explica SOLO sobre personalidad jurídica y nacimiento
+4. Si la consulta es sobre "requisitos de la demanda", explica SOLO sobre requisitos procesales
+5. NO mezcles temas diferentes - mantén el foco en la consulta específica
+6. Si encuentras artículos específicos relevantes, explica COMPLETAMENTE su contenido
+7. Proporciona información CONCRETA y DETALLADA sobre lo que se pregunta
+8. Usa terminología jurídica precisa
+9. NO uses frases genéricas como "puedo ayudarte con información sobre..."
+10. NO hagas referencias vagas - sé específico con números de artículos, leyes y fechas
+11. NO incluyas información sobre temas no relacionados con la consulta
 
 FORMATO DE RESPUESTA OBLIGATORIO:
-- **Marco Normativo**: Identifica la ley/código específico (ej: Código General del Proceso, Ley 1564 de 2012)
-- **Artículo Específico**: Menciona el número exacto del artículo (ej: Artículo 82)
-- **Requisitos Detallados**: Lista TODOS los requisitos específicos encontrados
-- **Análisis**: Explica el alcance y aplicación de cada requisito
-- **Conclusión**: Resumen claro de los requisitos
+- **Marco Normativo**: Identifica la ley/código específico relevante para la consulta
+- **Artículo Específico**: Menciona el número exacto del artículo relevante
+- **Contenido Detallado**: Explica el contenido específico relacionado con la consulta
+- **Análisis**: Explica el alcance y aplicación específica del tema consultado
+- **Conclusión**: Resumen claro sobre el tema específico consultado
 
-EJEMPLO CORRECTO para "requisitos de la demanda":
-"**Marco Normativo**: Según el Código General del Proceso (Ley 1564 de 2012), específicamente el **Artículo 82**, la demanda debe reunir los siguientes requisitos:
+EJEMPLO CORRECTO para "nacimiento de una persona":
+"**Marco Normativo**: Según el Código Civil colombiano, específicamente los artículos 90, 91, 92 y 93, se establece cuándo una persona nace a la vida jurídica:
 
-**Requisitos Específicos del Artículo 82**:
-1. [Requisito específico encontrado en el artículo]
-2. [Requisito específico encontrado en el artículo]
-3. [Requisito específico encontrado en el artículo]
+**Artículos Específicos**:
+- **Artículo 90**: [contenido específico sobre nacimiento]
+- **Artículo 91**: [contenido específico sobre personalidad jurídica]
 ...
 
-**Análisis**: Estos requisitos garantizan que la demanda cumpla con los elementos procesales necesarios..."
+**Análisis**: Estos artículos establecen que..."
 
 EJEMPLO INCORRECTO:
-"Basándome en la información encontrada..." (respuesta vaga)
+"Marco Normativo: Según la información encontrada en fuentes oficiales sobre demandas de inconstitucionalidad..." (NO relacionado con nacimiento)
 
-Responde en español colombiano con terminología jurídica precisa.`
+Responde en español colombiano con terminología jurídica precisa, manteniendo el foco en el tema específico de la consulta.`
 
     try {
       const completion = await openai.chat.completions.create({
@@ -258,14 +286,15 @@ ${sources}`
     } catch (aiError: any) {
       console.error("Error en procesamiento de IA:", aiError)
       
-      // Fallback mejorado: extraer información jurídica específica del contexto
+      // Fallback mejorado: extraer información específica del tema consultado
       let fallbackResponse = ""
       
       if (webSearchContext && !webSearchContext.includes('ERROR') && !webSearchContext.includes('SIN RESULTADOS')) {
-        // Buscar artículos específicos y requisitos en el contexto
+        // Buscar información específica del tema consultado
         const lines = webSearchContext.split('\n')
+        const queryLower = userQuery.toLowerCase()
         
-        // Buscar líneas que contengan información jurídica específica
+        // Buscar líneas que contengan información específica del tema consultado
         const relevantLines = lines.filter(line => {
           const trimmedLine = line.trim()
           return trimmedLine && 
@@ -275,24 +304,48 @@ ${sources}`
                  !trimmedLine.includes('INFORMACIÓN JURÍDICA') &&
                  !trimmedLine.includes('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━') &&
                  !trimmedLine.includes('INSTRUCCIÓN CRÍTICA') &&
-                 (trimmedLine.includes('ARTÍCULO') || 
-                  trimmedLine.includes('artículo') ||
-                  trimmedLine.includes('Artículo') ||
-                  trimmedLine.includes('REQUISITOS') ||
-                  trimmedLine.includes('requisitos') ||
-                  trimmedLine.includes('Código') ||
-                  trimmedLine.includes('Ley') ||
-                  trimmedLine.includes('demanda') ||
-                  trimmedLine.includes('proceso'))
+                 (
+                   // Para consultas sobre nacimiento/personalidad
+                   (queryLower.includes('nacimiento') || queryLower.includes('nace') || queryLower.includes('personalidad')) &&
+                   (trimmedLine.includes('ARTÍCULO 90') || trimmedLine.includes('ARTÍCULO 91') || 
+                    trimmedLine.includes('ARTÍCULO 92') || trimmedLine.includes('ARTÍCULO 93') ||
+                    trimmedLine.includes('nacimiento') || trimmedLine.includes('personalidad') ||
+                    trimmedLine.includes('vida jurídica') || trimmedLine.includes('persona'))
+                 ) ||
+                 (
+                   // Para consultas sobre requisitos de demanda
+                   queryLower.includes('requisitos') && queryLower.includes('demanda') &&
+                   (trimmedLine.includes('ARTÍCULO 82') || trimmedLine.includes('requisitos') ||
+                    trimmedLine.includes('demanda') || trimmedLine.includes('proceso'))
+                 ) ||
+                 (
+                   // Para consultas sobre artículos específicos
+                   (queryLower.includes('art') || queryLower.includes('artículo')) &&
+                   (trimmedLine.includes('ARTÍCULO') || trimmedLine.includes('artículo'))
+                 )
         })
         
         if (relevantLines.length > 0) {
-          // Construir respuesta estructurada
-          fallbackResponse = `**Marco Normativo**: Según la información encontrada en fuentes oficiales:
+          // Construir respuesta estructurada específica del tema
+          if (queryLower.includes('nacimiento') || queryLower.includes('nace') || queryLower.includes('personalidad')) {
+            fallbackResponse = `**Marco Normativo**: Según el Código Civil colombiano, específicamente los artículos 90, 91, 92 y 93, se establece cuándo una persona nace a la vida jurídica:
 
-${relevantLines.slice(0, 15).join('\n')}
+${relevantLines.slice(0, 10).join('\n')}
 
-**Análisis**: Esta información se basa en la legislación colombiana vigente y establece los requisitos específicos para la demanda.`
+**Análisis**: Esta información se basa en la legislación colombiana vigente sobre personalidad jurídica y nacimiento.`
+          } else if (queryLower.includes('requisitos') && queryLower.includes('demanda')) {
+            fallbackResponse = `**Marco Normativo**: Según el Código General del Proceso (Ley 1564 de 2012), específicamente el Artículo 82, la demanda debe reunir los siguientes requisitos:
+
+${relevantLines.slice(0, 10).join('\n')}
+
+**Análisis**: Esta información se basa en la legislación colombiana vigente sobre requisitos procesales.`
+          } else {
+            fallbackResponse = `**Marco Normativo**: Según la información encontrada en fuentes oficiales sobre "${userQuery}":
+
+${relevantLines.slice(0, 10).join('\n')}
+
+**Análisis**: Esta información se basa en la legislación colombiana vigente.`
+          }
         } else {
           fallbackResponse = `No se encontró información específica sobre "${userQuery}" en las fuentes consultadas. 
 
