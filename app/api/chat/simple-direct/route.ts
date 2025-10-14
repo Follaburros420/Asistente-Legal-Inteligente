@@ -4,6 +4,44 @@ import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/we
 export const runtime = "nodejs"
 export const maxDuration = 60
 
+// Función para procesar y resumir contenido de búsqueda
+function processSearchContent(content: string, query: string): string {
+  // Buscar información específica del artículo consultado
+  const articleMatch = content.match(/ARTÍCULO\s+(\d+)[\s\S]*?(?=ARTÍCULO|\n\n|$)/i)
+  
+  if (articleMatch) {
+    const articleText = articleMatch[0]
+    // Limpiar el texto del artículo
+    const cleanText = articleText
+      .replace(/Title:.*?\n/g, '')
+      .replace(/URL Source:.*?\n/g, '')
+      .replace(/Published Time:.*?\n/g, '')
+      .replace(/Markdown Content:/g, '')
+      .replace(/Image \d+:.*?\n/g, '')
+      .replace(/\[!\[.*?\]\(.*?\)\]/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    
+    return cleanText
+  }
+  
+  // Si no se encuentra el artículo específico, buscar información relevante
+  const lines = content.split('\n').filter(line => 
+    line.trim() && 
+    !line.includes('Title:') && 
+    !line.includes('URL Source:') && 
+    !line.includes('Published Time:') &&
+    !line.includes('Markdown Content:') &&
+    !line.includes('Image ') &&
+    !line.includes('[![')
+  )
+  
+  // Tomar las primeras líneas relevantes
+  const relevantLines = lines.slice(0, 10).join('\n')
+  
+  return relevantLines || `Información jurídica disponible sobre "${query}".`
+}
+
 export async function POST(request: Request) {
   try {
     const json = await request.json()
@@ -52,15 +90,19 @@ export async function POST(request: Request) {
 
 Basándome en mi base de datos jurídica, puedo proporcionarte orientación general sobre el tema consultado.`
     } else {
+      // Procesar y resumir la información encontrada
+      const processedContent = processSearchContent(webSearchContext, userQuery)
+      
       // Extraer información relevante de los resultados
       const results = searchResults.results.slice(0, 3) // Primeros 3 resultados
-      const sources = results.map((result: any, index: number) => 
-        `${index + 1}. [${result.title}](${result.url})`
-      ).join('\n')
+      const sources = results.map((result: any, index: number) => {
+        const preview = result.snippet ? result.snippet.substring(0, 100) + '...' : 'Información jurídica disponible'
+        return `${index + 1}. [${result.title}](${result.url})\n   *${preview}*`
+      }).join('\n\n')
 
       responseText = `Basándome en mi base de datos jurídica, puedo ayudarte con información sobre "${userQuery}".
 
-${webSearchContext}
+${processedContent}
 
 ---
 
