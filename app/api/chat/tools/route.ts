@@ -88,14 +88,28 @@ export async function POST(request: Request) {
           continue // Saltar esta herramienta si el schema es inválido
         }
 
-        const convertedSchema = await openapiToFunctions(toolSchema
-        )
+        const convertedSchema = await openapiToFunctions(toolSchema)
+        
+        // Validar que convertedSchema sea válido
+        if (!convertedSchema || typeof convertedSchema !== 'object') {
+          console.error(`❌ Invalid converted schema for tool ${selectedTool.name}`)
+          continue
+        }
+        
         const tools = convertedSchema.functions || []
         allTools = allTools.concat(tools)
 
+        // Validar que routes exista y sea un array
+        if (!convertedSchema.routes || !Array.isArray(convertedSchema.routes)) {
+          console.error(`❌ Invalid routes for tool ${selectedTool.name}`)
+          continue
+        }
+
         const routeMap = convertedSchema.routes.reduce(
           (map: Record<string, string>, route) => {
-            map[route.path.replace(/{(\w+)}/g, ":$1")] = route.operationId
+            if (route && route.path && route.operationId) {
+              map[route.path.replace(/{(\w+)}/g, ":$1")] = route.operationId
+            }
             return map
           },
           {}
@@ -103,13 +117,15 @@ export async function POST(request: Request) {
 
         allRouteMaps = { ...allRouteMaps, ...routeMap }
 
+        // Validar que info exista antes de acceder a sus propiedades
+        const info = convertedSchema.info || {}
         schemaDetails.push({
-          title: convertedSchema.info.title,
-          description: convertedSchema.info.description,
-          url: convertedSchema.info.server,
+          title: info.title || selectedTool.name,
+          description: info.description || '',
+          url: info.server || '',
           headers: selectedTool.custom_headers,
           routeMap,
-          requestInBody: convertedSchema.routes[0].requestInBody
+          requestInBody: convertedSchema.routes[0]?.requestInBody || false
         })
       } catch (error: any) {
         console.error("Error converting schema", error)
