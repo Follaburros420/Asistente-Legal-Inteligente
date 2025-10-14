@@ -47,11 +47,21 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
     const cseCx = process.env.GOOGLE_CSE_CX || '6464df08faf4548b9'
     
     // Construir query con enfoque legal colombiano específico y fuentes nacionales prioritarias
-    const legalQuery = query.toLowerCase().includes('colombia') || 
-                       query.toLowerCase().includes('colombiano') ||
-                       query.includes('site:')
-      ? query
-      : `${query} Colombia derecho legal legislación site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co OR site:corteconstitucional.gov.co OR site:consejodeestado.gov.co OR site:cortesuprema.gov.co OR site:suin-juriscol.gov.co OR site:imprenta.gov.co`
+    let legalQuery = query
+    
+    // Detectar consultas de artículos constitucionales específicos
+    const isConstitutionalArticle = query.toLowerCase().includes('art') && 
+                                   (query.toLowerCase().includes('constitucion') || query.toLowerCase().includes('constitución'))
+    
+    if (isConstitutionalArticle) {
+      // Para artículos constitucionales, buscar específicamente en sitios de la Constitución
+      legalQuery = `${query} "Constitución Política de Colombia 1991" site:secretariasenado.gov.co OR site:corteconstitucional.gov.co OR site:funcionpublica.gov.co`
+    } else if (!query.toLowerCase().includes('colombia') && 
+               !query.toLowerCase().includes('colombiano') && 
+               !query.includes('site:')) {
+      // Para otras consultas, usar la búsqueda general con sitios oficiales
+      legalQuery = `${query} Colombia derecho legal legislación site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co OR site:corteconstitucional.gov.co OR site:consejodeestado.gov.co OR site:cortesuprema.gov.co OR site:suin-juriscol.gov.co OR site:imprenta.gov.co`
+    }
     
     console.log(`📡 Google CSE: Consultando con query: "${legalQuery}"`)
     
@@ -254,10 +264,10 @@ export async function extractUrlContent(url: string): Promise<string> {
 
     const content = await response.text()
     
-    // Limpiar y limitar el contenido
+    // Limpiar y limitar el contenido, pero mantener más caracteres para artículos específicos
     const cleanContent = content
       .trim()
-      .slice(0, 3000) // Limitar a ~3000 caracteres
+      .slice(0, 5000) // Aumentar a 5000 caracteres para mejor contexto
     
     console.log(`✅ Jina AI: Contenido extraído: ${cleanContent.length} caracteres`)
     

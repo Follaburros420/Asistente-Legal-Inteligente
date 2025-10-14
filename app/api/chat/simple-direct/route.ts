@@ -79,6 +79,25 @@ ${relevantContent.substring(0, 1000)}...
 **Conclusión**: La acción de tutela es el mecanismo constitucional por excelencia para la protección inmediata de los derechos fundamentales en Colombia, garantizando su efectividad a través de un procedimiento ágil y eficaz.`
   }
   
+  // Manejar consultas de artículos constitucionales específicos
+  if (queryLower.includes('art') && (queryLower.includes('constitucion') || queryLower.includes('constitución'))) {
+    // Extraer número de artículo
+    const articleMatch = queryLower.match(/art\s*(\d+)/)
+    const articleNumber = articleMatch ? articleMatch[1] : 'específico'
+    
+    return `**Marco Normativo**: Según la Constitución Política de Colombia de 1991, específicamente el Artículo ${articleNumber}:
+
+${relevantContent.substring(0, 1500)}...
+
+**Artículo Específico**: El Artículo ${articleNumber} de la Constitución Política de Colombia establece disposiciones fundamentales que forman parte del ordenamiento jurídico colombiano.
+
+**Contenido Detallado**: ${relevantContent.substring(0, 800)}...
+
+**Análisis Jurídico**: Este artículo constitucional tiene carácter vinculante y debe ser interpretado conforme a los principios y valores constitucionales, así como a la jurisprudencia de la Corte Constitucional.
+
+**Conclusión**: El Artículo ${articleNumber} de la Constitución Política de Colombia forma parte del bloque de constitucionalidad y establece derechos, deberes o principios fundamentales del ordenamiento jurídico colombiano.`
+  }
+  
   // Respuesta general para otros temas
   return `**Marco Normativo**: Según la información encontrada en fuentes oficiales colombianas sobre "${userQuery}":
 
