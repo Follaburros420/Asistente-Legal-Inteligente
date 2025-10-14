@@ -51,6 +51,49 @@ function extractArticleInfo(query: string): { articleNumber: string | null, code
   return { articleNumber, codeType }
 }
 
+// Función para normalizar consultas como en N8n
+function normalizeQuery(userQuery: string): string {
+  const query = userQuery.toLowerCase().trim()
+  
+  // Detectar tipo de consulta y crear query específica
+  if (query.includes('requisitos') && query.includes('demanda')) {
+    return `${userQuery} Colombia código general del proceso artículos demanda site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co`
+  }
+  
+  if (query.includes('requisitos') && (query.includes('contrato') || query.includes('contratos'))) {
+    return `${userQuery} Colombia código civil contratos site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+  }
+  
+  if (query.includes('requisitos') && (query.includes('matrimonio') || query.includes('casamiento'))) {
+    return `${userQuery} Colombia código civil matrimonio site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+  }
+  
+  if (query.includes('requisitos') && query.includes('tutela')) {
+    return `${userQuery} Colombia acción tutela artículo 86 constitución site:corteconstitucional.gov.co OR site:gov.co`
+  }
+  
+  if (query.includes('requisitos') && query.includes('inconstitucionalidad')) {
+    return `${userQuery} Colombia acción inconstitucionalidad artículo 241 constitución site:corteconstitucional.gov.co OR site:gov.co`
+  }
+  
+  // Consultas sobre artículos específicos
+  if (query.includes('art') || query.includes('artículo')) {
+    const { articleNumber, codeType } = extractArticleInfo(userQuery)
+    if (articleNumber && codeType) {
+      if (codeType === 'cgp') {
+        return `${userQuery} código general del proceso colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co`
+      } else if (codeType === 'constitucion') {
+        return `${userQuery} constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+      } else if (codeType === 'civil') {
+        return `${userQuery} código civil colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
+      }
+    }
+  }
+  
+  // Consulta general - agregar contexto legal colombiano
+  return `${userQuery} Colombia derecho legal legislación site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co OR site:corteconstitucional.gov.co`
+}
+
 export async function POST(request: Request) {
   try {
     const json = await request.json()
@@ -70,31 +113,15 @@ export async function POST(request: Request) {
     let webSearchContext = ''
     let searchResults: any = null
 
-    // SIEMPRE hacer búsqueda web - eliminar base de datos local
-    const { articleNumber, codeType } = extractArticleInfo(userQuery)
-    
+    // SIEMPRE hacer búsqueda web usando normalización inteligente como N8n
     try {
-      console.log(`📡 BÚSQUEDA WEB OBLIGATORIA - SIEMPRE USAR GOOGLE CSE`)
+      console.log(`📡 BÚSQUEDA WEB OBLIGATORIA - NORMALIZACIÓN INTELIGENTE`)
       console.log(`   Query original: "${userQuery}"`)
-      console.log(`   Tipo detectado: ${codeType}`)
       
-      // Crear query mejorada basada en el tipo de código detectado
-      let enhancedQuery = userQuery
+      // Usar normalización inteligente como en N8n
+      const enhancedQuery = normalizeQuery(userQuery)
       
-      if (codeType === 'cgp') {
-        enhancedQuery = `${userQuery} código general del proceso colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co`
-      } else if (codeType === 'constitucion') {
-        enhancedQuery = `${userQuery} constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
-      } else if (codeType === 'civil') {
-        enhancedQuery = `${userQuery} código civil colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
-      } else if (codeType === 'penal') {
-        enhancedQuery = `${userQuery} código penal colombia site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
-      } else {
-        // Query general mejorada
-        enhancedQuery = `${userQuery} derecho colombiano legislación site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co OR site:ramajudicial.gov.co`
-      }
-      
-      console.log(`   Query mejorada: "${enhancedQuery}"`)
+      console.log(`   Query normalizada: "${enhancedQuery}"`)
       
       searchResults = await searchWebEnriched(enhancedQuery)
 
@@ -154,31 +181,40 @@ export async function POST(request: Request) {
       return `${index + 1}. [${cleanTitle}](${result.url})`
     }).join('\n')
 
-    // Crear prompt mejorado para la IA con contenido específico del artículo
-    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet y proporcionar una respuesta ESPECÍFICA sobre el artículo exacto que solicita el usuario.
+    // Crear prompt inteligente como en N8n para manejar consultas complejas
+    const systemPrompt = `Eres un Agente de Investigación Legal Colombiano. Tu meta es responder con precisión y trazabilidad jurídica. Analiza la información encontrada en internet y proporciona una respuesta completa y específica.
 
 INFORMACIÓN ENCONTRADA EN INTERNET:
 ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
   'No se encontró información específica en internet para esta consulta.' : 
   webSearchContext}
 
-CONSULTA ESPECÍFICA DEL USUARIO: "${userQuery}"
+CONSULTA DEL USUARIO: "${userQuery}"
 
 INSTRUCCIONES CRÍTICAS:
-1. DEBES responder ÚNICAMENTE sobre el artículo específico solicitado: "${userQuery}"
-2. Si la consulta es sobre "art 10 constitucion", DEBES explicar SOLO el artículo 10 de la Constitución
-3. NO incluyas otros artículos (1, 2, 3, 4, etc.) si no se solicitaron específicamente
-4. Analiza TODO el contenido encontrado arriba para encontrar el artículo específico
-5. Si encuentras el artículo específico, explica su contenido completo, alcance y aplicación
-6. Si NO encuentras el artículo específico en la información, di claramente que no se encontró información sobre ese artículo específico
-7. Usa terminología jurídica precisa
+1. Analiza TODO el contenido encontrado arriba para responder la consulta específica
+2. Si la consulta es sobre "requisitos de la demanda", explica TODOS los requisitos necesarios para interponer una demanda
+3. Si la consulta es sobre un artículo específico, explica ESE artículo específico
+4. Proporciona información CONCRETA y ESPECÍFICA sobre lo que se pregunta
+5. Usa terminología jurídica precisa
+6. Si encuentras información relevante, explica su contenido completo, alcance y aplicación
+7. Si NO encuentras información suficiente, indícalo claramente y sugiere una nueva búsqueda más específica
 8. NO uses frases genéricas como "puedo ayudarte con información sobre..."
 
-EJEMPLO CORRECTO para "art 10 constitucion":
-"El artículo 10 de la Constitución Política de Colombia establece que [contenido específico del artículo 10]. Este artículo regula [alcance específico] y se aplica en [casos específicos]."
+FORMATO DE RESPUESTA:
+- Para consultas puntuales: respuesta breve (2-5 líneas) con información específica
+- Para consultas complejas: 
+  * Planteamiento del problema jurídico
+  * Marco normativo aplicable (con identificadores completos)
+  * Análisis (requisitos, procedimientos, alcance)
+  * Conclusión clara
+  * Fuentes consultadas
+
+EJEMPLO CORRECTO para "requisitos de la demanda":
+"Los requisitos para interponer una demanda en Colombia incluyen: 1) Identificación completa del demandante y demandado, 2) Descripción clara y precisa de los hechos, 3) Fundamentos de derecho aplicables, 4) Pretensiones específicas, 5) Documentos probatorios, 6) Pago de tasas judiciales correspondientes. Según el Código General del Proceso..."
 
 EJEMPLO INCORRECTO:
-"Incluyendo artículos 1, 2, 3, 4..." (NO incluir artículos no solicitados)
+"No se pudo identificar un artículo específico en la consulta..."
 
 Responde en español colombiano con terminología jurídica precisa.`
 
@@ -216,44 +252,34 @@ ${sources}`
     } catch (aiError: any) {
       console.error("Error en procesamiento de IA:", aiError)
       
-      // Fallback mejorado: intentar extraer información específica del artículo solicitado
+      // Fallback inteligente: intentar extraer información relevante del contexto web
       let fallbackResponse = ""
       
       if (webSearchContext && !webSearchContext.includes('ERROR') && !webSearchContext.includes('SIN RESULTADOS')) {
-        // Buscar específicamente el artículo solicitado en el contexto
-        const { articleNumber } = extractArticleInfo(userQuery)
+        // Buscar información relevante en el contexto
+        const lines = webSearchContext.split('\n').filter(line => {
+          const trimmedLine = line.trim()
+          return trimmedLine && 
+                 !trimmedLine.includes('Title:') && 
+                 !trimmedLine.includes('URL Source:') &&
+                 !trimmedLine.includes('Published Time:') &&
+                 !trimmedLine.includes('INFORMACIÓN ESPECÍFICA') &&
+                 !trimmedLine.includes('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━') &&
+                 trimmedLine.length > 20 // Filtrar líneas muy cortas
+        })
         
-        if (articleNumber) {
-          // Buscar líneas que contengan el artículo específico
-          const lines = webSearchContext.split('\n').filter(line => {
-            const trimmedLine = line.trim()
-            return trimmedLine && 
-                   !trimmedLine.includes('Title:') && 
-                   !trimmedLine.includes('URL Source:') &&
-                   !trimmedLine.includes('Published Time:') &&
-                   (trimmedLine.includes(`ARTÍCULO ${articleNumber}`) || 
-                    trimmedLine.includes(`artículo ${articleNumber}`) ||
-                    trimmedLine.includes(`Artículo ${articleNumber}`) ||
-                    trimmedLine.includes(`art ${articleNumber}`) ||
-                    trimmedLine.includes(`Art. ${articleNumber}`))
-          })
-          
-          if (lines.length > 0) {
-            const relevantInfo = lines.slice(0, 3).join('\n')
-            fallbackResponse = `Basándome en la información encontrada en fuentes oficiales sobre "${userQuery}":
+        if (lines.length > 0) {
+          // Tomar las líneas más relevantes (primeras 8-10 líneas con contenido sustancial)
+          const relevantInfo = lines.slice(0, 10).join('\n')
+          fallbackResponse = `Basándome en la información encontrada en fuentes oficiales sobre "${userQuery}":
 
 ${relevantInfo}
 
 Esta información se basa en la legislación colombiana vigente.`
-          } else {
-            fallbackResponse = `No se encontró información específica sobre el artículo ${articleNumber} en las fuentes consultadas. 
-
-La información disponible no contiene detalles específicos sobre el artículo solicitado.`
-          }
         } else {
-          fallbackResponse = `No se pudo identificar un artículo específico en la consulta "${userQuery}". 
+          fallbackResponse = `No se encontró información específica sobre "${userQuery}" en las fuentes consultadas. 
 
-Por favor, especifica el artículo que deseas consultar (ej: "art 10 constitucion").`
+La información disponible no contiene detalles específicos sobre la consulta realizada.`
         }
       } else {
         fallbackResponse = `No se pudo encontrar información específica sobre "${userQuery}" en las fuentes oficiales consultadas.
