@@ -104,35 +104,8 @@ export async function POST(request: Request) {
         console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
         console.log(`   📝 Caracteres de contexto: ${webSearchContext.length}`)
         
-        // Usar Firecrawl para extraer contenido detallado de los mejores resultados
-        console.log(`🔥 FIRECRAWL: Extrayendo contenido detallado de sitios oficiales...`)
-        
-        const officialResults = searchResults.results.filter((result: any) => 
-          result.url.includes('.gov.co') || 
-          result.url.includes('secretariasenado.gov.co') ||
-          result.url.includes('funcionpublica.gov.co') ||
-          result.url.includes('ramajudicial.gov.co') ||
-          result.url.includes('minjusticia.gov.co')
-        ).slice(0, 3) // Top 3 sitios oficiales
-        
-        let detailedContent = ''
-        for (const result of officialResults) {
-          try {
-            console.log(`🔥 Firecrawl: Extrayendo ${result.url}`)
-            const firecrawlResult = await extractWithFirecrawl(result.url)
-            if (firecrawlResult.success && firecrawlResult.content) {
-              detailedContent += `\n\n--- CONTENIDO DETALLADO DE ${result.url} ---\n${firecrawlResult.content}\n`
-              console.log(`✅ Firecrawl: Extraídos ${firecrawlResult.content.length} caracteres`)
-            }
-          } catch (error) {
-            console.log(`⚠️ Firecrawl falló para ${result.url}:`, error)
-          }
-        }
-        
-        if (detailedContent) {
-          webSearchContext += `\n\n--- CONTENIDO DETALLADO EXTRAÍDO CON FIRECRAWL ---\n${detailedContent}`
-          console.log(`🔥 FIRECRAWL: Total contenido detallado: ${detailedContent.length} caracteres`)
-        }
+        // SIMPLIFICADO: No usar Firecrawl para evitar errores 402 y timeouts
+        console.log(`📚 Usando solo resultados de Google CSE (sin Firecrawl para evitar errores)`)
         
         console.log(`\n${"🔥".repeat(60)}\n`)
       } else {
@@ -181,8 +154,8 @@ export async function POST(request: Request) {
       return `${index + 1}. [${cleanTitle}](${result.url})`
     }).join('\n')
 
-    // Crear prompt mejorado para la IA con contenido detallado de Firecrawl
-    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet (incluyendo contenido detallado extraído con Firecrawl) y proporcionar una respuesta ESPECÍFICA y DETALLADA sobre la consulta exacta del usuario.
+    // Crear prompt mejorado para la IA con contenido específico del artículo
+    const systemPrompt = `Eres un asistente legal especializado en derecho colombiano. Tu tarea es analizar la información encontrada en internet y proporcionar una respuesta ESPECÍFICA sobre el artículo exacto que solicita el usuario.
 
 INFORMACIÓN ENCONTRADA EN INTERNET:
 ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
@@ -192,22 +165,20 @@ ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADO
 CONSULTA ESPECÍFICA DEL USUARIO: "${userQuery}"
 
 INSTRUCCIONES CRÍTICAS:
-1. DEBES responder específicamente sobre "${userQuery}" - NO respuestas genéricas
-2. Si la consulta es sobre un artículo específico (ej: "art 90 codigo civil"), DEBES explicar ese artículo específico
-3. Analiza TODO el contenido encontrado arriba, incluyendo el contenido detallado extraído con Firecrawl
-4. NO uses frases genéricas como "puedo ayudarte con información sobre..."
-5. Proporciona información CONCRETA y ESPECÍFICA sobre lo que se pregunta
-6. Si encuentras el artículo específico, explica su contenido completo, alcance y aplicación
+1. DEBES responder ÚNICAMENTE sobre el artículo específico solicitado: "${userQuery}"
+2. Si la consulta es sobre "art 10 constitucion", DEBES explicar SOLO el artículo 10 de la Constitución
+3. NO incluyas otros artículos (1, 2, 3, 4, etc.) si no se solicitaron específicamente
+4. Analiza TODO el contenido encontrado arriba para encontrar el artículo específico
+5. Si encuentras el artículo específico, explica su contenido completo, alcance y aplicación
+6. Si NO encuentras el artículo específico en la información, di claramente que no se encontró información sobre ese artículo específico
 7. Usa terminología jurídica precisa
-8. Si la información no es suficiente para responder específicamente, indícalo claramente
-9. PRIORIZA el contenido detallado extraído con Firecrawl sobre los snippets de búsqueda
+8. NO uses frases genéricas como "puedo ayudarte con información sobre..."
 
-EJEMPLO DE RESPUESTA CORRECTA:
-Si preguntan "art 90 codigo civil", responde:
-"El artículo 90 del Código Civil establece que [explicación específica del artículo]. Este artículo regula [alcance específico] y se aplica en [casos específicos]. Según la información oficial encontrada, [detalles adicionales del contenido extraído con Firecrawl]."
+EJEMPLO CORRECTO para "art 10 constitucion":
+"El artículo 10 de la Constitución Política de Colombia establece que [contenido específico del artículo 10]. Este artículo regula [alcance específico] y se aplica en [casos específicos]."
 
-EJEMPLO DE RESPUESTA INCORRECTA:
-"Como asistente legal especializado en derecho colombiano, puedo ayudarte con información sobre..."
+EJEMPLO INCORRECTO:
+"Incluyendo artículos 1, 2, 3, 4..." (NO incluir artículos no solicitados)
 
 Responde en español colombiano con terminología jurídica precisa.`
 
@@ -245,34 +216,44 @@ ${sources}`
     } catch (aiError: any) {
       console.error("Error en procesamiento de IA:", aiError)
       
-      // Fallback mejorado: intentar extraer información específica del contexto web
+      // Fallback mejorado: intentar extraer información específica del artículo solicitado
       let fallbackResponse = ""
       
       if (webSearchContext && !webSearchContext.includes('ERROR') && !webSearchContext.includes('SIN RESULTADOS')) {
-        // Intentar extraer información específica del contexto
-        const lines = webSearchContext.split('\n').filter(line => {
-          const trimmedLine = line.trim()
-          return trimmedLine && 
-                 !trimmedLine.includes('Title:') && 
-                 !trimmedLine.includes('URL Source:') &&
-                 !trimmedLine.includes('Published Time:') &&
-                 (trimmedLine.includes('ARTÍCULO') || 
-                  trimmedLine.includes('artículo') ||
-                  trimmedLine.includes('Artículo') ||
-                  trimmedLine.includes(userQuery.toLowerCase()))
-        })
+        // Buscar específicamente el artículo solicitado en el contexto
+        const { articleNumber } = extractArticleInfo(userQuery)
         
-        if (lines.length > 0) {
-          const relevantInfo = lines.slice(0, 5).join('\n')
-          fallbackResponse = `Basándome en la información encontrada en fuentes oficiales sobre "${userQuery}":
+        if (articleNumber) {
+          // Buscar líneas que contengan el artículo específico
+          const lines = webSearchContext.split('\n').filter(line => {
+            const trimmedLine = line.trim()
+            return trimmedLine && 
+                   !trimmedLine.includes('Title:') && 
+                   !trimmedLine.includes('URL Source:') &&
+                   !trimmedLine.includes('Published Time:') &&
+                   (trimmedLine.includes(`ARTÍCULO ${articleNumber}`) || 
+                    trimmedLine.includes(`artículo ${articleNumber}`) ||
+                    trimmedLine.includes(`Artículo ${articleNumber}`) ||
+                    trimmedLine.includes(`art ${articleNumber}`) ||
+                    trimmedLine.includes(`Art. ${articleNumber}`))
+          })
+          
+          if (lines.length > 0) {
+            const relevantInfo = lines.slice(0, 3).join('\n')
+            fallbackResponse = `Basándome en la información encontrada en fuentes oficiales sobre "${userQuery}":
 
 ${relevantInfo}
 
 Esta información se basa en la legislación colombiana vigente.`
-        } else {
-          fallbackResponse = `No se encontró información específica sobre "${userQuery}" en las fuentes consultadas. 
+          } else {
+            fallbackResponse = `No se encontró información específica sobre el artículo ${articleNumber} en las fuentes consultadas. 
 
-La información disponible no contiene detalles específicos sobre la consulta realizada.`
+La información disponible no contiene detalles específicos sobre el artículo solicitado.`
+          }
+        } else {
+          fallbackResponse = `No se pudo identificar un artículo específico en la consulta "${userQuery}". 
+
+Por favor, especifica el artículo que deseas consultar (ej: "art 10 constitucion").`
         }
       } else {
         fallbackResponse = `No se pudo encontrar información específica sobre "${userQuery}" en las fuentes oficiales consultadas.
