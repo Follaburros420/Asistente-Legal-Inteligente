@@ -37,13 +37,63 @@ const CONSTITUTIONAL_ARTICLES = {
   "5": {
     title: "Primacía de los derechos inalienables",
     text: "ARTÍCULO 5. El Estado reconoce, sin discriminación alguna, la primacía de los derechos inalienables de la persona y ampara a la familia como institución básica de la sociedad."
+  },
+  "11": {
+    title: "Derecho a la vida",
+    text: "ARTÍCULO 11. El derecho a la vida es inviolable. No habrá pena de muerte."
+  },
+  "12": {
+    title: "Prohibición de la desaparición forzada",
+    text: "ARTÍCULO 12. Nadie será sometido a desaparición forzada, a torturas ni a tratos o penas crueles, inhumanos o degradantes."
+  },
+  "13": {
+    title: "Derecho a la igualdad",
+    text: "ARTÍCULO 13. Todas las personas nacen libres e iguales ante la ley, recibirán la misma protección y trato de las autoridades y gozarán de los mismos derechos, libertades y oportunidades sin ninguna discriminación por razones de sexo, raza, origen nacional o familiar, lengua, religión, opinión política o filosófica."
+  },
+  "14": {
+    title: "Derecho al reconocimiento de la personalidad jurídica",
+    text: "ARTÍCULO 14. Toda persona tiene derecho al reconocimiento de su personalidad jurídica."
+  },
+  "16": {
+    title: "Libertad de conciencia",
+    text: "ARTÍCULO 16. Todas las personas tienen derecho al libre desarrollo de su personalidad sin más limitaciones que las que imponen los derechos de los demás y el orden jurídico."
+  },
+  "17": {
+    title: "Prohibición de la esclavitud",
+    text: "ARTÍCULO 17. Se prohíben la esclavitud, la servidumbre y la trata de seres humanos en todas sus formas."
+  },
+  "18": {
+    title: "Libertad de conciencia",
+    text: "ARTÍCULO 18. Se garantiza la libertad de conciencia. Nadie será molestado por razón de sus convicciones o creencias ni compelido a revelarlas ni obligado a actuar contra su conciencia."
+  },
+  "19": {
+    title: "Libertad de cultos",
+    text: "ARTÍCULO 19. Se garantiza la libertad de cultos. Toda persona tiene derecho a profesar libremente su religión y a difundirla en forma individual o colectiva."
+  },
+  "20": {
+    title: "Libertad de expresión",
+    text: "ARTÍCULO 20. Se garantiza a toda persona la libertad de expresar y difundir su pensamiento y opiniones, la de informar y recibir información veraz e imparcial, y la de fundar medios masivos de comunicación."
   }
 }
 
 // Función para extraer número de artículo de la consulta
 function extractArticleNumber(query: string): string | null {
-  const match = query.match(/art(?:ículo)?\s*(\d+)/i)
-  return match ? match[1] : null
+  // Buscar patrones como "art 11", "artículo 11", "art11", etc.
+  const patterns = [
+    /art(?:ículo)?\s*(\d+)/i,
+    /art\.?\s*(\d+)/i,
+    /articulo\s*(\d+)/i,
+    /art\s*(\d+)/i
+  ]
+  
+  for (const pattern of patterns) {
+    const match = query.match(pattern)
+    if (match) {
+      return match[1]
+    }
+  }
+  
+  return null
 }
 
 // Función para procesar y resumir contenido de búsqueda
@@ -141,16 +191,28 @@ export async function POST(request: Request) {
     let webSearchContext = ''
     let searchResults: any = null
 
-    try {
+    // Verificar si tenemos el artículo en nuestra base de datos
+    const articleNumber = extractArticleNumber(userQuery)
+    const hasArticleInDB = articleNumber && CONSTITUTIONAL_ARTICLES[articleNumber as keyof typeof CONSTITUTIONAL_ARTICLES]
+    
+    if (hasArticleInDB) {
+      console.log(`✅ Artículo ${articleNumber} encontrado en base de datos local`)
+      webSearchContext = `Artículo ${articleNumber} disponible en base de datos`
+      searchResults = { success: true, results: [] }
+    } else {
       console.log(`📡 FORZANDO búsqueda en Google CSE...`)
       // Mejorar la query para ser más específica en fuentes gubernamentales colombianas
-      const enhancedQuery = userQuery.includes('art') && userQuery.includes('15') 
-        ? 'artículo 15 constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co'
+      const enhancedQuery = userQuery.includes('art') 
+        ? `${userQuery} constitución política colombia 1991 site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
         : `${userQuery} derecho colombiano constitución site:gov.co OR site:secretariasenado.gov.co OR site:funcionpublica.gov.co`
       
       searchResults = await searchWebEnriched(enhancedQuery)
+    }
 
-      if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
+      if (hasArticleInDB) {
+        console.log(`\n✅ ARTÍCULO ${articleNumber} - DISPONIBLE EN BASE DE DATOS`)
+        console.log(`\n${"🔥".repeat(60)}\n`)
+      } else if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
         webSearchContext = formatSearchResultsForContext(searchResults)
         console.log(`\n✅ BÚSQUEDA FORZADA - COMPLETADA CON ÉXITO:`)
         console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
