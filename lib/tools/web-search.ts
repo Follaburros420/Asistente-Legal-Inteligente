@@ -46,12 +46,12 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
     const cseApiKey = process.env.GOOGLE_CSE_API_KEY || 'AIzaSyD5y97kpgw32Q5C6ujGKB6JafkD4Cv49TA'
     const cseCx = process.env.GOOGLE_CSE_CX || '6464df08faf4548b9'
     
-    // Construir query con enfoque legal colombiano si no lo tiene
+    // Construir query con enfoque legal colombiano específico
     const legalQuery = query.toLowerCase().includes('colombia') || 
                        query.toLowerCase().includes('colombiano') ||
                        query.includes('site:')
       ? query
-      : `${query} Colombia`
+      : `${query} Colombia derecho legal legislación`
     
     console.log(`📡 Google CSE: Consultando con query: "${legalQuery}"`)
     
@@ -307,12 +307,17 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
     return `No se encontraron resultados para: "${searchResponse.query}"`
   }
 
-  let context = `Información jurídica encontrada:\n\n`
+  let context = `INFORMACIÓN ESPECÍFICA ENCONTRADA EN INTERNET:\n\n`
   
   searchResponse.results.forEach((result, index) => {
-    context += `**${result.title}**\n`
-    context += `${result.snippet}\n\n`
+    context += `**${index + 1}. ${result.title}**\n`
+    context += `URL: ${result.url}\n`
+    context += `Contenido: ${result.snippet}\n\n`
   })
+
+  context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+  context += `INSTRUCCIÓN: Usa ÚNICAMENTE esta información específica para responder.\n`
+  context += `NO uses información general si hay información específica aquí.\n\n`
 
   return context
 }

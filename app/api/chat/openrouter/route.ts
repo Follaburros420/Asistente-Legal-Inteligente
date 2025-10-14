@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     console.log(`🔍 BÚSQUEDA WEB OBLIGATORIA - FORZADA`)
     console.log(`   Query: "${userQuery.substring(0, 50)}..."`)
     console.log(`   Usuario: ${profile?.email || 'usuario-anonimo'}`)
+    console.log(`   Modelo: ${chatSettings.model}`)
     console.log(`${"🔥".repeat(60)}\n`)
     
     // FORZAR BÚSQUEDA - NO HAY EXCEPCIONES
@@ -66,7 +67,8 @@ export async function POST(request: Request) {
       console.log(`📊 Resultado de búsqueda:`, {
         success: searchResults?.success,
         resultsCount: searchResults?.results?.length || 0,
-        hasResults: !!(searchResults?.results && searchResults.results.length > 0)
+        hasResults: !!(searchResults?.results && searchResults.results.length > 0),
+        query: searchResults?.query
       })
       
       if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
@@ -76,6 +78,7 @@ export async function POST(request: Request) {
         console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
         console.log(`   🔗 URLs únicas: ${searchResults.sources?.length || 'N/A'}`)
         console.log(`   📝 Caracteres de contexto: ${webSearchContext.length}`)
+        console.log(`   🔍 Query utilizada: "${searchResults.query}"`)
         console.log(`\n📚 Fuentes encontradas:`)
         searchResults.results.slice(0, 5).forEach((result: any, i: number) => {
           console.log(`   ${i + 1}. ${result.title}`)
@@ -120,15 +123,18 @@ INSTRUCCIONES:
 2. **NO menciones** que realizaste búsquedas web
 3. **NO incluyas** bibliografía web (no hay URLs válidas)
 4. **Responde** como si toda la información fuera de tu conocimiento directo` : 
-  `✅ INFORMACIÓN DISPONIBLE:
+  `✅ INFORMACIÓN ENCONTRADA EN INTERNET:
 
 ${webSearchContext}
 
-INSTRUCCIONES:
-1. **USA** la información disponible arriba para responder
-2. **NO menciones** que realizaste búsquedas web
-3. **Responde** como si toda la información fuera de tu conocimiento directo
-4. **AL FINAL** de tu respuesta, después de "---", incluye:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**INSTRUCCIONES CRÍTICAS**:
+1. **OBLIGATORIO**: Usa ÚNICAMENTE la información de arriba para responder
+2. **PROHIBIDO**: NO uses información de tu entrenamiento si hay información específica arriba
+3. **PROHIBIDO**: NO menciones que realizaste búsquedas web
+4. **OBLIGATORIO**: Responde como si toda la información fuera de tu conocimiento directo
+5. **OBLIGATORIO**: AL FINAL de tu respuesta, después de "---", incluye:
 
    ## 📚 Fuentes Consultadas
    
@@ -136,7 +142,8 @@ INSTRUCCIONES:
    2. [Título](URL exacta copiada de arriba)
    ...
 
-5. **IMPORTANTE**: Usa SOLO las URLs que aparecen arriba. NO inventes URLs.`}
+6. **CRÍTICO**: Usa SOLO las URLs que aparecen arriba. NO inventes URLs.
+7. **CRÍTICO**: Si la información arriba es específica sobre el tema, úsala completamente antes que cualquier conocimiento general.`}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
