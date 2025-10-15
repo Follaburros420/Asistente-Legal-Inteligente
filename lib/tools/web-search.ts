@@ -55,7 +55,17 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
     
     if (isConstitutionalArticle) {
       // Para artículos constitucionales, buscar específicamente en sitios de la Constitución
-      legalQuery = `${query} "Constitución Política de Colombia 1991" site:secretariasenado.gov.co OR site:corteconstitucional.gov.co OR site:funcionpublica.gov.co`
+      // Extraer número de artículo para búsqueda más específica
+      const articleMatch = query.toLowerCase().match(/art\s*(\d+)/)
+      const articleNumber = articleMatch ? articleMatch[1] : ''
+      
+      if (articleNumber) {
+        // Búsqueda específica para el artículo con número exacto
+        legalQuery = `"artículo ${articleNumber}" "Constitución Política de Colombia 1991" site:secretariasenado.gov.co OR site:corteconstitucional.gov.co OR site:funcionpublica.gov.co OR site:imprenta.gov.co`
+      } else {
+        // Búsqueda general constitucional
+        legalQuery = `${query} "Constitución Política de Colombia 1991" site:secretariasenado.gov.co OR site:corteconstitucional.gov.co OR site:funcionpublica.gov.co`
+      }
     } else if (!query.toLowerCase().includes('colombia') && 
                !query.toLowerCase().includes('colombiano') && 
                !query.includes('site:')) {
@@ -83,6 +93,55 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
     
     if (!cseData.items || cseData.items.length === 0) {
       console.log(`⚠️ Google CSE sin resultados para: "${legalQuery}"`)
+      
+      // Si es una consulta constitucional específica, intentar búsqueda alternativa
+      if (isConstitutionalArticle) {
+        console.log(`🔄 Intentando búsqueda alternativa para artículo constitucional...`)
+        const alternativeQuery = `"Constitución Política de Colombia" texto completo site:secretariasenado.gov.co`
+        const altUrl = `https://www.googleapis.com/customsearch/v1?key=${cseApiKey}&cx=${cseCx}&q=${encodeURIComponent(alternativeQuery)}&num=5`
+        
+        try {
+          const altResponse = await fetch(altUrl, {
+            method: 'GET',
+            signal: AbortSignal.timeout(10000)
+          })
+          
+          if (altResponse.ok) {
+            const altData = await altResponse.json()
+            if (altData.items && altData.items.length > 0) {
+              console.log(`✅ Búsqueda alternativa exitosa: ${altData.items.length} resultados`)
+              // Usar los resultados alternativos
+              const results: SearchResult[] = altData.items.map((item: any) => {
+                const url = item.link || item.formattedUrl || ''
+                const title = item.title || 'Sin título'
+                const snippet = item.snippet || item.htmlSnippet || 'Sin descripción'
+                
+                const isOfficial = url.includes('.gov.co') || 
+                                 url.includes('corteconstitucional.gov.co') ||
+                                 url.includes('secretariasenado.gov.co')
+                
+                return {
+                  title: isOfficial ? `⚖️ ${title}` : title,
+                  url: url,
+                  snippet: snippet,
+                  score: isOfficial ? 3 : 1
+                }
+              })
+              
+              return {
+                success: true,
+                query: alternativeQuery,
+                results,
+                sources: results.map(r => r.url),
+                timestamp: new Date().toISOString()
+              }
+            }
+          }
+        } catch (altError) {
+          console.log(`⚠️ Búsqueda alternativa falló: ${altError}`)
+        }
+      }
+      
       return await searchWebFallback(query, numResults)
     }
 

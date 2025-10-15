@@ -85,7 +85,53 @@ ${relevantContent.substring(0, 1000)}...
     const articleMatch = queryLower.match(/art\s*(\d+)/)
     const articleNumber = articleMatch ? articleMatch[1] : 'específico'
     
-    return `**Marco Normativo**: Según la Constitución Política de Colombia de 1991, específicamente el Artículo ${articleNumber}:
+    // Base de datos de artículos constitucionales conocidos
+    const constitutionalArticles: { [key: string]: string } = {
+      '1': 'Colombia es un Estado social de derecho, organizado en forma de República unitaria, descentralizada, con autonomía de sus entidades territoriales, democrática, participativa y pluralista, fundada en el respeto de la dignidad humana, en el trabajo y la solidaridad de las personas que la integran y en la prevalencia del interés general.',
+      '2': 'Son fines esenciales del Estado: servir a la comunidad, promover la prosperidad general y garantizar la efectividad de los principios, derechos y deberes consagrados en la Constitución; facilitar la participación de todos en las decisiones que los afectan y en la vida económica, política, administrativa y cultural de la Nación; defender la independencia nacional, mantener la integridad territorial y asegurar la convivencia pacífica y la vigencia de un orden justo.',
+      '3': 'La soberanía reside exclusivamente en el pueblo, del cual emana el poder público. El pueblo la ejerce en forma directa o por medio de sus representantes, en los términos que la Constitución establece.',
+      '4': 'La Constitución es norma de normas. En todo caso de incompatibilidad entre la Constitución y la ley u otra norma jurídica, se aplicarán las disposiciones constitucionales.',
+      '5': 'El Estado reconoce, sin discriminación alguna, la primacía de los derechos inalienables de la persona y ampara a la familia como institución básica de la sociedad.',
+      '6': 'Los particulares solo son responsables ante las autoridades por infringir la Constitución y las leyes. Los servidores públicos lo son por la misma causa y por omisión o extralimitación en el ejercicio de sus funciones.',
+      '7': 'El Estado reconoce y protege la diversidad étnica y cultural de la Nación colombiana.',
+      '8': 'Es obligación del Estado y de las personas proteger las riquezas culturales y naturales de la Nación.',
+      '9': 'Las relaciones exteriores del Estado se fundamentan en la soberanía nacional, en el respeto a la autodeterminación de los pueblos y en el reconocimiento de los principios del derecho internacional aceptados por Colombia.',
+      '10': 'El castellano es el idioma oficial de Colombia. Las lenguas y dialectos de los grupos étnicos son también oficiales en sus territorios. La enseñanza que se imparta en las comunidades con tradiciones lingüísticas propias será bilingüe.',
+      '11': 'El derecho a la vida es inviolable. No habrá pena de muerte.',
+      '12': 'Nadie será sometido a desaparición forzada, a torturas ni a tratos o penas crueles, inhumanos o degradantes.',
+      '13': 'Todas las personas nacen libres e iguales ante la ley, recibirán la misma protección y trato de las autoridades y gozarán de los mismos derechos, libertades y oportunidades sin ninguna discriminación por razones de sexo, raza, origen nacional o familiar, lengua, religión, opinión política o filosófica.',
+      '14': 'Toda persona tiene derecho al reconocimiento de su personalidad jurídica.',
+      '15': 'Todas las personas tienen derecho a su intimidad personal y familiar y a su buen nombre, y el Estado debe respetarlos y hacerlos respetar. De igual modo, tienen derecho a conocer, actualizar y rectificar las informaciones que se hayan recogido sobre ellas en bancos de datos y en archivos de entidades públicas y privadas.',
+      '16': 'Todas las personas tienen derecho al libre desarrollo de su personalidad sin más limitaciones que las que imponen los derechos de los demás y el orden jurídico.',
+      '17': 'Se prohíbe la esclavitud, la servidumbre y la trata de seres humanos en todas sus formas.',
+      '18': 'Se garantiza la libertad de conciencia. Nadie será molestado por razón de sus convicciones o creencias ni compelido a revelarlas ni obligado a actuar contra su conciencia.',
+      '19': 'Se garantiza la libertad de cultos. Toda persona tiene derecho a profesar libremente su religión y a difundirla en forma individual o colectiva.',
+      '20': 'Se garantiza a toda persona la libertad de expresar y difundir su pensamiento y opiniones, la de informar y recibir información veraz e imparcial, y la de fundar medios masivos de comunicación.'
+    }
+    
+    // Verificar si tenemos información específica del artículo
+    if (constitutionalArticles[articleNumber]) {
+      return `**Marco Normativo**: Según la Constitución Política de Colombia de 1991, específicamente el Artículo ${articleNumber}:
+
+**Artículo Específico**: El Artículo ${articleNumber} de la Constitución Política de Colombia establece:
+
+"${constitutionalArticles[articleNumber]}"
+
+**Contenido Detallado**: Este artículo constitucional forma parte del Título II de la Constitución (De los Derechos, las Garantías y los Deberes) y establece principios fundamentales del ordenamiento jurídico colombiano.
+
+**Análisis Jurídico**: Este artículo constitucional tiene carácter vinculante y debe ser interpretado conforme a los principios y valores constitucionales, así como a la jurisprudencia de la Corte Constitucional.
+
+**Conclusión**: El Artículo ${articleNumber} de la Constitución Política de Colombia forma parte del bloque de constitucionalidad y establece derechos, deberes o principios fundamentales del ordenamiento jurídico colombiano.
+
+**Información Adicional**: ${relevantContent.substring(0, 500)}...`
+    } else {
+      // Si no tenemos información específica del artículo, usar el contenido encontrado
+      const hasSpecificContent = relevantContent.toLowerCase().includes(`artículo ${articleNumber}`) || 
+                                relevantContent.toLowerCase().includes(`art ${articleNumber}`) ||
+                                relevantContent.length > 500
+      
+      if (hasSpecificContent) {
+        return `**Marco Normativo**: Según la Constitución Política de Colombia de 1991, específicamente el Artículo ${articleNumber}:
 
 ${relevantContent.substring(0, 1500)}...
 
@@ -96,6 +142,20 @@ ${relevantContent.substring(0, 1500)}...
 **Análisis Jurídico**: Este artículo constitucional tiene carácter vinculante y debe ser interpretado conforme a los principios y valores constitucionales, así como a la jurisprudencia de la Corte Constitucional.
 
 **Conclusión**: El Artículo ${articleNumber} de la Constitución Política de Colombia forma parte del bloque de constitucionalidad y establece derechos, deberes o principios fundamentales del ordenamiento jurídico colombiano.`
+      } else {
+        return `**Marco Normativo**: Según la Constitución Política de Colombia de 1991, específicamente el Artículo ${articleNumber}:
+
+**Artículo Específico**: El Artículo ${articleNumber} de la Constitución Política de Colombia establece disposiciones fundamentales que forman parte del ordenamiento jurídico colombiano.
+
+**Contenido Detallado**: Aunque no se encontró el texto específico del Artículo ${articleNumber} en las fuentes consultadas, este artículo forma parte del Título II de la Constitución (De los Derechos, las Garantías y los Deberes) y establece principios fundamentales del ordenamiento jurídico colombiano.
+
+**Análisis Jurídico**: Los artículos constitucionales tienen carácter vinculante y deben ser interpretados conforme a los principios y valores constitucionales, así como a la jurisprudencia de la Corte Constitucional.
+
+**Conclusión**: El Artículo ${articleNumber} de la Constitución Política de Colombia forma parte del bloque de constitucionalidad y establece derechos, deberes o principios fundamentales del ordenamiento jurídico colombiano. Para obtener el texto completo, se recomienda consultar directamente la Constitución en sitios oficiales como la Secretaría del Senado o la Corte Constitucional.
+
+**Información Adicional**: ${relevantContent.substring(0, 500)}...`
+      }
+    }
   }
   
   // Respuesta general para otros temas
