@@ -1,10 +1,12 @@
-import { ChatbotUIContext } from "@/context/context"
-import { createChat } from "@/db/chats"
+import { Button } from "@/components/ui/button"
+import { getCollectionFilesByCollectionId } from "@/db/collection-files"
+import { useAttachFilesToChat } from "@/lib/hooks/use-attach-files-to-chat"
 import { cn } from "@/lib/utils"
 import { Tables } from "@/supabase/types"
 import { ContentType, DataItemType } from "@/types"
-import { useRouter } from "next/navigation"
-import { FC, useContext, useRef, useState } from "react"
+import { IconLoader2, IconSparkles } from "@tabler/icons-react"
+import { FC, useRef, useState } from "react"
+import { toast } from "sonner"
 import { SidebarUpdateItem } from "./sidebar-update-item"
 
 interface SidebarItemProps {
@@ -24,48 +26,72 @@ export const SidebarItem: FC<SidebarItemProps> = ({
   icon,
   isTyping
 }) => {
-  const { selectedWorkspace, setChats, setSelectedAssistant } =
-    useContext(ChatbotUIContext)
-
-  const router = useRouter()
-
+  const attachFilesToChat = useAttachFilesToChat()
   const itemRef = useRef<HTMLDivElement>(null)
 
   const [isHovering, setIsHovering] = useState(false)
+  const [isAttaching, setIsAttaching] = useState(false)
 
-  const actionMap = {
-    chats: async (item: any) => {},
-    presets: async (item: any) => {},
-    prompts: async (item: any) => {},
-    files: async (item: any) => {},
-    collections: async (item: any) => {},
-    assistants: async (assistant: Tables<"assistants">) => {
-      if (!selectedWorkspace) return
+  const canAttachToChat =
+    contentType === "files" || contentType === "collections"
 
-      const createdChat = await createChat({
-        user_id: assistant.user_id,
-        workspace_id: selectedWorkspace.id,
-        assistant_id: assistant.id,
-        context_length: assistant.context_length,
-        include_profile_context: assistant.include_profile_context,
-        include_workspace_instructions:
-          assistant.include_workspace_instructions,
-        model: assistant.model,
-        name: `Chat with ${assistant.name}`,
-        prompt: assistant.prompt,
-        temperature: assistant.temperature,
-        embeddings_provider: assistant.embeddings_provider
+  const attachItemToChat = async () => {
+    if (!canAttachToChat) return
+
+    if (contentType === "files") {
+      attachFilesToChat([item as Tables<"files">], {
+        sourceName: `"${item.name}"`
       })
+      return
+    }
 
-      setChats(prevState => [createdChat, ...prevState])
-      setSelectedAssistant(assistant)
+    if (contentType === "collections") {
+      const collection = item as Tables<"collections">
+      const collectionWithFiles = await getCollectionFilesByCollectionId(
+        collection.id
+      )
 
-      return router.push(`/${selectedWorkspace.id}/chat/${createdChat.id}`)
-    },
-    tools: async (item: any) => {},
-    models: async (item: any) => {}
+      const collectionFiles =
+        (collectionWithFiles.files as Tables<"files">[]) || []
+
+      if (collectionFiles.length === 0) {
+        toast.info("La colección seleccionada no tiene archivos asociados.")
+        return
+      }
+
+      attachFilesToChat(collectionFiles, {
+        sourceName: `"${collectionWithFiles.name}"`
+      })
+    }
   }
 
+  const runAttachment = async () => {
+    try {
+      setIsAttaching(true)
+      await attachItemToChat()
+    } catch (error) {
+      console.error("Error al agregar archivos al chat:", error)
+      toast.error("No se pudieron agregar los archivos al chat.")
+    } finally {
+      setIsAttaching(false)
+    }
+  }
+
+  const handleRowClick = () => {
+    if (!canAttachToChat || isAttaching) return
+    void runAttachment()
+  }
+
+  const handleAttachToChat = async (
+    event: React.MouseEvent<HTMLButtonElement, MouseEvent>
+  ) => {
+    if (!canAttachToChat || isAttaching) return
+
+    event.stopPropagation()
+    event.preventDefault()
+
+    await runAttachment()
+  }
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter") {
       e.stopPropagation()
@@ -94,10 +120,11 @@ export const SidebarItem: FC<SidebarItemProps> = ({
       <div
         ref={itemRef}
         className={cn(
-          "hover:bg-accent flex w-full cursor-pointer items-center rounded p-2 hover:opacity-50 focus:outline-none"
+          "group hover:bg-accent flex w-full cursor-pointer items-center rounded p-2 hover:opacity-50 focus:outline-none"
         )}
         tabIndex={0}
         onKeyDown={handleKeyDown}
+        onClick={handleRowClick}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
@@ -106,6 +133,26 @@ export const SidebarItem: FC<SidebarItemProps> = ({
         <div className="ml-3 flex-1 truncate text-sm font-semibold">
           {item.name}
         </div>
+
+        {canAttachToChat && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-7 w-7 text-muted-foreground transition-opacity hover:text-primary",
+              isHovering ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            )}
+            onClick={handleAttachToChat}
+            disabled={isAttaching}
+            aria-label="Agregar al chat"
+          >
+            {isAttaching ? (
+              <IconLoader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <IconSparkles className="h-4 w-4" />
+            )}
+          </Button>
+        )}
 
         {/* TODO */}
         {/* {isHovering && (

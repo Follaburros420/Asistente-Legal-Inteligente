@@ -9,17 +9,22 @@ import {
 import { ChatbotUIContext } from "@/context/context"
 import { createWorkspace } from "@/db/workspaces"
 import useHotkey from "@/lib/hooks/use-hotkey"
-import { IconBuilding, IconHome, IconPlus } from "@tabler/icons-react"
+import { IconBuilding, IconHome, IconPlus, IconSettings } from "@tabler/icons-react"
 import { ChevronsUpDown } from "lucide-react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { FC, useContext, useEffect, useState } from "react"
+import { FC, useContext, useEffect, useMemo, useState } from "react"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
+import { WorkspaceSettings } from "../workspace/workspace-settings"
 
-interface WorkspaceSwitcherProps {}
+interface WorkspaceSwitcherProps {
+  showSettingsButton?: boolean
+}
 
-export const WorkspaceSwitcher: FC<WorkspaceSwitcherProps> = ({}) => {
+export const WorkspaceSwitcher: FC<WorkspaceSwitcherProps> = ({
+  showSettingsButton = true
+}) => {
   useHotkey(";", () => setOpen(prevState => !prevState))
 
   const {
@@ -89,14 +94,12 @@ export const WorkspaceSwitcher: FC<WorkspaceSwitcherProps> = ({}) => {
     return router.push(`/${workspace.id}/chat`)
   }
 
-  const workspaceImage = workspaceImages.find(
-    image => image.workspaceId === selectedWorkspace?.id
+  const workspaceImage = useMemo(
+    () =>
+      workspaceImages.find(image => image.workspaceId === selectedWorkspace?.id),
+    [workspaceImages, selectedWorkspace?.id]
   )
-  const imageSrc = workspaceImage
-    ? workspaceImage.url
-    : selectedWorkspace?.is_home
-      ? ""
-      : ""
+  const imageSrc = workspaceImage ? workspaceImage.url : ""
 
   const IconComponent = selectedWorkspace?.is_home ? IconHome : IconBuilding
 
@@ -132,14 +135,26 @@ export const WorkspaceSwitcher: FC<WorkspaceSwitcherProps> = ({}) => {
 
       <PopoverContent className="p-2">
         <div className="space-y-2">
-          <Button
-            className="flex w-full items-center space-x-2"
-            size="sm"
-            onClick={handleCreateWorkspace}
-          >
-            <IconPlus />
-            <div className="ml-2">New Workspace</div>
-          </Button>
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              className="flex items-center space-x-2"
+              size="sm"
+              onClick={handleCreateWorkspace}
+            >
+              <IconPlus />
+              <div className="ml-2">Nuevo espacio</div>
+            </Button>
+
+            {showSettingsButton && (
+              <WorkspaceSettings
+                trigger={
+                  <Button variant="outline" size="icon" className="h-9 w-9">
+                    <IconSettings size={18} />
+                  </Button>
+                }
+              />
+            )}
+          </div>
 
           <Input
             placeholder="Search workspaces..."

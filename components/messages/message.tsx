@@ -78,7 +78,11 @@ export const Message: FC<MessageProps> = ({
   const [selectedImage, setSelectedImage] = useState<MessageImage | null>(null)
   
   // Parsear bibliografía del mensaje
-  const { bibliographyItems } = useBibliographyParser(message.content)
+  const { bibliographyItems, contentWithoutBibliography } = useBibliographyParser(message.content)
+  const displayContent =
+    contentWithoutBibliography && contentWithoutBibliography.length > 0
+      ? contentWithoutBibliography
+      : message.content
 
   const [showFileItemPreview, setShowFileItemPreview] = useState(false)
   const [selectedFileItem, setSelectedFileItem] =
@@ -282,7 +286,7 @@ export const Message: FC<MessageProps> = ({
       return <DocumentViewer content={message.content} messageId={message.id} />
     }
     
-    return <MessageMarkdown content={message.content} />
+    return <MessageMarkdown content={displayContent} />
   }
 
   // Si es mensaje del sistema, usar el diseño simple

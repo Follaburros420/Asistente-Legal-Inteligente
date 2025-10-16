@@ -8,7 +8,7 @@ import { updateWorkspace } from "@/db/workspaces"
 import { convertBlobToBase64 } from "@/lib/blob-to-b64"
 import { LLMID } from "@/types"
 import { IconHome, IconSettings } from "@tabler/icons-react"
-import { FC, useContext, useEffect, useRef, useState } from "react"
+import { FC, ReactNode, useContext, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "../ui/button"
 import { ChatSettingsForm } from "../ui/chat-settings-form"
@@ -28,9 +28,11 @@ import { TextareaAutosize } from "../ui/textarea-autosize"
 import { WithTooltip } from "../ui/with-tooltip"
 import { DeleteWorkspace } from "./delete-workspace"
 
-interface WorkspaceSettingsProps {}
+interface WorkspaceSettingsProps {
+  trigger?: ReactNode
+}
 
-export const WorkspaceSettings: FC<WorkspaceSettingsProps> = ({}) => {
+export const WorkspaceSettings: FC<WorkspaceSettingsProps> = ({ trigger }) => {
   const {
     profile,
     selectedWorkspace,
@@ -167,16 +169,19 @@ export const WorkspaceSettings: FC<WorkspaceSettingsProps> = ({}) => {
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
-        <WithTooltip
-          display={<div>Workspace Settings</div>}
-          trigger={
-            <IconSettings
-              className="ml-3 cursor-pointer pr-[5px] hover:opacity-50"
-              size={32}
-              onClick={() => setIsOpen(true)}
-            />
-          }
-        />
+        {trigger ?? (
+          <WithTooltip
+            delayDuration={50}
+            display={<div>Workspace Settings</div>}
+            trigger={
+              <IconSettings
+                className="ml-3 cursor-pointer pr-[5px] hover:opacity-50"
+                size={32}
+                onClick={() => setIsOpen(true)}
+              />
+            }
+          />
+        )}
       </SheetTrigger>
 
       <SheetContent
