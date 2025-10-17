@@ -6,6 +6,7 @@ import { OpenAIStream, StreamingTextResponse } from "ai"
 import OpenAI from "openai"
 import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completions.mjs"
 import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+import { LEGAL_SYSTEM_PROMPT, formatLegalSearchContext } from "@/lib/prompts/legal-agent"
 
 export async function POST(request: Request) {
   const json = await request.json()
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     } catch (error) {
       console.log('⚠️ Usuario no autenticado, usando configuración por defecto')
       profile = {
-        email: 'usuario-anonimo',
+        username: 'usuario-anonimo',
         openrouter_api_key: process.env.OPENROUTER_API_KEY || ''
       }
     }
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     console.log(`\n${"🔥".repeat(60)}`)
     console.log(`🔍 BÚSQUEDA WEB OBLIGATORIA EN TOOLS - FORZADA`)
     console.log(`   Query: "${userQuery.substring(0, 50)}..."`)
-    console.log(`   Usuario: ${profile?.email || 'usuario-anonimo'}`)
+    console.log(`   Usuario: ${profile?.username || 'usuario-anonimo'}`)
     console.log(`${"🔥".repeat(60)}\n`)
     
     try {

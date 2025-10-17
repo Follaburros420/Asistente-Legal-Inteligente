@@ -277,15 +277,11 @@ ${sources}`
 
         console.log(`✅ Respuesta generada exitosamente con Tongyi Deep Research 30B A3B`)
 
-        return NextResponse.json({
-          success: true,
-          message: finalResponse,
-          timestamp: new Date().toISOString(),
-          searchExecuted: true,
-          resultsFound: searchResults?.results?.length || 0,
-          aiProcessed: true,
-          model: "alibaba/tongyi-deepresearch-30b-a3b",
-          note: "Respuesta procesada con Tongyi Deep Research 30B A3B - Chatbot Legal Colombiano"
+        // Devolver solo el texto formateado, no el objeto JSON
+        return new NextResponse(finalResponse, {
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+          },
         })
 
       } catch (aiError: any) {
@@ -321,14 +317,11 @@ ${sources}`
 
       console.log(`✅ Respuesta generada exitosamente con sistema inteligente interno`)
 
-      return NextResponse.json({
-        success: true,
-        message: finalResponse,
-        timestamp: new Date().toISOString(),
-        searchExecuted: true,
-        resultsFound: searchResults.results.length,
-        aiProcessed: true,
-        note: "Respuesta procesada con sistema inteligente interno especializado en derecho colombiano"
+      // Devolver solo el texto formateado, no el objeto JSON
+      return new NextResponse(finalResponse, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+        },
       })
       
     } else {

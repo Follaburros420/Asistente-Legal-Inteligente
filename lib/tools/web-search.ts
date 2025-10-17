@@ -33,6 +33,7 @@ const SEARXNG_INSTANCES = [
 
 import { extractWithFirecrawl, searchWithFirecrawl } from './firecrawl-extractor'
 import { getConstitutionArticle, isConstitutionalArticle } from '../constitucion-sources'
+import { normalizeLegalQuery } from '../prompts/legal-agent'
 const OFFICIAL_DOMAINS = [
   '.gov.co',
   'corteconstitucional.gov.co',
@@ -425,9 +426,19 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
   try {
     console.log(`[web-search] Google CSE busqueda legal: "${query}"`)
 
-    const { finalQuery, articleInfo } = buildLegalQuery(query)
-    if (articleInfo.articleNumber) {
-      console.log(`[web-search] Busqueda optimizada para articulo ${articleInfo.articleNumber}`)
+    // USAR NORMALIZADOR LEGAL ESPECIALIZADO PRIMERO
+    let finalQuery = normalizeLegalQuery(query)
+    
+    // Si el normalizador no detectó patrón específico, usar el método tradicional
+    if (finalQuery === query) {
+      const { finalQuery: traditionalQuery, articleInfo } = buildLegalQuery(query)
+      finalQuery = traditionalQuery
+      
+      if (articleInfo.articleNumber) {
+        console.log(`[web-search] Busqueda optimizada para articulo ${articleInfo.articleNumber}`)
+      }
+    } else {
+      console.log(`[web-search] Query normalizada para búsqueda legal especializada: "${finalQuery}"`)
     }
 
     const cseApiKey = process.env.GOOGLE_CSE_API_KEY || 'AIzaSyD5y97kpgw32Q5C6ujGKB6JafkD4Cv49TA'
@@ -452,6 +463,8 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
     if (!cseData.items || cseData.items.length === 0) {
       console.log(`[web-search] Google CSE sin resultados para: "${finalQuery}"`)
 
+      // Verificar si es artículo constitucional para búsqueda alternativa
+      const articleInfo = detectLegalArticle(query)
       if (articleInfo.isConstitutionalArticle) {
         const alternativeQuery = `"Constitucion Politica de Colombia" texto completo site:secretariasenado.gov.co`
         console.log(`[web-search] Intentando busqueda alternativa: "${alternativeQuery}"`)
@@ -929,7 +942,12 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
   }
 
   // Instrucción para el modelo
-  context += `**INSTRUCCIÓN:** Basado en la información legal anterior, responde de manera clara y específica a la consulta del usuario. Cita el texto legal encontrado y al final de tu respuesta, incluye una sección separada con "## 📚 Fuentes Consultadas" listando las fuentes mencionadas.`
+  context += `**INSTRUCCIÓN IMPORTANTE:** 
+1. Responde de manera clara y específica a la consulta del usuario usando SOLO la información legal proporcionada arriba
+2. NO agregues información adicional que no esté en las fuentes mencionadas
+3. Al final de tu respuesta, incluye UNA SOLA sección con "## 📚 Fuentes Consultadas" listando EXACTAMENTE las fuentes que aparecen en la sección "FUENTES CONSULTADAS" de arriba
+4. NO dupliques las fuentes ni agregues bibliografía adicional
+5. Usa un formato profesional y estructurado`
 
   return context
 }

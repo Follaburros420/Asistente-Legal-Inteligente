@@ -291,6 +291,36 @@ export const processResponse = async (
   let fullText = ""
   let contentToAdd = ""
 
+  // Verificar si es respuesta de texto plano (como la del endpoint simple-direct)
+  const contentType = response.headers.get('content-type') || ''
+  const isPlainText = contentType.includes('text/plain')
+
+  if (isPlainText) {
+    // Si es texto plano, leer toda la respuesta de una vez
+    const text = await response.text()
+    fullText = text
+    
+    // Actualizar el mensaje del asistente
+    setChatMessages(prev =>
+      prev.map(chatMessage => {
+        if (chatMessage.message.id === lastChatMessage.message.id) {
+          const updatedChatMessage: ChatMessage = {
+            message: {
+              ...chatMessage.message,
+              content: fullText
+            },
+            fileItems: chatMessage.fileItems
+          }
+          return updatedChatMessage
+        }
+        return chatMessage
+      })
+    )
+    
+    return fullText
+  }
+
+  // Código original para streaming
   if (response.body) {
     await consumeReadableStream(
       response.body,
