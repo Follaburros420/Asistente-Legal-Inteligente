@@ -27,7 +27,7 @@ export async function extractWithFirecrawl(url: string): Promise<{
 
     const firecrawlApiKey = process.env.FIRECRAWL_API_KEY || 'fc-eb5dbfa5b2384e8eb5fac8218b4c66fa'
     
-    const response = await fetch("https://api.firecrawl.dev/v0/scrape", {
+    const response = await fetch("http://104.155.176.60:3002/v2/scrape", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -35,16 +35,9 @@ export async function extractWithFirecrawl(url: string): Promise<{
       },
       body: JSON.stringify({
         url: url,
-        pageOptions: {
-          onlyMainContent: true,
-          includeHtml: false,
-          includeMarkdown: true,
-          waitForSelector: "body",
-          waitForTimeout: 2000
-        },
-        extractorOptions: {
-          mode: "llm-friendly"
-        }
+        formats: ["markdown"],
+        onlyMainContent: true,
+        waitFor: 2000
       }),
       signal: AbortSignal.timeout(30000) // 30 segundos de timeout
     })
@@ -61,11 +54,11 @@ export async function extractWithFirecrawl(url: string): Promise<{
       return {
         success: false,
         content: '',
-        error: "No se pudo extraer contenido markdown con Firecrawl"
+        error: "No se pudo extraer contenido markdown con Firecrawl v2"
       }
     }
 
-    console.log(`✅ Firecrawl: Extraídos ${markdownContent.length} caracteres de ${url}`)
+    console.log(`✅ Firecrawl v2: Extraídos ${markdownContent.length} caracteres de ${url}`)
 
     return {
       success: true,
@@ -168,5 +161,81 @@ export async function extractVerifiedUrls(urls: string[]): Promise<{
       verified: verification?.verified || false
     }
   })
+}
+
+/**
+ * Buscar en la web usando Firecrawl v2 Search API
+ * Ideal para grounding con contexto fresco
+ */
+export async function searchWithFirecrawl(query: string, numResults: number = 5): Promise<{
+  success: boolean
+  results: Array<{
+    title: string
+    url: string
+    content: string
+    metadata?: any
+  }>
+  error?: string
+}> {
+  try {
+    console.log(`🔍 Firecrawl v2 Search: "${query}"`)
+
+    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY || 'fc-eb5dbfa5b2384e8eb5fac8218b4c66fa'
+    
+    const response = await fetch("http://104.155.176.60:3002/v2/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${firecrawlApiKey}`
+      },
+      body: JSON.stringify({
+        query: query,
+        limit: numResults,
+        scrapeOptions: {
+          formats: ["markdown"],
+          onlyMainContent: true,
+          waitFor: 2000
+        }
+      }),
+      signal: AbortSignal.timeout(30000)
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Firecrawl Search API respondió con ${response.status}: ${errorText}`)
+    }
+
+    const data = await response.json()
+
+    if (!data.success || !data.data) {
+      return {
+        success: false,
+        results: [],
+        error: "No se pudieron obtener resultados de búsqueda"
+      }
+    }
+
+    const results = data.data.map((item: any) => ({
+      title: item.metadata?.title || 'Sin título',
+      url: item.metadata?.url || '',
+      content: item.markdown || '',
+      metadata: item.metadata
+    }))
+
+    console.log(`✅ Firecrawl v2 Search: ${results.length} resultados encontrados`)
+
+    return {
+      success: true,
+      results
+    }
+
+  } catch (error: any) {
+    console.error(`❌ Firecrawl Search error:`, error.message)
+    return {
+      success: false,
+      results: [],
+      error: error.message || 'Unknown error'
+    }
+  }
 }
 

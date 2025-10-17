@@ -30,7 +30,48 @@ const SEARXNG_INSTANCES = [
   'https://searx.fmac.xyz'
 ]
 
-import { extractWithFirecrawl } from './firecrawl-extractor'
+import { extractWithFirecrawl, searchWithFirecrawl } from './firecrawl-extractor'
+
+/**
+ * Buscar usando Firecrawl v2 Search API (recomendado)
+ * Ideal para grounding con contexto fresco
+ */
+export async function searchWebWithFirecrawl(query: string, numResults: number = 5): Promise<WebSearchResponse> {
+  const timestamp = new Date().toISOString()
+  
+  try {
+    console.log(`🔥 Firecrawl v2 Search: "${query}"`)
+    
+    const searchResult = await searchWithFirecrawl(query, numResults)
+    
+    if (!searchResult.success) {
+      console.log(`⚠️ Firecrawl Search falló: ${searchResult.error}`)
+      return await searchWeb(query, numResults) // Fallback a Google CSE
+    }
+
+    // Convertir resultados de Firecrawl a formato estándar
+    const results: SearchResult[] = searchResult.results.map((item, index) => ({
+      title: item.title,
+      url: item.url,
+      snippet: item.content.slice(0, 5000), // Contenido completo extraído
+      score: 2 // Alta calidad por ser extracción completa
+    }))
+
+    console.log(`✅ Firecrawl v2 Search completado: ${results.length} resultados con contenido completo`)
+
+    return {
+      success: true,
+      query,
+      results,
+      sources: results.map(r => r.url),
+      timestamp
+    }
+
+  } catch (error) {
+    console.error('❌ Error en Firecrawl Search:', error)
+    return await searchWeb(query, numResults) // Fallback a Google CSE
+  }
+}
 
 /**
  * Buscar usando Google Custom Search Engine (CSE)

@@ -18,13 +18,20 @@ if (!firecrawlApiKey) {
 console.log('✅ FIRECRAWL_API_KEY encontrada');
 console.log(`   Key: ${firecrawlApiKey.substring(0, 8)}...${firecrawlApiKey.substring(firecrawlApiKey.length - 4)}`);
 
-// Probar la API
-console.log('\n🧪 Probando API de Firecrawl...');
+// Probar la API con un scrape simple
+console.log('\n🧪 Probando API de Firecrawl con scrape...');
 
-fetch('https://api.firecrawl.dev/v1/account', {
+fetch('http://104.155.176.60:3002/v2/scrape', {
+  method: 'POST',
   headers: {
-    'Authorization': `Bearer ${firecrawlApiKey}`
-  }
+    'Authorization': `Bearer ${firecrawlApiKey}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    url: 'https://example.com',
+    formats: ['markdown'],
+    onlyMainContent: true
+  })
 })
   .then(response => {
     if (!response.ok) {
@@ -33,19 +40,17 @@ fetch('https://api.firecrawl.dev/v1/account', {
     return response.json();
   })
   .then(data => {
-    console.log('\n✅ API de Firecrawl funcionando correctamente!');
-    console.log('\n📊 Información de cuenta:');
-    console.log(`   Plan: ${data.plan || 'Unknown'}`);
-    console.log(`   Créditos restantes: ${data.credits || 'Unknown'}`);
+    console.log('\n✅ API de Firecrawl VPS funcionando correctamente!');
+    console.log('\n📊 Información del scrape:');
+    console.log(`   Success: ${data.success}`);
+    console.log(`   URL: ${data.data?.metadata?.url || 'N/A'}`);
+    console.log(`   Título: ${data.data?.metadata?.title || 'N/A'}`);
+    console.log(`   Contenido extraído: ${data.data?.content?.length || 0} caracteres`);
+    console.log(`   Créditos usados: ${data.data?.metadata?.creditsUsed || 'N/A'}`);
     
-    if (data.credits !== undefined) {
-      const searches = Math.floor(data.credits / 5);
-      console.log(`   Búsquedas disponibles: ~${searches}`);
-      
-      if (data.credits < 50) {
-        console.log('\n⚠️  ADVERTENCIA: Créditos bajos!');
-        console.log('   Considera actualizar tu plan en: https://firecrawl.dev/pricing');
-      }
+    if (data.data?.content) {
+      console.log(`\n📄 Muestra del contenido:`);
+      console.log(`   ${data.data.content.substring(0, 100)}...`);
     }
     
     console.log('\n🎉 Todo listo para usar Firecrawl!');
