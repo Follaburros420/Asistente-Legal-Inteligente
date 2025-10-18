@@ -208,7 +208,7 @@ export const AssistantItem: FC<AssistantItemProps> = ({ assistant }) => {
           />
 
           <div className="space-y-1 pt-2">
-            <Label>Archivos y Colecciones</Label>
+            <Label>Archivos y Procesos</Label>
 
             <AssistantRetrievalSelect
               selectedAssistantRetrievalItems={

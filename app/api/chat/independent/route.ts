@@ -2,7 +2,7 @@ import { ChatSettings } from "@/types"
 import { OpenAIStream, StreamingTextResponse } from "ai"
 import OpenAI from "openai"
 import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completions.mjs"
-import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+import { executeConditionalWebSearch, generateSystemMessage } from "@/lib/tools/conditional-web-search"
 
 export async function POST(request: Request) {
   try {
@@ -32,80 +32,33 @@ export async function POST(request: Request) {
       maxRetries: 3
     })
 
-    // 🔥 BÚSQUEDA WEB OBLIGATORIA - SIEMPRE SE EJECUTA
-    let webSearchContext = ''
+    // 🧠 BÚSQUEDA WEB INTELIGENTE - SOLO CUANDO ES NECESARIO
     const lastUserMessage = messages.filter(m => m.role === 'user').pop()
     const userQuery = lastUserMessage?.content || ''
     
-    console.log(`\n${"🔥".repeat(60)}`)
-    console.log(`🔍 CHAT INDEPENDIENTE - BÚSQUEDA WEB FORZADA`)
+    console.log(`\n${"🧠".repeat(60)}`)
+    console.log(`🔍 CHAT INDEPENDIENTE - BÚSQUEDA WEB INTELIGENTE`)
     console.log(`   Query: "${userQuery.substring(0, 50)}..."`)
     console.log(`   Usuario: usuario-anonimo`)
     console.log(`   Modelo: ${chatSettings.model}`)
-    console.log(`${"🔥".repeat(60)}\n`)
+    console.log(`${"🧠".repeat(60)}\n`)
     
-    try {
-      console.log(`📡 FORZANDO búsqueda en Google CSE...`)
-      const searchResults = await searchWebEnriched(userQuery)
-      
-      if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
-        webSearchContext = formatSearchResultsForContext(searchResults)
-        console.log(`\n✅ BÚSQUEDA FORZADA - COMPLETADA CON ÉXITO:`)
-        console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
-        console.log(`   📝 Caracteres de contexto: ${webSearchContext.length}`)
-        console.log(`\n${"🔥".repeat(60)}\n`)
-      } else {
-        console.log(`\n⚠️ BÚSQUEDA FORZADA - SIN RESULTADOS`)
-        webSearchContext = `BÚSQUEDA EJECUTADA PERO SIN RESULTADOS PARA: "${userQuery}"`
-        console.log(`${"🔥".repeat(60)}\n`)
-      }
-    } catch (error) {
-      console.error(`\n❌ ERROR EN BÚSQUEDA FORZADA:`, error)
-      webSearchContext = `ERROR EN BÚSQUEDA WEB PARA: "${userQuery}" - ${error instanceof Error ? error.message : 'Error desconocido'}`
-      console.log(`${"🔥".repeat(60)}\n`)
-    }
+    // Ejecutar búsqueda condicional inteligente
+    const searchResult = await executeConditionalWebSearch(userQuery, {
+      logDetection: true
+    })
+    
+    console.log(`\n${"🧠".repeat(60)}`)
+    console.log(`✅ ANÁLISIS INTELIGENTE COMPLETADO`)
+    console.log(`   🔍 Búsqueda requerida: ${searchResult.shouldSearch ? 'SÍ' : 'NO'}`)
+    console.log(`   🎯 Confianza: ${(searchResult.detectionResult.confidence * 100).toFixed(1)}%`)
+    console.log(`   📋 Razón: ${searchResult.detectionResult.reason}`)
+    console.log(`${"🧠".repeat(60)}\n`)
 
-    // Crear mensaje de sistema robusto
+    // Generar mensaje de sistema apropiado
     const systemMessage = {
       role: "system",
-      content: `Eres un asistente legal especializado en derecho colombiano.
-
-🔥 BÚSQUEDA WEB EJECUTADA OBLIGATORIAMENTE
-
-He ejecutado una búsqueda en internet sobre "${userQuery}" como parte del proceso obligatorio.
-
-${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
-  `⚠️ RESULTADO DE BÚSQUEDA: ${webSearchContext}
-
-Aunque la búsqueda no encontró resultados específicos, DEBES mencionar que se ejecutó una búsqueda web como parte de tu respuesta.
-
-INSTRUCCIONES:
-1. **MENCIONA** que se ejecutó una búsqueda web
-2. **Responde** basándote en tu conocimiento legal
-3. **NO incluyas** bibliografía web (no hay URLs válidas)
-4. **Explica** que la búsqueda no encontró fuentes específicas` : 
-  `✅ RESULTADO DE BÚSQUEDA: Información encontrada
-
-${webSearchContext}
-
-INSTRUCCIONES:
-1. **USA** la información de búsqueda arriba para responder
-2. **MENCIONA** que se ejecutó una búsqueda web
-3. **AL FINAL** de tu respuesta, después de "---", incluye:
-
-   ## 📚 Fuentes Consultadas
-   
-   1. [Título](URL exacta copiada de arriba)
-   2. [Título](URL exacta copiada de arriba)
-   ...
-
-4. **IMPORTANTE**: Usa SOLO las URLs que aparecen arriba. NO inventes URLs.`}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**OBLIGATORIO**: Siempre menciona que se ejecutó una búsqueda web en tu respuesta.
-
-Responde en español colombiano con terminología jurídica precisa.`
+      content: generateSystemMessage(userQuery, searchResult)
     }
 
     // Preparar mensajes
@@ -119,7 +72,7 @@ Responde en español colombiano con terminología jurídica precisa.`
       enhancedMessages[0].content = `${enhancedMessages[0].content}\n\n${systemMessage.content}`
     }
 
-    console.log(`⚖️ Chat Independiente: Configurado con búsqueda automática ${webSearchContext ? `(${webSearchContext.split('\n').length} líneas de contexto)` : '(sin resultados)'}`)
+    console.log(`⚖️ Chat Independiente: Configurado con búsqueda inteligente ${searchResult.shouldSearch ? `(${searchResult.searchResults?.results?.length || 0} resultados)` : '(sin búsqueda requerida)'}`)
 
     // Usar un modelo más estable por defecto
     const modelToUse = chatSettings.model || "openai/gpt-3.5-turbo"

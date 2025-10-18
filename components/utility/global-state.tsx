@@ -213,6 +213,13 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
   const [selectedTools, setSelectedTools] = useState<Tables<"tools">[]>([])
   const [toolInUse, setToolInUse] = useState<string>("none")
 
+  // SUGGESTIONS STORE
+  const [showPlaceholderSuggestions, setShowPlaceholderSuggestions] = useState<boolean>(true)
+
+  // SUGGESTED QUESTIONS STORE
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
+  const [showSuggestedQuestions, setShowSuggestedQuestions] = useState<boolean>(false)
+
   // LOADING STORE
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [loadingMessage, setLoadingMessage] = useState<string>("Iniciando...")
@@ -440,7 +447,17 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
         selectedTools,
         setSelectedTools,
         toolInUse,
-        setToolInUse
+        setToolInUse,
+
+        // SUGGESTIONS STORE
+        showPlaceholderSuggestions,
+        setShowPlaceholderSuggestions,
+
+        // SUGGESTED QUESTIONS STORE
+        suggestedQuestions,
+        setSuggestedQuestions,
+        showSuggestedQuestions,
+        setShowSuggestedQuestions
       }}
     >
       {isLoading ? <LoadingScreen message={loadingMessage} /> : children}

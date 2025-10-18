@@ -136,6 +136,16 @@ interface ChatbotUIContext {
   setSelectedTools: Dispatch<SetStateAction<Tables<"tools">[]>>
   toolInUse: string
   setToolInUse: Dispatch<SetStateAction<string>>
+
+  // SUGGESTIONS STORE
+  showPlaceholderSuggestions: boolean
+  setShowPlaceholderSuggestions: Dispatch<SetStateAction<boolean>>
+
+  // SUGGESTED QUESTIONS STORE
+  suggestedQuestions: string[]
+  setSuggestedQuestions: Dispatch<SetStateAction<string[]>>
+  showSuggestedQuestions: boolean
+  setShowSuggestedQuestions: Dispatch<SetStateAction<boolean>>
 }
 
 export const ChatbotUIContext = createContext<ChatbotUIContext>({
@@ -261,5 +271,15 @@ export const ChatbotUIContext = createContext<ChatbotUIContext>({
   selectedTools: [],
   setSelectedTools: () => {},
   toolInUse: "none",
-  setToolInUse: () => {}
+  setToolInUse: () => {},
+
+  // SUGGESTIONS STORE
+  showPlaceholderSuggestions: true,
+  setShowPlaceholderSuggestions: () => {},
+
+  // SUGGESTED QUESTIONS STORE
+  suggestedQuestions: [],
+  setSuggestedQuestions: () => {},
+  showSuggestedQuestions: false,
+  setShowSuggestedQuestions: () => {}
 })

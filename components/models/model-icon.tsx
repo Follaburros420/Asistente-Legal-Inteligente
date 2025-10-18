@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils"
 import robotLogo from "@/public/robot-logo.svg"
 import { ModelProvider } from "@/types"
-import { IconSparkles } from "@tabler/icons-react"
 import { useTheme } from "next-themes"
 import Image from "next/image"
 import { FC, HTMLAttributes } from "react"
@@ -100,6 +99,6 @@ export const ModelIcon: FC<ModelIconProps> = ({
         />
       )
     default:
-      return <IconSparkles size={width} />
+      return <div className="w-4 h-4 bg-muted rounded" />
   }
 }

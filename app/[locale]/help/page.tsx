@@ -85,7 +85,7 @@ export default function HelpPage() {
                 resumir expedientes, comparar documentos
               </li>
               <li>
-                <strong>Organización:</strong> Crea colecciones temáticas para agrupar documentos relacionados 
+                <strong>Organización:</strong> Crea procesos temáticos para agrupar documentos relacionados 
                 (ej: "Caso Pérez vs. Empresa XYZ")
               </li>
             </ul>
@@ -251,7 +251,7 @@ export default function HelpPage() {
             </p>
             <ul className="text-muted-foreground ml-6 list-disc space-y-2">
               <li>
-                <strong>Colecciones:</strong> Agrupa documentos relacionados con un mismo caso o tema
+                <strong>Procesos:</strong> Agrupa documentos relacionados con un mismo caso o tema
               </li>
               <li>
                 <strong>Herramientas:</strong> Funcionalidades especiales como búsqueda web para información actualizada

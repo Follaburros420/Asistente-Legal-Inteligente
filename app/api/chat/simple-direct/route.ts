@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+import { executeConditionalWebSearch, generateSystemMessage } from "@/lib/tools/conditional-web-search"
 
 // Dominios oficiales y académicos para filtrar fuentes de calidad
 const OFFICIAL_DOMAINS = [
@@ -77,10 +77,11 @@ export const runtime = "nodejs"
 export const maxDuration = 60
 
 // Función para generar respuesta estructurada simulando IA
-async function generateStructuredResponse(userQuery: string, webSearchContext: string): Promise<string> {
+async function generateStructuredResponse(userQuery: string, searchResult: any): Promise<string> {
   // Extraer información clave del contexto
+  const webSearchContext = searchResult.webSearchContext
   const lines = webSearchContext.split('\n')
-  const relevantContent = lines.filter(line => 
+  const relevantContent = lines.filter((line: string) => 
     line.trim() && 
     !line.includes('Title:') && 
     !line.includes('URL Source:') &&
@@ -282,19 +283,16 @@ export async function POST(request: Request) {
     
     console.log(`🔍 Consulta: "${userQuery}"`)
 
-    // Buscar información en internet
-    console.log(`📡 Buscando información en internet para: "${userQuery}"`)
+    // 🧠 BÚSQUEDA WEB INTELIGENTE - SOLO CUANDO ES NECESARIO
+    console.log(`🔍 Consulta: "${userQuery}"`)
+    console.log(`📡 Analizando si requiere búsqueda web...`)
     
-    const searchResults = await searchWebEnriched(userQuery)
-    let webSearchContext = ""
+    // Ejecutar búsqueda condicional inteligente
+    const searchResult = await executeConditionalWebSearch(userQuery, {
+      logDetection: true
+    })
     
-    if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
-      webSearchContext = formatSearchResultsForContext(searchResults)
-      console.log(`✅ Encontrados ${searchResults.results.length} resultados`)
-    } else {
-      console.log(`⚠️ No se encontraron resultados`)
-      webSearchContext = `No se encontró información específica en internet para esta consulta.`
-    }
+    console.log(`✅ Análisis completado: ${searchResult.shouldSearch ? 'Búsqueda requerida' : 'Sin búsqueda necesaria'}`)
 
     // Intentar procesar con IA usando OpenRouter
     const openrouterApiKey = process.env.OPENROUTER_API_KEY
@@ -354,7 +352,7 @@ export async function POST(request: Request) {
         const finalPrompt = `${systemPrompt}
 
 INFORMACIÓN JURÍDICA ENCONTRADA EN INTERNET:
-${webSearchContext}
+${searchResult.webSearchContext}
 
 CONSULTA DEL USUARIO: "${userQuery}"
 
@@ -373,8 +371,8 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
         const aiResponse = completion.choices[0].message.content || "No se pudo generar respuesta"
 
         // Agregar fuentes al final (excluyendo Wikipedia)
-        const sources = searchResults?.results
-          ?.filter(result => {
+        const sources = searchResult?.searchResults?.results
+          ?.filter((result: any) => {
             // Excluir Wikipedia y dominios prohibidos
             const isBanned = result.url.includes('wikipedia.org') || 
                            result.url.includes('wikimedia.org') ||
@@ -385,7 +383,7 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
             }
             return true
           })
-          ?.map((result, index) => {
+          ?.map((result: any, index: number) => {
             const cleanTitle = result.title
               .replace(/\s*Title:\s*/g, '')
               .trim()
@@ -405,7 +403,7 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
           bibliography: sources,
           timestamp: new Date().toISOString(),
           searchExecuted: true,
-          resultsFound: searchResults?.results?.length || 0,
+          resultsFound: searchResult?.searchResults?.results?.length || 0,
           aiProcessed: true
         })
 
@@ -420,13 +418,13 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
     }
 
     // Fallback: respuesta estructurada simulando procesamiento de IA
-    if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
+    if (searchResult && searchResult.searchResults && searchResult.searchResults.success && searchResult.searchResults.results && searchResult.searchResults.results.length > 0) {
       // Crear respuesta estructurada que simule el procesamiento de IA
-      const responseText = await generateStructuredResponse(userQuery, webSearchContext)
+      const responseText = await generateStructuredResponse(userQuery, searchResult)
 
       // Agregar fuentes al final (máximo 3 fuentes de alta calidad, excluyendo Wikipedia)
-      const highQualitySources = searchResults.results
-        .filter(result => {
+      const highQualitySources = searchResult.searchResults.results
+        .filter((result: any) => {
           // Excluir Wikipedia y dominios prohibidos
           const isBanned = result.url.includes('wikipedia.org') || 
                          result.url.includes('wikimedia.org') ||
@@ -442,7 +440,7 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
           return isOfficial || isAcademic || result.snippet.length > 500
         })
         .slice(0, 3) // Máximo 3 fuentes de alta calidad
-        .map((result, index) => {
+        .map((result: any, index: number) => {
           const cleanTitle = result.title
             .replace(/\s*Title:\s*/g, '')
             .trim()
@@ -455,7 +453,7 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
       return NextResponse.json({
         success: true,
         message: responseText,
-        bibliography: highQualitySources.split('\n').map((source, index) => {
+        bibliography: highQualitySources.split('\n').map((source: any, index: number) => {
           const match = source.match(/\[([^\]]+)\]\(([^)]+)\)/)
           if (match) {
             return {
@@ -468,7 +466,7 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
         }).filter(Boolean),
         timestamp: new Date().toISOString(),
         searchExecuted: true,
-        resultsFound: searchResults.results.length,
+        resultsFound: searchResult.searchResults.results.length,
         aiProcessed: false
       })
       

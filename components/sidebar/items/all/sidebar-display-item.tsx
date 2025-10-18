@@ -4,7 +4,7 @@ import { useAttachFilesToChat } from "@/lib/hooks/use-attach-files-to-chat"
 import { cn } from "@/lib/utils"
 import { Tables } from "@/supabase/types"
 import { ContentType, DataItemType } from "@/types"
-import { IconLoader2, IconSparkles } from "@tabler/icons-react"
+import { IconLoader2 } from "@tabler/icons-react"
 import { FC, useRef, useState } from "react"
 import { toast } from "sonner"
 import { SidebarUpdateItem } from "./sidebar-update-item"
@@ -149,7 +149,7 @@ export const SidebarItem: FC<SidebarItemProps> = ({
             {isAttaching ? (
               <IconLoader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <IconSparkles className="h-4 w-4" />
+              <div className="h-4 w-4" />
             )}
           </Button>
         )}

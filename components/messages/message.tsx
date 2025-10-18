@@ -27,6 +27,8 @@ import { DocumentViewer } from "../chat/document-viewer"
 import { MessageBubble } from "../chat/modern/MessageBubble"
 import { BibliographySection } from "../chat/bibliography-section"
 import { useBibliographyParser } from "../chat/use-bibliography-parser"
+import { SuggestedQuestions } from "../chat/suggested-questions"
+import { useSuggestedQuestions } from "@/lib/hooks/use-suggested-questions"
 import { toast } from "sonner"
 
 const ICON_SIZE = 32
@@ -66,10 +68,16 @@ export const Message: FC<MessageProps> = ({
     assistantImages,
     toolInUse,
     files,
-    models
+    models,
+    suggestedQuestions,
+    setSuggestedQuestions,
+    showSuggestedQuestions,
+    setShowSuggestedQuestions,
+    setUserInput
   } = useContext(ChatbotUIContext)
 
   const { handleSendMessage } = useChatHandler()
+  const { generateSuggestedQuestions } = useSuggestedQuestions()
 
   const editInputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -111,6 +119,39 @@ export const Message: FC<MessageProps> = ({
   const [viewSources, setViewSources] = useState(false)
   const [showFileItemPreview, setShowFileItemPreview] = useState(false)
 
+  // Generar preguntas sugeridas cuando el mensaje del asistente esté completo
+  useEffect(() => {
+    if (
+      message.role === "assistant" && 
+      isLast && 
+      !isGenerating && 
+      firstTokenReceived &&
+      message.content.length > 100 // Solo para respuestas sustanciales
+    ) {
+      const generateQuestions = async () => {
+        // Obtener la pregunta del usuario anterior
+        const userMessage = chatMessages.find(
+          (msg, index) => 
+            msg.message.sequence_number === message.sequence_number - 1 && 
+            msg.message.role === "user"
+        )
+        
+        if (userMessage) {
+          const questions = await generateSuggestedQuestions(
+            message.content,
+            userMessage.message.content,
+            chatMessages.map(msg => msg.message.content)
+          )
+          
+          setSuggestedQuestions(questions)
+          setShowSuggestedQuestions(true)
+        }
+      }
+      
+      generateQuestions()
+    }
+  }, [message.role, isLast, isGenerating, firstTokenReceived, message.content, chatMessages, generateSuggestedQuestions, setSuggestedQuestions, setShowSuggestedQuestions])
+
   const handleCopy = () => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(message.content)
@@ -145,6 +186,13 @@ export const Message: FC<MessageProps> = ({
       chatMessages,
       true
     )
+  }
+
+  const handleSuggestedQuestionClick = (question: string) => {
+    setUserInput(question)
+    setShowSuggestedQuestions(false)
+    // El usuario puede enviar la pregunta manualmente o podemos enviarla automáticamente
+    // handleSendMessage(question, chatMessages, false)
   }
 
   const handleStartEdit = () => {
@@ -338,9 +386,9 @@ export const Message: FC<MessageProps> = ({
                 onClick={() => setViewSources(true)}
               >
                 {fileItems.length}
-                {fileItems.length > 1 ? " Sources " : " Source "}
+                {fileItems.length > 1 ? " Fuentes " : " Fuente "}
                 from {Object.keys(fileSummary).length}{" "}
-                {Object.keys(fileSummary).length > 1 ? "Files" : "File"}{" "}
+                {Object.keys(fileSummary).length > 1 ? "Archivos" : "Archivo"}{" "}
                 <IconCaretRightFilled className="ml-1" />
               </div>
             ) : (
@@ -350,9 +398,9 @@ export const Message: FC<MessageProps> = ({
                   onClick={() => setViewSources(false)}
                 >
                   {fileItems.length}
-                  {fileItems.length > 1 ? " Sources " : " Source "}
+                  {fileItems.length > 1 ? " Fuentes " : " Fuente "}
                   from {Object.keys(fileSummary).length}{" "}
-                  {Object.keys(fileSummary).length > 1 ? "Files" : "File"}{" "}
+                  {Object.keys(fileSummary).length > 1 ? "Archivos" : "Archivo"}{" "}
                   <IconCaretDownFilled className="ml-1" />
                 </div>
 
@@ -428,6 +476,15 @@ export const Message: FC<MessageProps> = ({
           </div>
         </div>
       </MessageBubble>
+
+      {/* Preguntas sugeridas para mensajes del asistente */}
+      {message.role === "assistant" && isLast && (
+        <SuggestedQuestions
+          questions={suggestedQuestions}
+          onQuestionClick={handleSuggestedQuestionClick}
+          isVisible={showSuggestedQuestions}
+        />
+      )}
 
       <>
         {showImagePreview && selectedImage && (

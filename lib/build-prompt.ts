@@ -15,7 +15,17 @@ const buildBasePrompt = (
     fullPrompt += `<INJECT ROLE>\nYou are not an AI. You are ${assistant.name}.\n</INJECT ROLE>\n\n`
   }
 
-  fullPrompt += `Today is ${new Date().toLocaleDateString()}.\n\n`
+  fullPrompt += `Hoy es ${new Date().toLocaleDateString('es-ES')}.\n\n`
+
+  // Instrucción específica para memoria de conversación
+  fullPrompt += `IMPORTANTE - MEMORIA DE CONVERSACIÓN:
+- SIEMPRE recuerda el contexto completo de esta conversación
+- Si el usuario hace referencia a mensajes anteriores, responde en ese contexto
+- Mantén coherencia con respuestas previas sobre el mismo tema
+- NO repitas información ya proporcionada, pero puedes ampliarla si es necesario
+- Si el usuario pregunta "al respecto" o "sobre esto", refiérete al tema de la conversación actual
+
+`
 
   if (profileContext) {
     fullPrompt += `User Info:\n${profileContext}\n\n`

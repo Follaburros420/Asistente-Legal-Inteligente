@@ -154,20 +154,52 @@ export function useBibliographyParser(content: string): BibliographyParseResult 
         normalizedLine.includes("bibliografia") ||
         normalizedLine.includes("fuentes consultadas") ||
         normalizedLine.includes("fuentes utilizadas") ||
-        normalizedLine.includes("fuentes citadas")
+        normalizedLine.includes("fuentes citadas") ||
+        normalizedLine.includes("bibliography")
 
-      if (isHeading && containsKeyword) {
+      // Buscar tanto headings como líneas que contengan bibliografía
+      if ((isHeading && containsKeyword) || (!isHeading && containsKeyword && normalizedLine.includes("📚"))) {
         headingIndex = i
         break
       }
     }
 
-    if (headingIndex === -1) {
+  // Si no encontramos un heading específico, buscar líneas con URLs o enlaces markdown
+  if (headingIndex === -1) {
+    // Solo buscar bibliografía al final si hay URLs reales (más estricto)
+    const urlLines = []
+    let hasRealUrls = false
+    
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim()
+      
+      if (!line) {
+        continue
+      }
+      
+      // Solo considerar líneas con URLs reales o enlaces markdown
+      if (MARKDOWN_LINK_REGEX.test(line) || URL_REGEX.test(line)) {
+        urlLines.unshift(i)
+        hasRealUrls = true
+      } else if (urlLines.length > 0 && line.length > 10 && !line.includes('http') && !line.includes('www')) {
+        // Solo agregar si ya tenemos URLs y parece ser una fuente
+        urlLines.unshift(i)
+      } else if (urlLines.length > 0) {
+        // Si ya encontramos URLs y esta línea no es una URL, parar
+        break
+      }
+    }
+    
+    // Solo usar detección automática si hay URLs reales y al menos 2 líneas
+    if (hasRealUrls && urlLines.length >= 2) {
+      headingIndex = urlLines[0]
+    } else {
       return {
         bibliographyItems: [],
         contentWithoutBibliography: sanitizeContentSpacing(content)
       }
     }
+  }
 
     let endIndex = lines.length
     for (let j = headingIndex + 1; j < lines.length; j++) {
@@ -207,9 +239,64 @@ export function useBibliographyParser(content: string): BibliographyParseResult 
       .map(sanitizeEntryLine)
       .filter(entry => entry.length > 0)
 
-    const bibliographyItems = normalizedEntries.map((entry, index) =>
-      buildBibliographyItem(entry, index)
-    )
+  const bibliographyItems = normalizedEntries.map((entry, index) =>
+    buildBibliographyItem(entry, index)
+  )
+
+  // Si no encontramos items pero hay líneas con URLs, intentar parsearlas directamente
+  if (bibliographyItems.length === 0 && bibliographyLines.length > 0) {
+    const urlItems = bibliographyLines
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map((line, index) => {
+        const markdownMatch = MARKDOWN_LINK_REGEX.exec(line)
+        if (markdownMatch) {
+          return {
+            id: `item-${index}`,
+            title: markdownMatch[1].trim(),
+            url: markdownMatch[2].trim(),
+            type: 'ley' as const,
+            source: 'Fuente',
+            description: markdownMatch[1].trim()
+          }
+        }
+        
+        const urlMatch = URL_REGEX.exec(line)
+        if (urlMatch) {
+          const title = line.replace(urlMatch[0], '').trim() || `Fuente ${index + 1}`
+          return {
+            id: `item-${index}`,
+            title,
+            url: urlMatch[1].trim(),
+            type: 'ley' as const,
+            source: 'Fuente',
+            description: title
+          }
+        }
+        
+        // Si no tiene URL pero parece ser una fuente
+        if (line.length > 10 && !line.includes('http')) {
+          return {
+            id: `item-${index}`,
+            title: line,
+            url: undefined,
+            type: 'ley' as const,
+            source: 'Fuente',
+            description: line
+          }
+        }
+        
+        return null
+      })
+      .filter(Boolean)
+    
+    if (urlItems.length > 0) {
+      return {
+        bibliographyItems: urlItems,
+        contentWithoutBibliography: sanitizeContentSpacing(content)
+      }
+    }
+  }
 
     return {
       bibliographyItems,

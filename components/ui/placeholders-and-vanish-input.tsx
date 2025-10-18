@@ -17,7 +17,8 @@ export function PlaceholdersAndVanishInput({
   className,
   textareaRef,
   leftElement,
-  rightElement
+  rightElement,
+  showSuggestions = true
 }: {
   placeholders: string[]
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
@@ -32,6 +33,7 @@ export function PlaceholdersAndVanishInput({
   textareaRef?: React.RefObject<HTMLTextAreaElement>
   leftElement?: ReactNode
   rightElement?: ReactNode
+  showSuggestions?: boolean
 }) {
   const [currentPlaceholder, setCurrentPlaceholder] = useState(0)
   const [animating, setAnimating] = useState(false)
@@ -39,6 +41,8 @@ export function PlaceholdersAndVanishInput({
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const startAnimation = () => {
+    if (!showSuggestions) return
+    
     intervalRef.current = setInterval(() => {
       setAnimating(true)
       setTimeout(() => {
@@ -58,7 +62,14 @@ export function PlaceholdersAndVanishInput({
   }, [placeholders.length])
 
   useEffect(() => {
-    startAnimation()
+    if (showSuggestions) {
+      startAnimation()
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
     document.addEventListener("visibilitychange", handleVisibilityChange)
 
     return () => {
@@ -67,7 +78,7 @@ export function PlaceholdersAndVanishInput({
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [handleVisibilityChange])
+  }, [handleVisibilityChange, showSuggestions])
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const newDataRef = useRef<any[]>([])
@@ -279,36 +290,38 @@ export function PlaceholdersAndVanishInput({
       )}
 
       {/* Placeholders animados */}
-      <div className="pointer-events-none absolute inset-0 flex items-center px-14 text-sm leading-none text-gray-400 sm:text-base">
-        {!inputValue && (
-          <AnimatePresence mode="wait">
-            {!animating && (
-              <motion.p
-                initial={{
-                  y: 5,
-                  opacity: 0
-                }}
-                key={`current-placeholder-${currentPlaceholder}`}
-                animate={{
-                  y: 0,
-                  opacity: 1
-                }}
-                exit={{
-                  y: -15,
-                  opacity: 0
-                }}
-                transition={{
-                  duration: 0.3,
-                  ease: "linear"
-                }}
-                className="w-[calc(100%-2rem)] truncate text-left"
-              >
-                {placeholders[currentPlaceholder]}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        )}
-      </div>
+      {showSuggestions && (
+        <div className="pointer-events-none absolute inset-0 flex items-center px-14 text-sm leading-none text-gray-400 sm:text-base">
+          {!inputValue && (
+            <AnimatePresence mode="wait">
+              {!animating && (
+                <motion.p
+                  initial={{
+                    y: 5,
+                    opacity: 0
+                  }}
+                  key={`current-placeholder-${currentPlaceholder}`}
+                  animate={{
+                    y: 0,
+                    opacity: 1
+                  }}
+                  exit={{
+                    y: -15,
+                    opacity: 0
+                  }}
+                  transition={{
+                    duration: 0.3,
+                    ease: "linear"
+                  }}
+                  className="w-[calc(100%-2rem)] truncate text-left"
+                >
+                  {placeholders[currentPlaceholder]}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          )}
+        </div>
+      )}
     </div>
   )
 }

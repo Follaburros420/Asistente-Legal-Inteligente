@@ -107,10 +107,11 @@ export function MessageBubble({
             'px-4 py-3 rounded-2xl relative',
             'border transition-shadow duration-150',
             isUser && [
-              'bg-primary text-primary-foreground',
+              'bg-background text-foreground',
               'rounded-tr-md',
               'shadow-md shadow-primary/20',
               'hover:shadow-lg hover:shadow-primary/30',
+              'border border-border',
             ],
             isAI && [
               'bg-muted text-foreground',
@@ -124,7 +125,7 @@ export function MessageBubble({
           {children || (
             <div className={cn(
               'text-sm leading-relaxed whitespace-pre-wrap',
-              isUser && 'text-black',
+              isUser && 'text-foreground font-medium',
             )}>
               {content}
             </div>
@@ -174,13 +175,6 @@ export function MessageBubble({
             <time dateTime={timestamp.toISOString()}>
               {formatDistanceToNow(timestamp, { addSuffix: true, locale: es })}
             </time>
-          )}
-          {isUser && status && (
-            <StatusIcon className={cn(
-              'w-3.5 h-3.5',
-              status === 'error' && 'text-destructive',
-              status === 'delivered' && 'text-primary',
-            )} />
           )}
         </div>
       </div>

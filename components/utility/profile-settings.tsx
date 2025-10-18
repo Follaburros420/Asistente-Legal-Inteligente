@@ -35,6 +35,7 @@ import {
   SheetTrigger
 } from "../ui/sheet"
 import { TextareaAutosize } from "../ui/textarea-autosize"
+import WhatsAppSVG from "@/components/icons/whatsapp-svg"
 import { ThemeSwitcher } from "./theme-switcher"
 
 interface ProfileSettingsProps {
@@ -88,6 +89,14 @@ export const ProfileSettings: FC<ProfileSettingsProps> = ({ trigger }) => {
     await supabase.auth.signOut()
     router.push("/login")
     router.refresh()
+  }
+
+  const handleWhatsAppClick = () => {
+    const phoneNumber = "+57 323 2341127"
+    const message = "Hola, necesito soporte con ALI"
+    const encodedMessage = encodeURIComponent(message)
+    const whatsappUrl = `https://wa.me/${phoneNumber.replace(/[^0-9]/g, '')}?text=${encodedMessage}`
+    window.open(whatsappUrl, '_blank')
   }
 
   const handleSave = async () => {
@@ -235,15 +244,27 @@ export const ProfileSettings: FC<ProfileSettingsProps> = ({ trigger }) => {
               </p>
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-destructive text-destructive hover:bg-destructive/10"
-              onClick={handleSignOut}
-            >
-              <IconLogout className="mr-1" size={16} />
-              Cerrar sesión
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700"
+                onClick={handleWhatsAppClick}
+              >
+                <WhatsAppSVG className="mr-1 w-4 h-4" />
+                Soporte
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-destructive text-destructive hover:bg-destructive/10"
+                onClick={handleSignOut}
+              >
+                <IconLogout className="mr-1" size={16} />
+                Cerrar sesión
+              </Button>
+            </div>
           </div>
 
           <div className="mt-6 space-y-6 rounded-lg border border-border/60 bg-background/60 p-4">

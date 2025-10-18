@@ -8,8 +8,7 @@ import { ContentType } from "@/types"
 import {
   IconChevronDown,
   IconChevronRight,
-  IconLoader2,
-  IconSparkles
+  IconLoader2
 } from "@tabler/icons-react"
 import { FC, useContext, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -94,7 +93,7 @@ export const Folder: FC<FolderProps> = ({
 
       if (folderCollections.length === 0) {
         toast.info(
-          "Esta carpeta no contiene colecciones con archivos disponibles."
+          "Esta carpeta no contiene procesos con archivos disponibles."
         )
         return
       }
@@ -114,7 +113,7 @@ export const Folder: FC<FolderProps> = ({
 
       if (aggregatedFiles.length === 0) {
         toast.info(
-          "Las colecciones de esta carpeta no tienen archivos disponibles."
+          "Los procesos de esta carpeta no tienen archivos disponibles."
         )
         return
       }
@@ -126,7 +125,7 @@ export const Folder: FC<FolderProps> = ({
     }
 
     toast.info(
-      "Solo las carpetas de archivos o colecciones pueden agregarse al chat."
+      "Solo las carpetas de archivos o procesos pueden agregarse al chat."
     )
   }
 
@@ -216,7 +215,7 @@ export const Folder: FC<FolderProps> = ({
                   {isAttaching ? (
                     <IconLoader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <IconSparkles className="h-4 w-4" />
+                    <div className="h-4 w-4" />
                   )}
                 </Button>
               )}

@@ -66,7 +66,10 @@ export const useChatHandler = () => {
     models,
     isPromptPickerOpen,
     isFilePickerOpen,
-    isToolPickerOpen
+    isToolPickerOpen,
+    setShowPlaceholderSuggestions,
+    setSuggestedQuestions,
+    setShowSuggestedQuestions
   } = useContext(ChatbotUIContext)
 
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
@@ -98,6 +101,13 @@ export const useChatHandler = () => {
 
     setSelectedTools([])
     setToolInUse("none")
+    
+    // Reiniciar sugerencias para el nuevo chat
+    setShowPlaceholderSuggestions(true)
+    
+    // Reiniciar preguntas sugeridas
+    setSuggestedQuestions([])
+    setShowSuggestedQuestions(false)
 
     if (selectedAssistant) {
       setChatSettings({

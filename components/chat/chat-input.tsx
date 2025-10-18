@@ -54,7 +54,9 @@ export const ChatInput: FC<ChatInputProps> = ({}) => {
     chatSettings,
     selectedTools,
     setSelectedTools,
-    assistantImages
+    assistantImages,
+    showPlaceholderSuggestions,
+    setShowPlaceholderSuggestions
   } = useContext(ChatbotUIContext)
 
   const {
@@ -86,6 +88,12 @@ export const ChatInput: FC<ChatInputProps> = ({}) => {
     if (!isTyping && event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       setIsPromptPickerOpen(false)
+      
+      // Desactivar sugerencias después de enviar la primera pregunta
+      if (showPlaceholderSuggestions) {
+        setShowPlaceholderSuggestions(false)
+      }
+      
       handleSendMessage(userInput, chatMessages, false)
     }
 
@@ -233,6 +241,7 @@ export const ChatInput: FC<ChatInputProps> = ({}) => {
           onCompositionStart={() => setIsTyping(true)}
           onCompositionEnd={() => setIsTyping(false)}
           disabled={isGenerating}
+          showSuggestions={showPlaceholderSuggestions}
           leftElement={
             <IconCirclePlus
               className="cursor-pointer p-1 hover:opacity-50"
@@ -269,6 +278,12 @@ export const ChatInput: FC<ChatInputProps> = ({}) => {
                     return
                   }
                   console.log('Enviando mensaje...')
+                  
+                  // Desactivar sugerencias después de enviar la primera pregunta
+                  if (showPlaceholderSuggestions) {
+                    setShowPlaceholderSuggestions(false)
+                  }
+                  
                   handleSendMessage(userInput, chatMessages, false)
                 }}
                 size={30}

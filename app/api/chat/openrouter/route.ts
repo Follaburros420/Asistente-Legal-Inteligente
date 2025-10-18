@@ -4,7 +4,7 @@ import { OpenAIStream, StreamingTextResponse } from "ai"
 import { ServerRuntime } from "next"
 import OpenAI from "openai"
 import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completions.mjs"
-import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+import { executeConditionalWebSearch, generateSystemMessage } from "@/lib/tools/conditional-web-search"
 
 export const runtime: ServerRuntime = "nodejs"
 export const maxDuration = 60 // 60 segundos para Sequential Thinking
@@ -41,115 +41,37 @@ export async function POST(request: Request) {
       baseURL: "https://openrouter.ai/api/v1"
     })
 
-    // 🌐 Preparar mensajes con instrucciones de idioma y búsqueda web
+    // 🧠 BÚSQUEDA WEB INTELIGENTE - SOLO CUANDO ES NECESARIO
     const enhancedMessages = [...messages]
-    
-    // Obtener el último mensaje del usuario
     const lastUserMessage = enhancedMessages.filter(m => m.role === 'user').pop()
     const userQuery = lastUserMessage?.content || ''
-
-    // 🔥 BÚSQUEDA WEB OBLIGATORIA - SIEMPRE SE EJECUTA
-    let webSearchContext = ''
-    let searchResults: any = null
     
-    console.log(`\n${"🔥".repeat(60)}`)
-    console.log(`🔍 BÚSQUEDA WEB OBLIGATORIA - FORZADA`)
+    console.log(`\n${"🧠".repeat(60)}`)
+    console.log(`🔍 OPENROUTER - BÚSQUEDA WEB INTELIGENTE`)
     console.log(`   Query: "${userQuery.substring(0, 50)}..."`)
     console.log(`   Usuario: ${profile?.email || 'usuario-anonimo'}`)
     console.log(`   Modelo: ${chatSettings.model}`)
-    console.log(`${"🔥".repeat(60)}\n`)
+    console.log(`${"🧠".repeat(60)}\n`)
     
-    // FORZAR BÚSQUEDA - NO HAY EXCEPCIONES
-    console.log(`📡 FORZANDO búsqueda en Google CSE...`)
-    
-    try {
-      searchResults = await searchWebEnriched(userQuery)
-      console.log(`📊 Resultado de búsqueda:`, {
-        success: searchResults?.success,
-        resultsCount: searchResults?.results?.length || 0,
-        hasResults: !!(searchResults?.results && searchResults.results.length > 0),
-        query: searchResults?.query
-      })
-      
-      if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
-        webSearchContext = formatSearchResultsForContext(searchResults)
-        
-        console.log(`\n✅ BÚSQUEDA FORZADA - COMPLETADA CON ÉXITO:`)
-        console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
-        console.log(`   🔗 URLs únicas: ${searchResults.sources?.length || 'N/A'}`)
-        console.log(`   📝 Caracteres de contexto: ${webSearchContext.length}`)
-        console.log(`   🔍 Query utilizada: "${searchResults.query}"`)
-        console.log(`\n📚 Fuentes encontradas:`)
-        searchResults.results.slice(0, 5).forEach((result: any, i: number) => {
-          console.log(`   ${i + 1}. ${result.title}`)
-          console.log(`      ${result.url}`)
-        })
-        console.log(`\n${"🔥".repeat(60)}\n`)
-      } else {
-        console.log(`\n⚠️ BÚSQUEDA FORZADA - SIN RESULTADOS`)
-        console.log(`   searchResults:`, searchResults)
-        console.log(`${"🔥".repeat(60)}\n`)
-        
-        // FORZAR CONTEXTO VACÍO PERO CONFIRMAR BÚSQUEDA
-        webSearchContext = `BÚSQUEDA EJECUTADA PERO SIN RESULTADOS PARA: "${userQuery}"`
-      }
-    } catch (error) {
-      console.error(`\n❌ ERROR EN BÚSQUEDA FORZADA:`, error)
-      console.log(`   Error details:`, error)
-      console.log(`${"🔥".repeat(60)}\n`)
-      
-      // FORZAR CONTEXTO DE ERROR PERO CONFIRMAR INTENTO
-      webSearchContext = `ERROR EN BÚSQUEDA WEB PARA: "${userQuery}" - ${error instanceof Error ? error.message : 'Error desconocido'}`
-    }
-    
-    // CONFIRMAR QUE SIEMPRE HAY CONTEXTO (aunque sea de error)
-    console.log(`🎯 CONTEXTO FINAL DE BÚSQUEDA:`, {
-      hasContext: !!webSearchContext,
-      contextLength: webSearchContext.length,
-      contextPreview: webSearchContext.substring(0, 100) + '...'
+    // Ejecutar búsqueda condicional inteligente
+    const searchResult = await executeConditionalWebSearch(userQuery, {
+      logDetection: true
     })
     
-    // Prompt OBLIGATORIO con búsqueda SIEMPRE
+    console.log(`\n${"🧠".repeat(60)}`)
+    console.log(`✅ ANÁLISIS INTELIGENTE COMPLETADO`)
+    console.log(`   🔍 Búsqueda requerida: ${searchResult.shouldSearch ? 'SÍ' : 'NO'}`)
+    console.log(`   🎯 Confianza: ${(searchResult.detectionResult.confidence * 100).toFixed(1)}%`)
+    console.log(`   📋 Razón: ${searchResult.detectionResult.reason}`)
+    if (searchResult.searchResults) {
+      console.log(`   📊 Resultados: ${searchResult.searchResults.results?.length || 0}`)
+    }
+    console.log(`${"🧠".repeat(60)}\n`)
+    
+    // Generar mensaje de sistema apropiado
     const systemMessage = {
       role: "system",
-      content: `Eres un asistente legal especializado en derecho colombiano.
-
-**INFORMACIÓN DISPONIBLE**:
-${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
-  `⚠️ INFORMACIÓN LIMITADA: ${webSearchContext}
-
-INSTRUCCIONES:
-1. **Responde** basándote en tu conocimiento legal
-2. **NO menciones** que realizaste búsquedas web
-3. **NO incluyas** bibliografía web (no hay URLs válidas)
-4. **Responde** como si toda la información fuera de tu conocimiento directo` : 
-  `✅ INFORMACIÓN ENCONTRADA EN INTERNET:
-
-${webSearchContext}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**INSTRUCCIONES CRÍTICAS**:
-1. **OBLIGATORIO**: Usa ÚNICAMENTE la información de arriba para responder
-2. **PROHIBIDO**: NO uses información de tu entrenamiento si hay información específica arriba
-3. **PROHIBIDO**: NO menciones que realizaste búsquedas web
-4. **OBLIGATORIO**: Responde como si toda la información fuera de tu conocimiento directo
-5. **OBLIGATORIO**: AL FINAL de tu respuesta, después de "---", incluye:
-
-   ## 📚 Fuentes Consultadas
-   
-   1. [Título](URL exacta copiada de arriba)
-   2. [Título](URL exacta copiada de arriba)
-   ...
-
-6. **CRÍTICO**: Usa SOLO las URLs que aparecen arriba. NO inventes URLs.
-7. **CRÍTICO**: Si la información arriba es específica sobre el tema, úsala completamente antes que cualquier conocimiento general.`}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**IMPORTANTE**: NUNCA menciones que realizaste búsquedas en internet. Responde como si toda la información fuera de tu conocimiento directo.
-
-Responde en español colombiano con terminología jurídica precisa.`
+      content: generateSystemMessage(userQuery, searchResult)
     }
 
     // Insertar el mensaje de sistema al inicio si no hay uno

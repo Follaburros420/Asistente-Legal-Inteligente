@@ -78,7 +78,7 @@ export const ModernSidebar: FC<ModernSidebarProps> = ({
   }> = [
     { key: 'chats', label: 'Chats', count: chats.length, icon: MessageSquare },
     { key: 'files', label: 'Archivos', count: files.length, icon: FileText },
-    { key: 'collections', label: 'Colecciones', count: collections.length, icon: FolderOpen },
+    { key: 'collections', label: 'Procesos', count: collections.length, icon: FolderOpen },
     { key: 'tools', label: 'Herramientas', count: tools.length, icon: Wrench }
   ]
 

@@ -14,7 +14,7 @@ const getSearchPlaceholder = (contentType: ContentType): string => {
     presets: "preajustes",
     prompts: "instrucciones",
     files: "archivos",
-    collections: "colecciones",
+    collections: "procesos",
     assistants: "agentes",
     tools: "herramientas",
     models: "modelos"

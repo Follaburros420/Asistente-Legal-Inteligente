@@ -3,7 +3,6 @@ import { GlobalState } from "@/components/utility/global-state"
 import { Providers } from "@/components/utility/providers"
 import { ThemeFix } from "@/components/utility/theme-fix"
 import TranslationsProvider from "@/components/utility/translations-provider"
-import WhatsAppButton from "@/components/ui/whatsapp-button"
 import initTranslations from "@/lib/i18n"
 import { Database } from "@/supabase/types"
 import { createServerClient } from "@supabase/ssr"
@@ -124,7 +123,6 @@ export default async function RootLayout({
             <div className="bg-background text-foreground flex h-dvh flex-col items-center overflow-x-auto">
               {session ? <GlobalState>{children}</GlobalState> : children}
             </div>
-            <WhatsAppButton phoneNumber="+57 323 2341127" />
           </TranslationsProvider>
         </Providers>
       </body>

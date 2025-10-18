@@ -44,12 +44,12 @@ export function CollectionSelector({
   const [collectionsWithFiles, setCollectionsWithFiles] = useState<CollectionWithFiles[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Filtrar colecciones basado en búsqueda
+  // Filtrar procesos basado en búsqueda
   const filteredCollections = collectionsWithFiles.filter(collection =>
     collection.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Cargar colecciones con archivos cuando se abre el diálogo
+  // Cargar procesos con archivos cuando se abre el diálogo
   useEffect(() => {
     if (isOpen && collectionsWithFiles.length === 0) {
       loadCollectionsWithFiles()
@@ -72,8 +72,8 @@ export function CollectionSelector({
       )
       setCollectionsWithFiles(collectionsData)
     } catch (error) {
-      console.error("Error cargando colecciones:", error)
-      toast.error("Error al cargar las colecciones")
+      console.error("Error cargando procesos:", error)
+      toast.error("Error al cargar los procesos")
     } finally {
       setLoading(false)
     }
@@ -158,26 +158,26 @@ export function CollectionSelector({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Buscar colecciones..."
+                placeholder="Buscar procesos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               />
             </div>
 
-            {/* Lista de Colecciones */}
+            {/* Lista de Procesos */}
             <ScrollArea className="h-96">
               <div className="space-y-2">
                 {loading ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-3" />
-                    <p className="text-sm">Cargando colecciones...</p>
+                    <p className="text-sm">Cargando procesos...</p>
                   </div>
                 ) : filteredCollections.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-50" />
                     <p className="text-sm">
-                      {searchTerm ? "No se encontraron colecciones" : "No hay colecciones disponibles"}
+                      {searchTerm ? "No se encontraron procesos" : "No hay procesos disponibles"}
                     </p>
                   </div>
                 ) : (

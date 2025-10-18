@@ -15,7 +15,7 @@ const getContentTypeLabel = (contentType: ContentType): string => {
     presets: "Preajustes",
     prompts: "Instrucciones",
     files: "Archivos",
-    collections: "Colecciones",
+    collections: "Procesos",
     assistants: "Agentes",
     tools: "Herramientas",
     models: "Modelos"
