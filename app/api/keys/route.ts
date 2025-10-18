@@ -1,38 +1,36 @@
-import { isUsingEnvironmentKey } from "@/lib/envs"
-import { createResponse } from "@/lib/server/server-utils"
-import { EnvKey } from "@/types/key-type"
+import { NextRequest, NextResponse } from "next/server"
 import { VALID_ENV_KEYS } from "@/types/valid-keys"
 
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+const GOOGLE_GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY
+const GROQ_API_KEY = process.env.GROQ_API_KEY
+const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY
+const AZURE_OPENAI_API_KEY = process.env.AZURE_OPENAI_API_KEY
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+
 export async function GET() {
-  const envKeyMap: Record<string, VALID_ENV_KEYS> = {
-    azure: VALID_ENV_KEYS.AZURE_OPENAI_API_KEY,
-    openai: VALID_ENV_KEYS.OPENAI_API_KEY,
-    google: VALID_ENV_KEYS.GOOGLE_GEMINI_API_KEY,
-    anthropic: VALID_ENV_KEYS.ANTHROPIC_API_KEY,
-    mistral: VALID_ENV_KEYS.MISTRAL_API_KEY,
-    groq: VALID_ENV_KEYS.GROQ_API_KEY,
-    perplexity: VALID_ENV_KEYS.PERPLEXITY_API_KEY,
-    openrouter: VALID_ENV_KEYS.OPENROUTER_API_KEY,
-
-    openai_organization_id: VALID_ENV_KEYS.OPENAI_ORGANIZATION_ID,
-
-    azure_openai_endpoint: VALID_ENV_KEYS.AZURE_OPENAI_ENDPOINT,
-    azure_gpt_35_turbo_name: VALID_ENV_KEYS.AZURE_GPT_35_TURBO_NAME,
-    azure_gpt_45_vision_name: VALID_ENV_KEYS.AZURE_GPT_45_VISION_NAME,
-    azure_gpt_45_turbo_name: VALID_ENV_KEYS.AZURE_GPT_45_TURBO_NAME,
-    azure_embeddings_name: VALID_ENV_KEYS.AZURE_EMBEDDINGS_NAME
-  }
-
-  const isUsingEnvKeyMap = Object.keys(envKeyMap).reduce<
-    Record<string, boolean>
-  >((acc, provider) => {
-    const key = envKeyMap[provider]
-
-    if (key) {
-      acc[provider] = isUsingEnvironmentKey(key as EnvKey)
+  try {
+    const isUsingEnvKeyMap: Record<string, boolean> = {
+      openai: !!OPENAI_API_KEY,
+      anthropic: !!ANTHROPIC_API_KEY,
+      google: !!GOOGLE_GEMINI_API_KEY,
+      mistral: !!MISTRAL_API_KEY,
+      groq: !!GROQ_API_KEY,
+      perplexity: !!PERPLEXITY_API_KEY,
+      azure: !!AZURE_OPENAI_API_KEY,
+      openrouter: !!OPENROUTER_API_KEY
     }
-    return acc
-  }, {})
 
-  return createResponse({ isUsingEnvKeyMap }, 200)
+    return NextResponse.json({
+      isUsingEnvKeyMap
+    })
+  } catch (error) {
+    console.error("Error fetching keys:", error)
+    return NextResponse.json(
+      { error: "Error fetching keys" },
+      { status: 500 }
+    )
+  }
 }

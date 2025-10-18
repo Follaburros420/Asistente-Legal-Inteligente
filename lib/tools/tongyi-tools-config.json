@@ -23,58 +23,70 @@
       }
     },
     {
-      "name": "legal_search",
-      "description": "Búsqueda especializada en jurisprudencia, leyes y doctrina legal",
-      "url": "http://localhost:3000/api/tools/legal-search",
+      "name": "legal_search_specialized",
+      "description": "Búsqueda legal especializada optimizada para consultas jurídicas colombianas. Excluye completamente Wikipedia y prioriza fuentes oficiales, académicas y especializadas.",
+      "url": "http://localhost:3000/api/tools/legal-search-specialized",
       "method": "POST",
       "parameters": {
         "query": {
           "type": "string",
-          "description": "Consulta legal específica",
+          "description": "Consulta legal específica sobre derecho colombiano",
           "required": true
         },
-        "country": {
-          "type": "string",
-          "description": "País para búsqueda legal",
-          "default": "colombia"
+        "numResults": {
+          "type": "number",
+          "description": "Número de resultados deseados (máximo 10)",
+          "default": 5
         },
-        "type": {
-          "type": "string",
-          "description": "Tipo de búsqueda: general, jurisprudencia, leyes, doctrina",
-          "default": "general"
+        "enrich": {
+          "type": "boolean",
+          "description": "Si debe enriquecer los resultados con contenido completo usando Firecrawl",
+          "default": false
         }
       },
       "examples": [
         {
-          "query": "contratos de arrendamiento",
-          "country": "colombia",
-          "type": "jurisprudencia"
+          "query": "las cuentas en participación son valor financiero",
+          "numResults": 5,
+          "enrich": true
         },
         {
-          "query": "código civil",
-          "country": "colombia", 
-          "type": "leyes"
+          "query": "artículo 11 constitución política",
+          "numResults": 3,
+          "enrich": false
         },
         {
-          "query": "responsabilidad civil",
-          "country": "colombia",
-          "type": "doctrina"
+          "query": "contratos de arrendamiento código civil",
+          "numResults": 5,
+          "enrich": true
+        },
+        {
+          "query": "prescripción adquisitiva bienes inmuebles",
+          "numResults": 4,
+          "enrich": false
         }
       ]
     }
   ],
   "usage_instructions": {
-    "general": "Usa web_search para consultas generales de información legal",
-    "jurisprudence": "Usa legal_search con type='jurisprudencia' para buscar sentencias y precedentes",
-    "laws": "Usa legal_search con type='leyes' para buscar legislación específica",
-    "doctrine": "Usa legal_search con type='doctrina' para buscar doctrina legal especializada"
+    "legal_specialized": "USA SIEMPRE legal_search_specialized para consultas legales colombianas. Esta herramienta está optimizada para excluir Wikipedia y priorizar fuentes oficiales.",
+    "general": "Usa web_search solo para consultas generales no legales",
+    "enrichment": "Usa enrich=true para obtener contenido completo de las fuentes más relevantes",
+    "wikipedia_prohibition": "NUNCA uses Wikipedia para consultas legales. La herramienta legal_search_specialized está diseñada específicamente para evitar Wikipedia."
   },
   "best_practices": [
-    "Siempre usa las herramientas de búsqueda antes de responder consultas legales",
-    "Combina información de múltiples fuentes para análisis completo",
-    "Especifica el país cuando sea relevante para la consulta legal",
-    "Usa el tipo de búsqueda apropiado según la naturaleza de la consulta"
-  ]
+    "SIEMPRE usa legal_search_specialized para consultas legales colombianas",
+    "NUNCA uses Wikipedia para consultas jurídicas - está completamente excluida",
+    "Usa enrich=true para análisis profundos de las fuentes más relevantes",
+    "Prioriza fuentes oficiales (.gov.co) sobre fuentes académicas o generales",
+    "Combina información de múltiples fuentes oficiales para análisis completo",
+    "Especifica términos legales específicos en la consulta (artículo, ley, decreto, etc.)"
+  ],
+  "wikipedia_policy": {
+    "prohibited": true,
+    "reason": "Wikipedia no es una fuente autorizada para consultas legales profesionales",
+    "alternative": "Usar legal_search_specialized que prioriza fuentes oficiales colombianas"
+  }
 }
 
 

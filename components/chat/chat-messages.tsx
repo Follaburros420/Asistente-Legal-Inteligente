@@ -31,6 +31,7 @@ export const ChatMessages: FC<ChatMessagesProps> = ({}) => {
               key={chatMessage.message.sequence_number}
               message={chatMessage.message}
               fileItems={messageFileItems}
+              bibliography={chatMessage.bibliography}
               isEditing={editingMessage?.id === chatMessage.message.id}
               isLast={index === array.length - 1}
               onStartEdit={setEditingMessage}
@@ -40,9 +41,9 @@ export const ChatMessages: FC<ChatMessagesProps> = ({}) => {
           )
         })}
       
-      {/* Typing Indicator cuando está generando */}
+      {/* Typing Indicator cuando está generando - Solo si no hay mensaje del asistente */}
       <AnimatePresence>
-        {isGenerating && !firstTokenReceived && <TypingIndicator />}
+        {isGenerating && !firstTokenReceived && chatMessages.length === 0 && <TypingIndicator />}
       </AnimatePresence>
     </>
   )

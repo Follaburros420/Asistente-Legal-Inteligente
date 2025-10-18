@@ -3,8 +3,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, BookOpen, FileText, Scale, Calendar, User } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { ExternalLink, BookOpen, FileText, Scale, Calendar, User, ChevronDown, ChevronUp } from "lucide-react"
 import { motion } from "framer-motion"
+import { useState } from "react"
 
 interface BibliographyItem {
   id: string
@@ -51,6 +53,8 @@ const typeLabels = {
 }
 
 export function BibliographySection({ items, className = '' }: BibliographySectionProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  
   if (!items || items.length === 0) return null
 
   const handleLinkClick = (url: string) => {
@@ -65,13 +69,28 @@ export function BibliographySection({ items, className = '' }: BibliographySecti
       className={`mt-6 ${className}`}
     >
       <Card className="border-border/50 bg-muted/20">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BookOpen className="w-5 h-5 text-primary" />
-            Bibliografía - Fuentes Oficiales Colombianas
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="pb-3 cursor-pointer hover:bg-muted/30 transition-colors">
+              <CardTitle className="flex items-center justify-between text-lg">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-primary" />
+                  Bibliografía - Fuentes Oficiales Colombianas
+                  <Badge variant="secondary" className="ml-2">
+                    {items.length} fuente{items.length !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+                {isOpen ? (
+                  <ChevronUp className="w-5 h-5 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                )}
+              </CardTitle>
+            </CardHeader>
+          </CollapsibleTrigger>
+          
+          <CollapsibleContent>
+            <CardContent className="space-y-4">
           {items.map((item, index) => {
             const IconComponent = typeIcons[item.type]
             
@@ -152,7 +171,9 @@ export function BibliographySection({ items, className = '' }: BibliographySecti
               </motion.div>
             )
           })}
-        </CardContent>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </Card>
     </motion.div>
   )

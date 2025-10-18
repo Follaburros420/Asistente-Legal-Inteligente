@@ -46,7 +46,7 @@ export default function Hero() {
                   Inteligente
                 </span>
                 <br />
-                con IA
+                <span className="invisible">con IA</span>
               </h1>
               <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
                 Transforma tu práctica legal con IA. Analiza documentos, redacta contratos y
@@ -87,29 +87,6 @@ export default function Hero() {
           </div>
         </LayoutEffect>
 
-        {/* Hero Image */}
-        <LayoutEffect
-          className="duration-1000 delay-500"
-          isInviewState={{
-            trueState: "opacity-100 scale-100",
-            falseState: "opacity-0 scale-95",
-          }}
-        >
-          <div className="mt-20 sm:mt-24 lg:mt-28 relative">
-            <GradientWrapper wrapperClassName="max-w-5xl mx-auto">
-              <Card className="overflow-hidden border-2">
-                  <Image
-                    src="/images/hero-legal.svg"
-                    className="w-full h-auto"
-                    alt="Asistente Legal Inteligente"
-                    width={1200}
-                    height={600}
-                    priority
-                  />
-              </Card>
-            </GradientWrapper>
-          </div>
-        </LayoutEffect>
 
         {/* Stats */}
         <LayoutEffect

@@ -20,7 +20,7 @@ interface ModernSidebarProps {
 }
 
 const HEADER_GRADIENT_CLASSES =
-  'relative overflow-hidden border-b border-border/40 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 px-4 py-4'
+  'relative overflow-hidden border-b border-border/40 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 px-4 py-1'
 
 const sidebarVariants = {
   open: {
@@ -108,20 +108,14 @@ export const ModernSidebar: FC<ModernSidebarProps> = ({
           className="flex h-full flex-col border-r border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
         >
           <div className={HEADER_GRADIENT_CLASSES}>
-            <div className="relative z-10 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
-                    <Sparkles className="w-4 h-4 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-semibold">Asistente Legal</h2>
-                    <p className="text-xs text-muted-foreground">Inteligente</p>
-                  </div>
+            <div className="relative z-10">
+              <div className="flex items-center justify-center">
+                <div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent text-center">ALI</h2>
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div>
                 <WorkspaceSwitcher />
               </div>
             </div>

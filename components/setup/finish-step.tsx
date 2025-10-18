@@ -9,7 +9,7 @@ export const FinishStep: FC<FinishStepProps> = ({ displayName }) => {
     <div className="space-y-4">
       <div className="text-center space-y-2">
         <div className="text-2xl font-bold text-primary">
-          ¡Bienvenido al Asistente Legal Inteligente
+          ¡Bienvenido a ALI
           {displayName.length > 0 ? `, ${displayName.split(" ")[0]}` : null}!
         </div>
         

@@ -101,12 +101,12 @@ async function extractFromSenado(articleNumber: string, url: string): Promise<Co
         .trim()
 
       if (content.length > 50) {
-        return {
-          number: articleNumber,
-          content: content,
-          source: source.name,
-          url: url
-        }
+      return {
+        number: articleNumber,
+        content: content,
+        source: 'Secretaría del Senado',
+        url: url
+      }
       }
     }
 

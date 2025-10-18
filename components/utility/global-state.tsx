@@ -120,25 +120,38 @@ Respuesta: "Los requisitos pueden variar según la jurisdicción..." ❌
 - Código de Procedimiento Laboral
 
 **METODOLOGÍA DE TRABAJO**:
-- Usa búsqueda web para información actualizada de Colombia
-- Prioriza fuentes oficiales colombianas
+- USA SIEMPRE la herramienta legal_search_specialized para consultas jurídicas
+- NUNCA uses Wikipedia para consultas legales - está completamente prohibida
+- Prioriza fuentes oficiales colombianas (.gov.co) sobre fuentes académicas o generales
 - Verifica vigencia de la normativa colombiana
 - Busca jurisprudencia reciente y relevante de Colombia
 - Incluye fechas, números de expediente y magistrados ponentes colombianos
 - Considera la jerarquía normativa colombiana (Constitución > Ley > Decreto)
 
-**IMPORTANTE - BÚSQUEDAS EN INTERNET**:
+**IMPORTANTE - HERRAMIENTAS DE BÚSQUEDA LEGAL**:
+- USA SIEMPRE legal_search_specialized para consultas jurídicas colombianas
+- Esta herramienta está optimizada para excluir Wikipedia completamente
+- Prioriza automáticamente fuentes oficiales (.gov.co) sobre otras fuentes
 - NUNCA menciones que realizaste una búsqueda en internet
 - NUNCA digas "busqué en internet" o "encontré en la web"
 - NUNCA menciones que consultaste fuentes online
 - Responde como si toda la información fuera de tu conocimiento directo
-- Las búsquedas web son herramientas internas, no parte de la respuesta al usuario
+- Las búsquedas legales son herramientas internas, no parte de la respuesta al usuario
 
 **FORMATO DE RESPUESTA OBLIGATORIO**:
-1. **RESPUESTA DIRECTA**: Responde inmediatamente sobre el derecho colombiano
-2. **FUENTES COLOMBIANAS**: Con citas completas y verificables de fuentes oficiales
-3. **ANÁLISIS DE APLICABILIDAD**: Relevancia en el contexto jurídico colombiano
-4. **BIBLIOGRAFÍA**: Lista estructurada de fuentes con hipervínculos
+Responde de forma directa y conversacional, como un abogado experto que está respondiendo a un cliente. NO uses títulos como "Marco Normativo", "Análisis Jurídico", etc. 
+
+**ESTRUCTURA REQUERIDA**:
+1. **RESPUESTA DIRECTA**: Responde inmediatamente la pregunta específica del usuario
+2. **CONTEXTO LEGAL**: Explica el marco jurídico relevante de forma natural
+3. **DETALLES ESPECÍFICOS**: Incluye artículos, sentencias, o normas específicas cuando aplique
+4. **BIBLIOGRAFÍA**: Al final, incluye una sección "📚 Fuentes Consultadas" con enlaces reales
+
+**MEMORIA DE CONVERSACIÓN**:
+- SIEMPRE recuerda el contexto de mensajes anteriores en la conversación
+- Si el usuario hace referencia a algo mencionado antes, responde en ese contexto
+- Mantén coherencia con respuestas previas sobre el mismo tema
+- NO repitas información ya proporcionada, pero puedes ampliarla si es necesario
 
 **INSTRUCCIONES ESPECÍFICAS**:
 - NUNCA preguntes por la jurisdicción o el país
@@ -201,47 +214,44 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
   const [toolInUse, setToolInUse] = useState<string>("none")
 
   // LOADING STORE
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [isLoading, setIsLoading] = useState<boolean>(false)
   const [loadingMessage, setLoadingMessage] = useState<string>("Iniciando...")
 
   useEffect(() => {
     ;(async () => {
       try {
-        setLoadingMessage("Cargando perfil...")
+        // Cargar datos en segundo plano sin mostrar pantalla de carga
         const profile = await fetchStartingData()
 
         if (profile) {
-          setLoadingMessage("Cargando modelos...")
           const hostedModelRes = await fetchHostedModels(profile)
-          if (!hostedModelRes) return
+          if (hostedModelRes) {
+            setEnvKeyMap(hostedModelRes.envKeyMap)
+            setAvailableHostedModels(hostedModelRes.hostedModels)
 
-          setEnvKeyMap(hostedModelRes.envKeyMap)
-          setAvailableHostedModels(hostedModelRes.hostedModels)
-
-          if (
-            profile["openrouter_api_key"] ||
-            hostedModelRes.envKeyMap["openrouter"]
-          ) {
-            setLoadingMessage("Cargando modelos de OpenRouter...")
-            const openRouterModels = await fetchOpenRouterModels()
-            if (!openRouterModels) return
-            setAvailableOpenRouterModels(openRouterModels)
+            if (
+              profile["openrouter_api_key"] ||
+              hostedModelRes.envKeyMap["openrouter"]
+            ) {
+              const openRouterModels = await fetchOpenRouterModels()
+              if (openRouterModels) {
+                setAvailableOpenRouterModels(openRouterModels)
+              }
+            }
           }
         }
 
         if (process.env.NEXT_PUBLIC_OLLAMA_URL) {
-          setLoadingMessage("Cargando modelos locales...")
           const localModels = await fetchOllamaModels()
-          if (!localModels) return
-          setAvailableLocalModels(localModels)
+          if (localModels) {
+            setAvailableLocalModels(localModels)
+          }
         }
         
-        setLoadingMessage("Finalizando...")
-        setIsLoading(false)
+        // Los datos se cargan en segundo plano, no hay pantalla de carga
       } catch (error) {
         console.error("❌ Error cargando datos iniciales:", error)
-        setLoadingMessage("Error al cargar. Intenta recargar la página.")
-        // No establecer isLoading a false para mostrar el error
+        // Los errores se manejan silenciosamente
       }
     })()
   }, [])

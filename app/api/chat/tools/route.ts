@@ -8,6 +8,50 @@ import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completion
 import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
 import { LEGAL_SYSTEM_PROMPT, formatLegalSearchContext } from "@/lib/prompts/legal-agent"
 
+// Función específica para formatear resultados de búsqueda legal especializada
+function formatLegalSearchResultsForContext(searchResponse: any): string {
+  if (!searchResponse.success || searchResponse.results.length === 0) {
+    return `No se encontraron resultados legales específicos para: "${searchResponse.query}"`
+  }
+
+  const officialSources = searchResponse.results.filter((r: any) => r.type === 'official')
+  const academicSources = searchResponse.results.filter((r: any) => r.type === 'academic')
+  const newsSources = searchResponse.results.filter((r: any) => r.type === 'news')
+  const generalSources = searchResponse.results.filter((r: any) => r.type === 'general')
+
+  let context = `⚖️ INFORMACIÓN LEGAL ESPECIALIZADA ENCONTRADA:\n\n`
+  context += `📊 Estrategia de búsqueda: ${searchResponse.searchStrategy}\n`
+  context += `📋 Resumen de fuentes:\n`
+  context += `   - Fuentes oficiales: ${officialSources.length}\n`
+  context += `   - Fuentes académicas: ${academicSources.length}\n`
+  context += `   - Fuentes noticiosas: ${newsSources.length}\n`
+  context += `   - Fuentes generales: ${generalSources.length}\n\n`
+
+  // Priorizar fuentes oficiales
+  const prioritizedResults = [...officialSources, ...academicSources, ...newsSources, ...generalSources]
+
+  prioritizedResults.forEach((result: any, index: number) => {
+    const sourceType = result.type === 'official' ? '[OFICIAL]' : 
+                     result.type === 'academic' ? '[ACADÉMICA]' : 
+                     result.type === 'news' ? '[NOTICIAS]' : '[GENERAL]'
+    
+    context += `**${index + 1}. ${sourceType} ${result.title}**\n`
+    context += `🔗 URL: ${result.url}\n`
+    context += `⭐ Relevancia: ${result.relevance}/20\n`
+    context += `📝 Contenido legal:\n${result.snippet}\n\n`
+    context += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
+  })
+
+  context += `🚨 INSTRUCCIONES CRÍTICAS:\n`
+  context += `1. USA ÚNICAMENTE la información legal específica encontrada arriba\n`
+  context += `2. PRIORIZA fuentes oficiales (.gov.co) sobre otras fuentes\n`
+  context += `3. NO uses información general si hay información específica aquí\n`
+  context += `4. Wikipedia está COMPLETAMENTE EXCLUIDA de esta búsqueda\n`
+  context += `5. Responde con precisión jurídica colombiana\n\n`
+
+  return context
+}
+
 export async function POST(request: Request) {
   const json = await request.json()
   const { chatSettings, messages, selectedTools } = json as {
@@ -52,11 +96,12 @@ export async function POST(request: Request) {
     console.log(`${"🔥".repeat(60)}\n`)
     
     try {
-      console.log(`📡 FORZANDO búsqueda en Google CSE...`)
-      const searchResults = await searchWebEnriched(userQuery)
+      console.log(`📡 FORZANDO búsqueda legal especializada...`)
+      const { searchLegalSpecialized } = await import('@/lib/tools/legal-search-specialized')
+      const searchResults = await searchLegalSpecialized(userQuery, 5)
       
       if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
-        webSearchContext = formatSearchResultsForContext(searchResults)
+        webSearchContext = formatLegalSearchResultsForContext(searchResults)
         console.log(`\n✅ BÚSQUEDA FORZADA - COMPLETADA CON ÉXITO:`)
         console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
         console.log(`   📝 Caracteres de contexto: ${webSearchContext.length}`)
@@ -199,45 +244,56 @@ Responde en español colombiano con terminología jurídica precisa.`
       }
     }
 
-    // Agregar contexto de búsqueda web a los mensajes
+    // Agregar contexto de búsqueda legal especializada a los mensajes
     const systemMessage = {
       role: "system",
       content: `Eres un asistente legal especializado en derecho colombiano.
 
-🔥 BÚSQUEDA WEB EJECUTADA OBLIGATORIAMENTE
+⚖️ BÚSQUEDA LEGAL ESPECIALIZADA EJECUTADA
 
-He ejecutado una búsqueda en internet sobre "${userQuery}" como parte del proceso obligatorio.
+He ejecutado una búsqueda legal especializada sobre "${userQuery}" usando herramientas optimizadas que excluyen Wikipedia y priorizan fuentes oficiales colombianas.
+
+**MEMORIA DE CONVERSACIÓN**:
+- SIEMPRE recuerda el contexto de mensajes anteriores en esta conversación
+- Si el usuario hace referencia a algo mencionado antes, responde en ese contexto
+- Mantén coherencia con respuestas previas sobre el mismo tema
+- NO repitas información ya proporcionada, pero puedes ampliarla si es necesario
+
+**FORMATO DE RESPUESTA**:
+Responde de forma directa y conversacional, como un abogado experto. NO uses títulos como "Marco Normativo", "Análisis Jurídico", etc. Responde directamente la pregunta específica del usuario.
 
 ${webSearchContext.includes('ERROR') || webSearchContext.includes('SIN RESULTADOS') ? 
-  `⚠️ RESULTADO DE BÚSQUEDA: ${webSearchContext}
+  `⚠️ RESULTADO DE BÚSQUEDA LEGAL: ${webSearchContext}
 
-Aunque la búsqueda no encontró resultados específicos, DEBES mencionar que se ejecutó una búsqueda web como parte de tu respuesta.
+Aunque la búsqueda legal especializada no encontró resultados específicos, responde basándote en tu conocimiento jurídico colombiano.
 
 INSTRUCCIONES:
-1. **MENCIONA** que se ejecutó una búsqueda web
-2. **Responde** basándote en tu conocimiento legal
-3. **NO incluyas** bibliografía web (no hay URLs válidas)
-4. **Explica** que la búsqueda no encontró fuentes específicas` : 
-  `✅ RESULTADO DE BÚSQUEDA: Información encontrada
+1. **Responde** basándote en tu conocimiento legal colombiano
+2. **NO incluyas** bibliografía web (no hay URLs válidas)
+3. **Explica** que la búsqueda legal no encontró fuentes específicas
+4. **Usa** terminología jurídica colombiana precisa` : 
+  `✅ RESULTADO DE BÚSQUEDA LEGAL: Información jurídica encontrada
 
 ${webSearchContext}
 
 INSTRUCCIONES:
-1. **USA** la información de búsqueda arriba para responder
-2. **MENCIONA** que se ejecutó una búsqueda web
-3. **AL FINAL** de tu respuesta, después de "---", incluye:
+1. **USA** la información legal encontrada arriba para responder
+2. **PRIORIZA** fuentes oficiales (.gov.co) sobre otras fuentes
+3. **RESPONDE** de forma directa y conversacional, sin títulos formales
+4. **AL FINAL** de tu respuesta, incluye:
 
-   ## 📚 Fuentes Consultadas
+   📚 Fuentes Consultadas
    
    1. [Título](URL exacta copiada de arriba)
    2. [Título](URL exacta copiada de arriba)
    ...
 
-4. **IMPORTANTE**: Usa SOLO las URLs que aparecen arriba. NO inventes URLs.`}
+5. **IMPORTANTE**: Usa SOLO las URLs que aparecen arriba. NO inventes URLs.
+6. **WIKIPEDIA**: Está completamente excluida de las búsquedas legales`}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**OBLIGATORIO**: Siempre menciona que se ejecutó una búsqueda web en tu respuesta.
+**OBLIGATORIO**: Responde directamente sobre el derecho colombiano con precisión jurídica, recordando el contexto de la conversación.
 
 Responde en español colombiano con terminología jurídica precisa.`
     }

@@ -1,23 +1,18 @@
 "use client"
 
-import Image from "next/image"
+import Link from "next/link"
 
 interface BrandProps {
   className?: string
-  width?: number
-  height?: number
 }
 
-export default function Brand({ className = "", width = 110, height = 50 }: BrandProps) {
+export default function Brand({ className = "" }: BrandProps) {
   return (
-    <Image
-      src="/legal-logo.svg"
-      alt="Asistente Legal Inteligente"
-      className={className}
-      width={width}
-      height={height}
-      priority
-    />
+    <Link href="/" className={`flex items-center ${className}`}>
+      <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent">
+        ALI
+      </span>
+    </Link>
   )
 }
 

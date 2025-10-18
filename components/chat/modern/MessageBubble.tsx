@@ -124,7 +124,7 @@ export function MessageBubble({
           {children || (
             <div className={cn(
               'text-sm leading-relaxed whitespace-pre-wrap',
-              isUser && 'text-primary-foreground',
+              isUser && 'text-black',
             )}>
               {content}
             </div>

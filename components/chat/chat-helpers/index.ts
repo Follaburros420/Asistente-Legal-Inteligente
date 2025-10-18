@@ -216,14 +216,31 @@ export const handleHostedChat = async (
     formattedMessages = draftMessages
   }
 
-  const apiEndpoint =
-    provider === "custom" ? "/api/chat/custom" : "/api/chat/simple-direct"
+  // Detectar si es una consulta legal para usar el endpoint especializado
+  const lastMessage = formattedMessages[formattedMessages.length - 1]
+  const isLegalQuery = lastMessage?.content && (
+    lastMessage.content.toLowerCase().includes('constitución') ||
+    lastMessage.content.toLowerCase().includes('artículo') ||
+    lastMessage.content.toLowerCase().includes('ley') ||
+    lastMessage.content.toLowerCase().includes('legal') ||
+    lastMessage.content.toLowerCase().includes('jurídico') ||
+    lastMessage.content.toLowerCase().includes('norma') ||
+    lastMessage.content.toLowerCase().includes('código') ||
+    lastMessage.content.toLowerCase().includes('sentencia') ||
+    lastMessage.content.toLowerCase().includes('tribunal')
+  )
+
+  const apiEndpoint = isLegalQuery 
+    ? "/api/chat/legal" 
+    : provider === "custom" ? "/api/chat/custom" : "/api/chat/simple-direct"
 
   const requestBody = {
     chatSettings: payload.chatSettings,
     messages: formattedMessages,
     customModelId: provider === "custom" ? modelData.hostedId : ""
   }
+
+  console.log(`🔍 Consulta ${isLegalQuery ? 'LEGAL' : 'GENERAL'} detectada, usando endpoint: ${apiEndpoint}`)
 
   const response = await fetchChatResponse(
     apiEndpoint,
@@ -295,10 +312,13 @@ export const processResponse = async (
   const contentType = response.headers.get('content-type') || ''
   const isPlainText = contentType.includes('text/plain')
 
+  console.log('📄 Procesando respuesta:', { contentType, isPlainText, status: response.status })
+
   if (isPlainText) {
     // Si es texto plano, leer toda la respuesta de una vez
     const text = await response.text()
     fullText = text
+    console.log('✅ Respuesta texto plano recibida:', fullText.substring(0, 100) + '...')
     
     // Actualizar el mensaje del asistente
     setChatMessages(prev =>
@@ -320,8 +340,10 @@ export const processResponse = async (
     return fullText
   }
 
-  // Código original para streaming
+  // Código original para streaming (endpoint legal usa streaming)
   if (response.body) {
+    console.log('🔄 Procesando respuesta streaming...')
+    
     await consumeReadableStream(
       response.body,
       chunk => {
@@ -329,22 +351,29 @@ export const processResponse = async (
         setToolInUse("none")
 
         try {
-          contentToAdd = isHosted
-            ? chunk
-            : // Ollama's streaming endpoint returns new-line separated JSON
-              // objects. A chunk may have more than one of these objects, so we
-              // need to split the chunk by new-lines and handle each one
-              // separately.
-              chunk
-                .trimEnd()
-                .split("\n")
-                .reduce(
-                  (acc, line) => acc + JSON.parse(line).message.content,
-                  ""
-                )
+          // Para el endpoint legal, el chunk viene como texto plano directamente
+          if (typeof chunk === 'string') {
+            contentToAdd = chunk
+          } else {
+            contentToAdd = isHosted
+              ? chunk
+              : // Ollama's streaming endpoint returns new-line separated JSON
+                // objects. A chunk may have more than one of these objects, so we
+                // need to split the chunk by new-lines and handle each one
+                // separately.
+                String(chunk)
+                  .trimEnd()
+                  .split("\n")
+                  .reduce(
+                    (acc: string, line: string) => acc + JSON.parse(line).message.content,
+                    ""
+                  )
+          }
+          
           fullText += contentToAdd
+          console.log('📝 Chunk recibido:', contentToAdd.substring(0, 50) + '...')
         } catch (error) {
-          console.error("Error parsing JSON:", error)
+          console.error("Error parsing chunk:", error, "Chunk:", chunk)
         }
 
         setChatMessages(prev =>
@@ -368,6 +397,7 @@ export const processResponse = async (
       controller.signal
     )
 
+    console.log('✅ Streaming completado, texto final:', fullText.substring(0, 100) + '...')
     return fullText
   } else {
     throw new Error("Response body is null")

@@ -260,21 +260,38 @@ f) No existir otro medio de defensa judicial (o ser este ineficaz)
 
 ---
 
-## 💰 Costo Estimado
+## 💰 Planes de Suscripción ALI
 
-### Por Consulta Legal:
+### Plan Básico - $19/mes:
+- **200 consultas por mes**
+- Análisis básico de documentos
+- Soporte por email
+- Acceso a base de datos legal básica
+- Sin subida de documentos
+
+### Plan Profesional - $47/mes:
+- **1,000 consultas por mes**
+- Subida y análisis de documentos
+- Organización en carpetas
+- Integración de conocimiento de procesos
+- Redacción de contratos
+- Soporte prioritario
+
+### Plan Empresarial - Desde $500/mes:
+- **Consultas ilimitadas**
+- Todo lo del plan Profesional
+- Soluciones a la medida
+- Modelos personalizados
+- Múltiples usuarios
+- API personalizada
+- Soporte 24/7
+- Capacitación incluida
+- Reportes avanzados
+
+### Costos Operativos por Consulta:
 - DuckDuckGo: **Gratis**
 - Firecrawl: **5-10 créditos** (1 por URL)
 - Jina Reader (fallback): **Gratis**
-
-### Plan Gratuito de Firecrawl:
-- **500 créditos/mes**
-- **50-100 consultas legales/mes** (promedio 5-10 fuentes por consulta)
-
-### Recomendación:
-Para uso profesional intensivo (>100 consultas/mes):
-- Plan Pro: $20/mes = ~2000 créditos = **200-400 consultas legales**
-- Plan Business: $50/mes = ~5000 créditos = **500-1000 consultas legales**
 
 ---
 

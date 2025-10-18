@@ -3,7 +3,7 @@ import { ChatSettings } from "@/types"
 import { OpenAIStream, StreamingTextResponse } from "ai"
 import OpenAI from "openai"
 import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completions.mjs"
-import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+import { searchWebNoApi, enrichNoApiResults } from "@/lib/tools/no-api-search"
 import { LEGAL_SYSTEM_PROMPT, formatLegalSearchContext } from "@/lib/prompts/legal-agent"
 
 export async function POST(request: Request) {
@@ -49,31 +49,36 @@ export async function POST(request: Request) {
     console.log(`${"⚖️".repeat(60)}\n`)
     
     try {
-      console.log(`🔍 EJECUTANDO búsqueda jurídica especializada...`)
-      const searchResults = await searchWebEnriched(userQuery)
+      console.log(`🔍 EJECUTANDO búsqueda web simplificada (sin Wikipedia)...`)
+      
+      // Usar el sistema sin APIs que solo filtra Wikipedia
+      const searchResults = await searchWebNoApi(userQuery, 5)
       
       if (searchResults && searchResults.success && searchResults.results && searchResults.results.length > 0) {
-        webSearchContext = formatLegalSearchContext(
-          formatSearchResultsForContext(searchResults), 
-          userQuery
-        )
-        console.log(`\n✅ BÚSQUEDA JURÍDICA - COMPLETADA CON ÉXITO:`)
+        // Enriquecer los resultados con contenido completo
+        const enrichedResults = await enrichNoApiResults(searchResults.results, 3)
+        
+        // Formatear resultados para el contexto
+        const resultsText = enrichedResults.map((result: any, index: number) => 
+          `FUENTE ${index + 1}: ${result.title}\nURL: ${result.url}\nCONTENIDO: ${result.snippet}\n---`
+        ).join('\n')
+        
+        webSearchContext = `RESULTADOS DE BÚSQUEDA WEB (Wikipedia filtrada):\n\n${resultsText}`
+        
+        console.log(`\n✅ BÚSQUEDA SIN APIs - COMPLETADA CON ÉXITO:`)
         console.log(`   📊 Resultados encontrados: ${searchResults.results.length}`)
         console.log(`   📝 Caracteres de contexto: ${webSearchContext.length}`)
-        
-        const officialCount = searchResults.results.filter(r => r.score === 3).length
-        const academicCount = searchResults.results.filter(r => r.score === 2).length
-        console.log(`   🏛️ Fuentes oficiales: ${officialCount}`)
-        console.log(`   🎓 Fuentes académicas: ${academicCount}`)
+        console.log(`   🚫 Wikipedia: Filtrada exitosamente`)
         console.log(`${"⚖️".repeat(60)}\n`)
+        
       } else {
-        console.log(`\n⚠️ BÚSQUEDA JURÍDICA - SIN RESULTADOS`)
-        webSearchContext = `BÚSQUEDA JURÍDICA EJECUTADA PERO SIN RESULTADOS PARA: "${userQuery}"`
+        console.log(`\n⚠️ BÚSQUEDA WEB - SIN RESULTADOS`)
+        webSearchContext = `BÚSQUEDA WEB EJECUTADA PERO SIN RESULTADOS PARA: "${userQuery}"`
         console.log(`${"⚖️".repeat(60)}\n`)
       }
     } catch (error) {
-      console.error(`\n❌ ERROR EN BÚSQUEDA JURÍDICA:`, error)
-      webSearchContext = `ERROR EN BÚSQUEDA JURÍDICA PARA: "${userQuery}" - ${error instanceof Error ? error.message : 'Error desconocido'}`
+      console.error(`\n❌ ERROR EN BÚSQUEDA WEB:`, error)
+      webSearchContext = `ERROR EN BÚSQUEDA WEB PARA: "${userQuery}" - ${error instanceof Error ? error.message : 'Error desconocido'}`
       console.log(`${"⚖️".repeat(60)}\n`)
     }
 

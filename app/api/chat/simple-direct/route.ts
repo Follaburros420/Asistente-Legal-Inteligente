@@ -1,5 +1,76 @@
 import { NextResponse } from "next/server"
 import { searchWebEnriched, formatSearchResultsForContext } from "@/lib/tools/web-search"
+
+// Dominios oficiales y académicos para filtrar fuentes de calidad
+const OFFICIAL_DOMAINS = [
+  '.gov.co',
+  'corteconstitucional.gov.co',
+  'consejodeestado.gov.co',
+  'cortesuprema.gov.co',
+  'suin-juriscol.gov.co',
+  'imprenta.gov.co',
+  'secretariasenado.gov.co',
+  'funcionpublica.gov.co',
+  'ramajudicial.gov.co',
+  'alcaldiabogota.gov.co',
+  'procuraduria.gov.co',
+  'contraloria.gov.co',
+  'fiscalia.gov.co',
+  'defensoria.gov.co'
+]
+
+const ACADEMIC_DOMAINS = [
+  '.edu.co',
+  'uexternado.edu.co',
+  'unal.edu.co',
+  'javeriana.edu.co',
+  'losandes.edu.co',
+  'icesi.edu.co'
+]
+
+// Función para clasificar el tipo de fuente específica
+const classifySourceType = (url: string, title: string): string => {
+  const urlLower = url.toLowerCase()
+  const titleLower = title.toLowerCase()
+  
+  // Clasificación por URL
+  if (urlLower.includes('corteconstitucional.gov.co')) return 'Jurisprudencia Constitucional'
+  if (urlLower.includes('cortesuprema.gov.co')) return 'Jurisprudencia Suprema'
+  if (urlLower.includes('consejodeestado.gov.co')) return 'Jurisprudencia Administrativa'
+  if (urlLower.includes('ramajudicial.gov.co')) return 'Jurisprudencia Judicial'
+  if (urlLower.includes('secretariasenado.gov.co')) return 'Normativa Legislativa'
+  if (urlLower.includes('imprenta.gov.co')) return 'Normativa Oficial'
+  if (urlLower.includes('suin-juriscol.gov.co')) return 'Base de Datos Jurídica'
+  if (urlLower.includes('funcionpublica.gov.co')) return 'Normativa Administrativa'
+  if (urlLower.includes('alcaldiabogota.gov.co')) return 'Normativa Local'
+  if (urlLower.includes('procuraduria.gov.co')) return 'Jurisprudencia Procuraduría'
+  if (urlLower.includes('contraloria.gov.co')) return 'Jurisprudencia Contraloría'
+  if (urlLower.includes('fiscalia.gov.co')) return 'Jurisprudencia Fiscalía'
+  if (urlLower.includes('defensoria.gov.co')) return 'Jurisprudencia Defensoría'
+  
+  // Clasificación por título
+  if (titleLower.includes('constitución') || titleLower.includes('constitucional')) return 'Normativa Constitucional'
+  if (titleLower.includes('código civil')) return 'Código Civil'
+  if (titleLower.includes('código penal')) return 'Código Penal'
+  if (titleLower.includes('código proceso') || titleLower.includes('procedimiento')) return 'Código Procesal'
+  if (titleLower.includes('ley')) return 'Ley'
+  if (titleLower.includes('decreto')) return 'Decreto'
+  if (titleLower.includes('sentencia')) return 'Jurisprudencia'
+  if (titleLower.includes('fallo')) return 'Jurisprudencia'
+  if (titleLower.includes('auto')) return 'Jurisprudencia'
+  if (titleLower.includes('resolución')) return 'Resolución'
+  if (titleLower.includes('circular')) return 'Circular'
+  if (titleLower.includes('acuerdo')) return 'Acuerdo'
+  
+  // Clasificación académica
+  if (urlLower.includes('.edu.co')) return 'Doctrina Académica'
+  
+  // Clasificación por dominio oficial
+  if (urlLower.includes('.gov.co')) return 'Fuente Oficial'
+  
+  // Por defecto
+  return 'Fuente General'
+}
 import OpenAI from "openai"
 
 export const runtime = "nodejs"
@@ -18,8 +89,40 @@ async function generateStructuredResponse(userQuery: string, webSearchContext: s
     !line.includes('INSTRUCCIÓN CRÍTICA')
   ).slice(0, 15).join('\n')
 
-  // Detectar tipo de consulta para respuesta específica
+  // Detectar si es consulta sobre artículo específico
   const queryLower = userQuery.toLowerCase()
+  const articleMatch = queryLower.match(/\bart(?:iculo|\.?)\s*(\d+[a-z]?)/)
+  const articleNumber = articleMatch ? articleMatch[1] : ''
+  
+  // Detectar tipo de consulta para respuesta específica
+  
+  // Si es consulta sobre artículo específico, priorizar cita textual
+  if (articleNumber) {
+    // Detectar si es artículo constitucional o de código
+    const isConstitutional = queryLower.includes('constitucion') || queryLower.includes('constitucional')
+    const isCivilCode = queryLower.includes('codigo civil') || queryLower.includes('civil')
+    const isPenalCode = queryLower.includes('codigo penal') || queryLower.includes('penal')
+    const isProcessCode = queryLower.includes('codigo proceso') || queryLower.includes('proceso')
+    
+    let codeType = "normativo colombiano"
+    if (isConstitutional) codeType = "Constitución Política de Colombia de 1991"
+    else if (isCivilCode) codeType = "Código Civil Colombiano"
+    else if (isPenalCode) codeType = "Código Penal Colombiano"
+    else if (isProcessCode) codeType = "Código General del Proceso"
+    
+    return `**Marco Normativo**: Según la información encontrada en fuentes oficiales colombianas, específicamente el Artículo ${articleNumber} del ${codeType}:
+
+**Artículo Específico**: Artículo ${articleNumber}
+
+**Texto del Artículo**: 
+${relevantContent.substring(0, 1500)}
+
+**Contenido Detallado**: El artículo ${articleNumber} del ${codeType} establece las disposiciones específicas relacionadas con la consulta realizada, proporcionando el marco legal aplicable.
+
+**Análisis Jurídico**: Este artículo forma parte del marco normativo colombiano y debe ser interpretado en conjunto con la jurisprudencia y doctrina aplicable.
+
+**Conclusión**: El Artículo ${articleNumber} del ${codeType} contiene las disposiciones legales específicas que regulan el tema consultado, estableciendo los derechos, obligaciones y procedimientos aplicables según el ordenamiento jurídico colombiano.`
+  }
   
   if (queryLower.includes('habeas data') || queryLower.includes('protección de datos')) {
     return `**Marco Normativo**: Según la Ley 1581 de 2012 sobre protección de datos personales (Habeas Data), se establecen los siguientes principios fundamentales:
@@ -196,7 +299,7 @@ export async function POST(request: Request) {
     // Intentar procesar con IA usando OpenRouter
     const openrouterApiKey = process.env.OPENROUTER_API_KEY
     
-    if (openrouterApiKey && openrouterApiKey !== "sk-or-v1-your-api-key-here") {
+    if (openrouterApiKey && openrouterApiKey !== "sk-or-v1-your-api-key-here" && openrouterApiKey !== "tu_api_key_aqui") {
       try {
         console.log(`🤖 Procesando con Tongyi Deep Research 30B A3B...`)
         
@@ -215,9 +318,17 @@ export async function POST(request: Request) {
 5. **NO menciones** que realizaste búsquedas web
 6. **Proporciona** respuestas estructuradas y completas sobre derecho colombiano
 
+**REGLAS OBLIGATORIAS PARA ARTÍCULOS:**
+- **SIEMPRE** encuentra y cita textualmente el artículo solicitado
+- **NUNCA** respondas que "no encontraste" un artículo específico
+- **SIEMPRE** incluye el texto completo del artículo cuando esté disponible
+- **PRIORIZA** fuentes oficiales que contengan el texto íntegro del artículo
+- **Si hay múltiples fuentes**, elige la más oficial y completa
+
 **FORMATO DE RESPUESTA OBLIGATORIO:**
 - **Marco Normativo**: Identifica la ley, código o norma específica relevante
 - **Artículo Específico**: Menciona el número exacto del artículo relevante
+- **Texto del Artículo**: Cita textualmente el contenido del artículo (si está disponible)
 - **Contenido Detallado**: Explica el contenido específico relacionado con la consulta
 - **Análisis Jurídico**: Explica el alcance y aplicación específica del tema consultado
 - **Conclusión**: Resumen claro sobre el tema específico consultado
@@ -228,7 +339,9 @@ export async function POST(request: Request) {
 - Proporciona información práctica y aplicable
 - Explica conceptos jurídicos de manera clara
 - **PRIORIZA** información de fuentes oficiales colombianas
-- Al final de tu respuesta, después de "---", incluye:
+- **CALIDAD SOBRE CANTIDAD**: Incluye solo fuentes relevantes y de alta calidad
+**PROHIBICIÓN ABSOLUTA**: NUNCA incluyas fuentes de Wikipedia, wikimedia, o cualquier dominio .wiki
+- Al final de tu respuesta, después de "---", incluye SOLO fuentes oficiales (.gov.co) o académicas (.edu.co):
 
 ## 📚 Fuentes Consultadas
 
@@ -236,7 +349,7 @@ export async function POST(request: Request) {
 2. [Título](URL exacta)
 ...
 
-**IMPORTANTE**: NUNCA menciones que realizaste búsquedas en internet. Responde en español colombiano con terminología jurídica precisa. PRIORIZA siempre las fuentes oficiales y académicas colombianas.`
+**IMPORTANTE**: NUNCA menciones que realizaste búsquedas en internet. Responde en español colombiano con terminología jurídica precisa. PRIORIZA siempre las fuentes oficiales y académicas colombianas. SIEMPRE encuentra el artículo solicitado.`
 
         const finalPrompt = `${systemPrompt}
 
@@ -259,29 +372,41 @@ Responde basándote ÚNICAMENTE en la información encontrada arriba, proporcion
 
         const aiResponse = completion.choices[0].message.content || "No se pudo generar respuesta"
 
-        // Agregar fuentes al final
-        const sources = searchResults?.results?.map((result, index) => {
-          const cleanTitle = result.title
-            .replace(/\s*Title:\s*/g, '')
-            .trim()
-          return `${index + 1}. [${cleanTitle}](${result.url})`
-        }).join('\n') || ""
-
-        const finalResponse = `${aiResponse}
-
----
-
-## 📚 Fuentes Consultadas
-
-${sources}`
+        // Agregar fuentes al final (excluyendo Wikipedia)
+        const sources = searchResults?.results
+          ?.filter(result => {
+            // Excluir Wikipedia y dominios prohibidos
+            const isBanned = result.url.includes('wikipedia.org') || 
+                           result.url.includes('wikimedia.org') ||
+                           result.url.includes('.wiki')
+            if (isBanned) {
+              console.log(`[simple-direct] Fuente filtrada (prohibida): ${result.url}`)
+              return false
+            }
+            return true
+          })
+          ?.map((result, index) => {
+            const cleanTitle = result.title
+              .replace(/\s*Title:\s*/g, '')
+              .trim()
+            return {
+              title: cleanTitle,
+              url: result.url,
+              type: classifySourceType(result.url, cleanTitle)
+            }
+          }) || []
 
         console.log(`✅ Respuesta generada exitosamente con Tongyi Deep Research 30B A3B`)
 
-        // Devolver solo el texto formateado, no el objeto JSON
-        return new NextResponse(finalResponse, {
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-          },
+        // Devolver respuesta con bibliografía separada
+        return NextResponse.json({
+          success: true,
+          message: aiResponse,
+          bibliography: sources,
+          timestamp: new Date().toISOString(),
+          searchExecuted: true,
+          resultsFound: searchResults?.results?.length || 0,
+          aiProcessed: true
         })
 
       } catch (aiError: any) {
@@ -291,7 +416,7 @@ ${sources}`
         // Continuar con respuesta basada solo en búsqueda web
       }
     } else {
-      console.log(`⚠️ API key no configurada, continuando con sistema inteligente interno`)
+      console.log(`⚠️ API key no configurada (valor: "${openrouterApiKey}"), continuando con sistema inteligente interno`)
     }
 
     // Fallback: respuesta estructurada simulando procesamiento de IA
@@ -299,29 +424,52 @@ ${sources}`
       // Crear respuesta estructurada que simule el procesamiento de IA
       const responseText = await generateStructuredResponse(userQuery, webSearchContext)
 
-      // Agregar fuentes al final
-      const sources = searchResults.results.map((result, index) => {
-        const cleanTitle = result.title
-          .replace(/\s*Title:\s*/g, '')
-          .trim()
-        return `${index + 1}. [${cleanTitle}](${result.url})`
-      }).join('\n')
-
-      const finalResponse = `${responseText}
-
----
-
-## 📚 Fuentes Consultadas
-
-${sources}`
+      // Agregar fuentes al final (máximo 3 fuentes de alta calidad, excluyendo Wikipedia)
+      const highQualitySources = searchResults.results
+        .filter(result => {
+          // Excluir Wikipedia y dominios prohibidos
+          const isBanned = result.url.includes('wikipedia.org') || 
+                         result.url.includes('wikimedia.org') ||
+                         result.url.includes('.wiki')
+          if (isBanned) {
+            console.log(`[simple-direct] Fuente filtrada (prohibida): ${result.url}`)
+            return false
+          }
+          
+          // Priorizar fuentes oficiales y académicas
+          const isOfficial = OFFICIAL_DOMAINS.some(domain => result.url.includes(domain))
+          const isAcademic = ACADEMIC_DOMAINS.some(domain => result.url.includes(domain))
+          return isOfficial || isAcademic || result.snippet.length > 500
+        })
+        .slice(0, 3) // Máximo 3 fuentes de alta calidad
+        .map((result, index) => {
+          const cleanTitle = result.title
+            .replace(/\s*Title:\s*/g, '')
+            .trim()
+          return `${index + 1}. [${cleanTitle}](${result.url})`
+        }).join('\n')
 
       console.log(`✅ Respuesta generada exitosamente con sistema inteligente interno`)
 
-      // Devolver solo el texto formateado, no el objeto JSON
-      return new NextResponse(finalResponse, {
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-        },
+      // Devolver respuesta con bibliografía separada
+      return NextResponse.json({
+        success: true,
+        message: responseText,
+        bibliography: highQualitySources.split('\n').map((source, index) => {
+          const match = source.match(/\[([^\]]+)\]\(([^)]+)\)/)
+          if (match) {
+            return {
+              title: match[1],
+              url: match[2],
+              type: classifySourceType(match[2], match[1])
+            }
+          }
+          return null
+        }).filter(Boolean),
+        timestamp: new Date().toISOString(),
+        searchExecuted: true,
+        resultsFound: searchResults.results.length,
+        aiProcessed: false
       })
       
     } else {

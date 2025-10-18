@@ -318,15 +318,33 @@ export const useChatHandler = () => {
 
         setToolInUse("none")
 
-        // Manejar respuesta JSON del endpoint simple-direct
+        // Manejar respuesta del endpoint simple-direct (JSON con bibliografía separada)
         if (response.ok) {
-          const data = await response.json()
-          generatedText = data.message || "No se pudo generar respuesta"
+          const contentType = response.headers.get('content-type') || ''
+          const isPlainText = contentType.includes('text/plain')
+          
+          let bibliography = undefined
+          
+          if (isPlainText) {
+            // Respuesta de texto plano (legacy)
+            generatedText = await response.text()
+          } else {
+            // Respuesta JSON con bibliografía separada
+            const data = await response.json()
+            generatedText = data.message || "No se pudo generar respuesta"
+            bibliography = data.bibliography
+            
+            // Guardar bibliografía en el estado global si existe
+            if (data.bibliography && data.bibliography.length > 0) {
+              console.log('📚 Bibliografía recibida:', data.bibliography)
+            }
+          }
           
           // Actualizar el mensaje del asistente
           const updatedMessage = {
             ...tempAssistantChatMessage,
-            content: generatedText
+            content: generatedText,
+            bibliography: bibliography
           }
           
           setChatMessages(prev => [...prev, updatedMessage])

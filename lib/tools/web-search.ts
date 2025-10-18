@@ -60,11 +60,74 @@ const ACADEMIC_DOMAINS = [
   'icesi.edu.co'
 ]
 
+// Dominios prohibidos (Wikipedia y otros)
+const BANNED_DOMAINS = [
+  'wikipedia.org',
+  'es.wikipedia.org',
+  'en.wikipedia.org',
+  'fr.wikipedia.org',
+  'de.wikipedia.org',
+  'wikimedia.org',
+  'wikidata.org',
+  'wiktionary.org',
+  'wikiquote.org',
+  'wikibooks.org',
+  'wikisource.org',
+  'wikinews.org',
+  'wikiversity.org',
+  'wikivoyage.org',
+  'wikimediafoundation.org'
+]
+
 const normalizeText = (value: string) =>
   value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+
+// Función para clasificar el tipo de fuente específica
+const classifySourceType = (url: string, title: string): string => {
+  const urlLower = url.toLowerCase()
+  const titleLower = title.toLowerCase()
+  
+  // Clasificación por URL
+  if (urlLower.includes('corteconstitucional.gov.co')) return 'Jurisprudencia Constitucional'
+  if (urlLower.includes('cortesuprema.gov.co')) return 'Jurisprudencia Suprema'
+  if (urlLower.includes('consejodeestado.gov.co')) return 'Jurisprudencia Administrativa'
+  if (urlLower.includes('ramajudicial.gov.co')) return 'Jurisprudencia Judicial'
+  if (urlLower.includes('secretariasenado.gov.co')) return 'Normativa Legislativa'
+  if (urlLower.includes('imprenta.gov.co')) return 'Normativa Oficial'
+  if (urlLower.includes('suin-juriscol.gov.co')) return 'Base de Datos Jurídica'
+  if (urlLower.includes('funcionpublica.gov.co')) return 'Normativa Administrativa'
+  if (urlLower.includes('alcaldiabogota.gov.co')) return 'Normativa Local'
+  if (urlLower.includes('procuraduria.gov.co')) return 'Jurisprudencia Procuraduría'
+  if (urlLower.includes('contraloria.gov.co')) return 'Jurisprudencia Contraloría'
+  if (urlLower.includes('fiscalia.gov.co')) return 'Jurisprudencia Fiscalía'
+  if (urlLower.includes('defensoria.gov.co')) return 'Jurisprudencia Defensoría'
+  
+  // Clasificación por título
+  if (titleLower.includes('constitución') || titleLower.includes('constitucional')) return 'Normativa Constitucional'
+  if (titleLower.includes('código civil')) return 'Código Civil'
+  if (titleLower.includes('código penal')) return 'Código Penal'
+  if (titleLower.includes('código proceso') || titleLower.includes('procedimiento')) return 'Código Procesal'
+  if (titleLower.includes('ley')) return 'Ley'
+  if (titleLower.includes('decreto')) return 'Decreto'
+  if (titleLower.includes('sentencia')) return 'Jurisprudencia'
+  if (titleLower.includes('fallo')) return 'Jurisprudencia'
+  if (titleLower.includes('auto')) return 'Jurisprudencia'
+  if (titleLower.includes('resolución')) return 'Resolución'
+  if (titleLower.includes('circular')) return 'Circular'
+  if (titleLower.includes('acuerdo')) return 'Acuerdo'
+  
+  // Clasificación académica
+  if (urlLower.includes('.edu.co')) return 'Doctrina Académica'
+  
+  // Clasificación por dominio oficial
+  if (urlLower.includes('.gov.co')) return 'Fuente Oficial'
+  
+  // Por defecto
+  return 'Fuente General'
+}
 
 const detectLegalArticle = (query: string) => {
   const normalized = normalizeText(query)
@@ -157,18 +220,18 @@ const htmlEntityMap: Record<string, string> = {
   '&apos;': "'",
   '&lt;': '<',
   '&gt;': '>',
-  '&aacute;': 'á',
-  '&eacute;': 'é',
-  '&iacute;': 'í',
-  '&oacute;': 'ó',
-  '&uacute;': 'ú',
-  '&Aacute;': 'Á',
-  '&Eacute;': 'É',
-  '&Iacute;': 'Í',
-  '&Oacute;': 'Ó',
-  '&Uacute;': 'Ú',
-  '&ntilde;': 'ñ',
-  '&Ntilde;': 'Ñ'
+  '&aacute;': '\u00E1',
+  '&eacute;': '\u00E9',
+  '&iacute;': '\u00ED',
+  '&oacute;': '\u00F3',
+  '&uacute;': '\u00FA',
+  '&Aacute;': '\u00C1',
+  '&Eacute;': '\u00C9',
+  '&Iacute;': '\u00CD',
+  '&Oacute;': '\u00D3',
+  '&Uacute;': '\u00DA',
+  '&ntilde;': '\u00F1',
+  '&Ntilde;': '\u00D1'
 }
 
 const decodeHtmlEntities = (input: string): string =>
@@ -176,6 +239,9 @@ const decodeHtmlEntities = (input: string): string =>
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
     .replace(/&[a-zA-Z]+;/g, entity => htmlEntityMap[entity] ?? entity)
+
+const normalizeAccents = (value: string): string =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
 const focusContentOnArticle = (
   content: string,
@@ -186,47 +252,77 @@ const focusContentOnArticle = (
   }
 
   const articleNumber = articleInfo.articleNumber
+  console.log(`[web-search] Buscando articulo ${articleNumber} en contenido de ${content.length} caracteres`)
+
+  const asciiContent = normalizeAccents(content)
+  const asciiLower = asciiContent.toLowerCase()
+
   const patterns = [
-    new RegExp(`art[íi]?culo\\s+${articleNumber}\\b`, 'i'),
-    new RegExp(`art\\.?\\s*${articleNumber}\\b`, 'i')
+    new RegExp(`articulo\\s+${articleNumber}`, 'g'),
+    new RegExp(`art\\.?\\s*${articleNumber}\\b`, 'g')
   ]
 
-  for (const pattern of patterns) {
-    const match = content.search(pattern)
-    if (match !== -1) {
-      const sectionStart = Math.max(0, match - ARTICLE_CONTEXT_WINDOW)
-      let sectionEnd = Math.min(content.length, match + ARTICLE_MAX_LENGTH)
+  let bestMatch = ''
+  let bestScore = 0
 
-      const remaining = content.slice(match)
-      const nextArticleMatch = remaining.search(/art[íi]?culo\s+\d+\b/i)
-      if (nextArticleMatch > 0 && match + nextArticleMatch > match) {
-        sectionEnd = Math.min(sectionEnd, match + nextArticleMatch)
-      }
+  const evaluateSnippet = (snippetRaw: string) => {
+    let snippet = snippetRaw
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
 
-      let snippet = content.slice(sectionStart, sectionEnd).trim()
+    if (snippet.startsWith('...')) {
+      snippet = snippet.slice(3).trim()
+    }
 
-      const relativeMatch = snippet.search(pattern)
-      if (relativeMatch > 0) {
-        snippet = snippet.slice(relativeMatch)
-      }
+    const asciiSnippet = normalizeAccents(snippet.toLowerCase())
 
-      const articleDotPattern = new RegExp(`art[íi]?culo\\s+${articleInfo.articleNumber}\\s*\\.`, 'i')
-      const dotIndex = snippet.search(articleDotPattern)
-      if (dotIndex > 0) {
-        snippet = snippet.slice(dotIndex)
-      }
+    let score = 0
+    if (asciiSnippet.includes(`articulo ${articleNumber}`)) score += 10
+    if (snippet.includes('.')) score += 5
+    if (snippet.length > 80 && snippet.length < 1200) score += 3
+    if (/[a-zA-Z]+\s+[a-zA-Z]+\s+[a-zA-Z]+/.test(snippet)) score += 2
 
-      if (sectionStart > 0) {
-        snippet = `...${snippet}`
-      }
-      if (sectionEnd < content.length) {
-        snippet = `${snippet}...`
-      }
-
-      return snippet
+    if (score > bestScore && snippet.length > 50) {
+      bestScore = score
+      bestMatch = snippet
     }
   }
 
+  for (const basePattern of patterns) {
+    const pattern = new RegExp(basePattern.source, 'g')
+    let match: RegExpExecArray | null
+
+    while ((match = pattern.exec(asciiLower)) !== null) {
+      const matchIndex = match.index
+      const sectionStart = Math.max(0, matchIndex - ARTICLE_CONTEXT_WINDOW)
+      let sectionEnd = Math.min(asciiLower.length, matchIndex + ARTICLE_MAX_LENGTH)
+
+      const nextSearchStart = matchIndex + 10
+      const nextArticlePatterns = [/articulo\s+\d+/, /art\.\s*\d+/]
+
+      for (const nextPattern of nextArticlePatterns) {
+        const relativeSearch = asciiLower.slice(nextSearchStart)
+        const nextMatchIndex = relativeSearch.search(nextPattern)
+        if (nextMatchIndex >= 0) {
+          const candidateEnd = nextSearchStart + nextMatchIndex
+          if (candidateEnd > matchIndex) {
+            sectionEnd = Math.min(sectionEnd, candidateEnd)
+          }
+        }
+      }
+
+      const snippet = content.slice(sectionStart, sectionEnd)
+      evaluateSnippet(snippet)
+    }
+  }
+
+  if (bestMatch) {
+    console.log(`[web-search] Articulo ${articleNumber} encontrado con score ${bestScore}: ${bestMatch.substring(0, 100)}...`)
+    return bestMatch
+  }
+
+  console.log(`[web-search] Articulo ${articleNumber} NO encontrado, usando contenido completo`)
   return content
 }
 
@@ -272,26 +368,26 @@ const fetchArticleFromAlternateSources = async (
       }
 
       const html = await response.text()
-      const text = html
+      const statyaMatch = html.match(/<div id="statya">([\s\S]*?)<\/div>/i)
+      const relevantHtml = statyaMatch ? statyaMatch[1] : html
+      const rawText = relevantHtml
         .replace(/<script[\s\S]*?<\/script>/gi, ' ')
         .replace(/<style[\s\S]*?<\/style>/gi, ' ')
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
 
-      const plainText = html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-      if (!plainText) {
+      if (!rawText) {
         continue
       }
 
-      const decoded = decodeHtmlEntities(plainText)
-      const focused = focusContentOnArticle(decoded, articleInfo)
+      const cleaned = decodeHtmlEntities(rawText)
+        .replace(/Hacer una pregunta en los comentarios[\s\S]*/i, '')
+        .replace(/Mejores juristas[\s\S]*/i, '')
+        .replace(/Colombia Art\.\s*\d+\s*CC.*/i, '')
+        .trim()
+
+      const focused = focusContentOnArticle(cleaned, articleInfo)
       if (focused) {
         console.log(`[web-search] Fallback leyes.co utilizado para articulo ${articleInfo.articleNumber}`)
         return focused
@@ -327,24 +423,56 @@ async function enrichSearchResults(
     if (index < maxEnriched) {
       try {
         const content = await extractUrlContent(result.url, { preferFirecrawl: preferFirecrawlForResult })
+        let alternateSnippetCache: string | undefined
+        const getAlternateSnippet = async (): Promise<string> => {
+          if (alternateSnippetCache !== undefined) {
+            return alternateSnippetCache
+          }
+
+          if (!articleInfo?.articleNumber) {
+            alternateSnippetCache = ''
+            return alternateSnippetCache
+          }
+
+          const alternate = await fetchArticleFromAlternateSources(articleInfo, query)
+          alternateSnippetCache = alternate ? sanitizeSnippet(alternate) : ''
+          return alternateSnippetCache
+        }
+
+        let resolvedSnippet = ''
+        let focusedContent = ''
+
         if (content && !content.startsWith('Error')) {
           const decodedContent = decodeHtmlEntities(content)
-          let focused = focusContentOnArticle(decodedContent, articleInfo)
+          focusedContent = focusContentOnArticle(decodedContent, articleInfo)
 
           if (articleInfo?.articleNumber) {
-            const normalizedFocused = normalizeText(focused)
+            const normalizedFocused = normalizeText(focusedContent)
             if (!normalizedFocused.includes(`articulo ${articleInfo.articleNumber}`)) {
-              const alternate = await fetchArticleFromAlternateSources(articleInfo, query)
-              if (alternate) {
-                focused = alternate
+              const alternateSnippet = await getAlternateSnippet()
+              if (alternateSnippet) {
+                resolvedSnippet = alternateSnippet
               }
             }
           }
 
+          if (!resolvedSnippet && focusedContent.trim()) {
+            resolvedSnippet = sanitizeSnippet(focusedContent)
+          }
+        }
+
+        if (!resolvedSnippet) {
+          const alternateSnippet = await getAlternateSnippet()
+          if (alternateSnippet) {
+            resolvedSnippet = alternateSnippet
+          }
+        }
+
+        if (resolvedSnippet) {
           enriched.push({
             ...result,
             score: baseScore,
-            snippet: sanitizeSnippet(focused)
+            snippet: resolvedSnippet
           })
           continue
         }
@@ -390,7 +518,7 @@ export async function searchWebWithFirecrawl(query: string, numResults: number =
     }
 
     const enrichedResults = await enrichSearchResults(googleResults.results, {
-      maxEnriched: Math.min(5, googleResults.results.length),
+      maxEnriched: Math.min(3, googleResults.results.length), // Reducido de 5 a 3 para priorizar calidad
       preferFirecrawl: true,
       articleInfo,
       query
@@ -513,20 +641,30 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
 
     console.log(`[web-search] Google CSE encontro ${cseData.items.length} resultados`)
 
-    const results: SearchResult[] = cseData.items.map((item: any) => {
-      const url = item.link || item.formattedUrl || ''
-      const title = item.title || 'Sin titulo'
-      const snippet = item.snippet || item.htmlSnippet || 'Sin descripcion'
-      const score = scoreFromUrl(url)
-      const prefix = score === 3 ? '[OFICIAL] ' : score === 2 ? '[ACADEMICA] ' : ''
+    const results: SearchResult[] = cseData.items
+      .map((item: any) => {
+        const url = item.link || item.formattedUrl || ''
+        const title = item.title || 'Sin titulo'
+        const snippet = item.snippet || item.htmlSnippet || 'Sin descripcion'
+        const score = scoreFromUrl(url)
+        const prefix = score === 3 ? '[OFICIAL] ' : score === 2 ? '[ACADEMICA] ' : ''
 
-      return {
-        title: prefix ? `${prefix}${title}` : title,
-        url,
-        snippet,
-        score
-      }
-    })
+        return {
+          title: prefix ? `${prefix}${title}` : title,
+          url,
+          snippet,
+          score
+        }
+      })
+      .filter((result: SearchResult) => {
+        // Filtrar dominios prohibidos (Wikipedia, etc.)
+        const isBanned = BANNED_DOMAINS.some(domain => result.url.includes(domain))
+        if (isBanned) {
+          console.log(`[web-search] Resultado filtrado (dominio prohibido): ${result.url}`)
+          return false
+        }
+        return true
+      })
 
     results.sort((a, b) => (b.score || 0) - (a.score || 0))
 
@@ -629,7 +767,7 @@ export async function extractUrlContent(
   options: { preferFirecrawl?: boolean } = {}
 ): Promise<string> {
   const preferFirecrawl = options.preferFirecrawl ?? false
-  const shouldTryFirecrawl = Boolean(process.env.FIRECRAWL_API_KEY)
+  const shouldTryFirecrawl = Boolean(process.env.FIRECRAWL_API_KEY ?? true)
 
   console.log(`[web-search] Extrayendo contenido de: ${url}`)
 
@@ -748,12 +886,12 @@ export async function searchWebEnriched(query: string): Promise<WebSearchRespons
     const articleInfo = detectLegalArticle(query)
     if (articleInfo.isConstitutionalArticle || articleInfo.isCodeArticle) {
       console.log(`[web-search] Consulta legal detectada, usando buscador especializado`)
-      return await searchWebWithFirecrawl(query, 5)
+      return await searchWebWithFirecrawl(query, 3) // Reducido de 5 a 3 para priorizar calidad
     }
 
     // TERCERO: Consulta general con Google CSE
     console.log(`[web-search] Consulta general, usando Google CSE`)
-    const searchResults = await searchWeb(query, 10)
+    const searchResults = await searchWeb(query, 5) // Reducido de 10 a 5 para priorizar calidad
 
     if (!searchResults.success || searchResults.results.length === 0) {
       return searchResults
@@ -800,6 +938,8 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
 
   // Extraer y limpiar el contenido legal más relevante
   const extractLegalContent = (snippet: string): string => {
+    console.log(`[web-search] Extrayendo contenido legal de ${snippet.length} caracteres`)
+    
     // Decodificar caracteres UTF-8 mal codificados
     let cleaned = snippet
       .replace(/ArtÃculo/g, 'Artículo')
@@ -823,7 +963,7 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
       .replace(/especÃficamente/g, 'específicamente')
       .replace(/informaciÃ³n/g, 'información')
 
-    // Eliminar ruido de navegación y elementos web
+    // Eliminar ruido de navegación y elementos web de forma más agresiva
     cleaned = cleaned
       .replace(/Hacer una pregunta en los comentarios[\s\S]*/gi, '')
       .replace(/Ver el artÃ[\s\S]*/gi, '')
@@ -831,49 +971,122 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
       .replace(/\d+\s+\d+\s+\d+\s+\d+\s+\d+/g, '') // Números de gaceta
       .replace(/ArtÃculo\s+\d+[oº]\s*\.\.\./gi, '') // Navegación de artículos
       .replace(/\.\.\.\s*\d+\s*Ver/gi, '') // Más navegación
+      .replace(/Iniciar sesi[óo]n[\s\S]*/gi, '')
+      .replace(/Registrarse[\s\S]*/gi, '')
+      .replace(/Inicio\s*>\s*[^>]*>/gi, '')
+      .replace(/\b\d{1,2}\s*de\s*\w+\s*de\s*\d{4}\b/g, '') // Fechas
+      .replace(/[A-Z]{2,}\s*\d+[\s-]*\d+/g, '') // Códigos de ley
       .replace(/\s{2,}/g, ' ') // Múltiples espacios
+      .replace(/[\r\n]+/g, ' ') // Saltos de línea
       .trim()
 
-    // Extraer el artículo completo usando patrones más precisos
+    console.log(`[web-search] Texto limpio: ${cleaned.substring(0, 200)}...`)
+
+    // PATRONES MÁS AGRESIVOS para encontrar artículos
     const articlePatterns = [
-      /Artículo\s+\d+\.\s*[^.]*(?:\.[^.]*){0,3}/, // Artículo seguido de hasta 3 oraciones
-      /Artículo\s+\d+\.\s*[^.]*(?:\s*[^.]*)*/, // Artículo con contenido variable
+      // Patrones muy específicos para artículos constitucionales
+      /Art[íi]?culo\s+(\d+)\.\s*([^]*?)(?=Art[íi]?culo\s+\d+|$)/gi,
+      /ART[ÍI]?CULO\s+(\d+)\.\s*([^]*?)(?=ART[ÍI]?CULO\s+\d+|$)/gi,
+      /Art\.?\s*(\d+)\.\s*([^]*?)(?=Art\.?\s*\d+|$)/gi,
+      
+      // Patrones más amplios para contenido legal
+      /Art[íi]?culo\s+(\d+)[\.\-]\s*([^]*?)(?=[.;]|\n\n|$)/gi,
+      /Art[íi]?culo\s+(\d+)\s*[:\-]\s*([^]*?)(?=[.;]|\n\n|$)/gi,
+      
+      // Patrones para códigos y leyes
+      /Art[íi]?culo\s+(\d+)\.\s*([^.]{20,500})\./gi,
+      /Art[íi]?culo\s+(\d+)\s*([^.]{20,500})\./gi,
+      
+      // Patrones de fallback
+      /(\d+\.\s*[^.]{30,300})\./gi,
+      /Art[íi]?culo\s+(\d+)[^a-zA-Z]{0,10}([a-zA-Z\s,.;:]{50,800})/gi
     ]
 
+    let bestMatch = ''
+    let bestScore = 0
+
     for (const pattern of articlePatterns) {
-      const match = cleaned.match(pattern)
-      if (match && match[0].length > 50) { // Asegurar que sea contenido significativo
-        let articleText = match[0].trim()
-        
-        // Eliminar fragmentos incompletos al final
-        if (articleText.endsWith(',') || articleText.endsWith(' y ')) {
-          articleText = articleText.slice(0, -1).trim()
+      const matches = [...cleaned.matchAll(new RegExp(pattern.source, 'gi'))]
+      
+      for (const match of matches) {
+        if (match && match.length >= 2) {
+          let articleContent = ''
+          
+          if (match[2] && match[2].trim().length > 20) {
+            articleContent = match[2].trim()
+          } else if (match[1] && match[1].trim().length > 20) {
+            articleContent = match[1].trim()
+          } else if (match[0] && match[0].trim().length > 30) {
+            articleContent = match[0].trim()
+          }
+
+          if (articleContent.length > 20) {
+            // Limpiar el contenido encontrado
+            articleContent = articleContent
+              .replace(/\s{2,}/g, ' ')
+              .replace(/^[^a-zA-Z]*/, '') // Eliminar caracteres no alfabéticos al inicio
+              .replace(/[^a-zA-Z\.]*$/, '') // Eliminar caracteres no alfabéticos al final
+              .trim()
+
+            // Calcular score de calidad
+            let score = 0
+            if (articleContent.includes('.')) score += 5 // Tiene oraciones
+            if (articleContent.length > 50 && articleContent.length < 800) score += 3
+            if (articleContent.match(/\b(Es|Son|La|El|Los|Las|Son|Están|Existen|Hay)\b/)) score += 2 // Tiene palabras significativas
+            if (articleContent.match(/\b(rama|poder|Estado|Colombia|organización|función|competencia|atribución)\b/i)) score += 4 // Contiene términos legales
+            
+            // Bonus si parece un artículo constitucional completo
+            if (articleContent.match(/\b(Son\s+Ramas\s+del\s+Poder\s+Público|Estado\s+social\s+de\s+derecho|República\s+unitaria|autonomía|democrática|participativa|pluralista)\b/i)) {
+              score += 10
+            }
+
+            if (score > bestScore) {
+              bestScore = score
+              bestMatch = articleContent
+              console.log(`[web-search] Mejor encontrado (score ${score}): ${articleContent.substring(0, 100)}...`)
+            }
+          }
         }
-        
-        // Asegurar que termine en punto o completo
-        if (!articleText.endsWith('.') && !articleText.endsWith(':')) {
-          articleText += '.'
-        }
-        
-        return articleText
       }
     }
 
-    // Si no encuentra patrón de artículo, extraer las primeras oraciones significativas
-    const sentences = cleaned.split(/[.!?]/).filter(s => s.trim().length > 15)
-    const meaningfulSentences = sentences.filter(s => 
+    if (bestMatch && bestScore >= 3) {
+      // Asegurar formato proper
+      if (!bestMatch.endsWith('.') && !bestMatch.endsWith(':')) {
+        bestMatch += '.'
+      }
+      console.log(`[web-search] Contenido legal extraído: ${bestMatch.substring(0, 150)}...`)
+      return bestMatch
+    }
+
+    // FALLBACK: Extraer las oraciones más largas y significativas
+    console.log(`[web-search] Usando fallback de extracción de oraciones`)
+    const sentences = cleaned.split(/[.!?]/).filter(s => s.trim().length > 25)
+    
+    // Filtrar oraciones con contenido legal significativo
+    const legalSentences = sentences.filter(s => 
       !s.includes('Hacer una pregunta') &&
       !s.includes('Ver el art') &&
       !s.includes('Gacetas') &&
       !s.includes('Asamblea') &&
-      !s.match(/^\d+$/) // Solo números
+      !s.match(/^\d+$/) && // Solo números
+      (s.match(/\b(Es|Son|La|El|Los|Las|Son|Están|Existen|Hay)\b/) || // Tiene palabras comunes
+       s.match(/\b(rama|poder|Estado|Colombia|organización|función|competencia|atribución|ley|código|norma|artículo)\b/i)) // Tiene términos legales
     )
 
-    if (meaningfulSentences.length > 0) {
-      return meaningfulSentences.slice(0, 2).join('. ').trim() + '.'
+    if (legalSentences.length > 0) {
+      // Ordenar por longitud y tomar las mejores
+      legalSentences.sort((a, b) => b.length - a.length)
+      const selectedSentences = legalSentences.slice(0, 2)
+      const result = selectedSentences.join('. ').trim() + '.'
+      console.log(`[web-search] Fallback exitoso: ${result.substring(0, 100)}...`)
+      return result
     }
 
-    return cleaned.slice(0, 300).trim() + (cleaned.length > 300 ? '...' : '')
+    // ÚLTIMO RECURSO: Devolver el contenido más largo que parezca útil
+    const fallbackContent = cleaned.slice(0, 400).trim()
+    console.log(`[web-search] Último recurso: ${fallbackContent.substring(0, 100)}...`)
+    return fallbackContent + (cleaned.length > 400 ? '...' : '')
   }
 
   // Procesar fuentes oficiales
@@ -884,11 +1097,12 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
         legalContent += `${legalText}\n\n`
       }
       
-      // Agregar a la lista de fuentes para bibliografía
+      // Agregar a la lista de fuentes para bibliografía con clasificación específica
+      const sourceType = classifySourceType(result.url, result.title)
       sourcesList.push({
         title: result.title.replace(/\[OFICIAL\]\s*/g, '').trim(),
         url: result.url,
-        type: 'OFICIAL'
+        type: sourceType
       })
     })
   }
@@ -901,10 +1115,11 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
         legalContent += `${legalText}\n\n`
       }
       
+      const sourceType = classifySourceType(result.url, result.title)
       sourcesList.push({
         title: result.title.replace(/\[ACADEMICA\]\s*/g, '').trim(),
         url: result.url,
-        type: 'ACADÉMICA'
+        type: sourceType
       })
     })
   }
@@ -917,10 +1132,11 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
         legalContent += `${legalText}\n\n`
       }
       
+      const sourceType = classifySourceType(result.url, result.title)
       sourcesList.push({
         title: result.title.trim(),
         url: result.url,
-        type: 'GENERAL'
+        type: sourceType
       })
     })
   }
@@ -945,9 +1161,15 @@ export function formatSearchResultsForContext(searchResponse: WebSearchResponse)
   context += `**INSTRUCCIÓN IMPORTANTE:** 
 1. Responde de manera clara y específica a la consulta del usuario usando SOLO la información legal proporcionada arriba
 2. NO agregues información adicional que no esté en las fuentes mencionadas
-3. Al final de tu respuesta, incluye UNA SOLA sección con "## 📚 Fuentes Consultadas" listando EXACTAMENTE las fuentes que aparecen en la sección "FUENTES CONSULTADAS" de arriba
+3. Al final de tu respuesta, incluye UNA SOLA sección con "## ?? Fuentes Consultadas" listando EXACTAMENTE las fuentes que aparecen en la sección "FUENTES CONSULTADAS" de arriba
 4. NO dupliques las fuentes ni agregues bibliografía adicional
 5. Usa un formato profesional y estructurado`
 
   return context
 }
+
+
+
+
+
+

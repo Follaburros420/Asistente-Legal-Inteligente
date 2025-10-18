@@ -10,8 +10,8 @@ import SectionWrapper from "./SectionWrapper"
 export default function Testimonials() {
   const testimonials = [
     {
-      name: "María González",
-      role: "Abogada Especialista en Derecho Civil",
+      name: "Miguel González",
+      role: "Abogado Especialista en Derecho Civil",
       content:
         "El asistente legal ha revolucionado mi práctica. Ahora puedo analizar contratos en minutos en lugar de horas, y la precisión es impresionante.",
       avatar: "/testimonial/user1.webp",
@@ -24,8 +24,8 @@ export default function Testimonials() {
       avatar: "/testimonial/user2.webp",
     },
     {
-      name: "Ana Martínez",
-      role: "Abogada Corporativa",
+      name: "Andrés Martínez",
+      role: "Abogado Corporativo",
       content:
         "La investigación jurídica automatizada me ahorra horas de trabajo. Encuentra precedentes que nunca habría encontrado manualmente.",
       avatar: "/testimonial/user3.webp",

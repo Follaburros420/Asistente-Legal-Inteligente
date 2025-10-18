@@ -1,0 +1,23 @@
+{
+  "endpointsDeleted": 29,
+  "endpointsKept": 15,
+  "spaceSaved": "92.34 KB",
+  "timestamp": "2025-10-17T22:53:26.890Z",
+  "remainingEndpoints": [
+    "app/api/chat/legal",
+    "app/api/chat/simple",
+    "app/api/chat/simple-direct",
+    "app/api/chat/tools",
+    "app/api/chat/independent",
+    "app/api/chat/openrouter",
+    "app/api/retrieval/process",
+    "app/api/retrieval/retrieve",
+    "app/api/search",
+    "app/api/tools/web-search",
+    "app/api/command",
+    "app/api/assistants/openai",
+    "app/api/username/available",
+    "app/api/username/get",
+    "app/auth/callback"
+  ]
+}

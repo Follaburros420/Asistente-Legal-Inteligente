@@ -2,7 +2,7 @@ import { useChatHandler } from "@/components/chat/chat-hooks/use-chat-handler"
 import { ChatbotUIContext } from "@/context/context"
 import { LLM_LIST } from "@/lib/models/llm/llm-list"
 import { cn } from "@/lib/utils"
-import { Tables } from "@/supabase/types"
+import { BibliographyItem } from "@/types/chat-message"
 import { LLM, LLMID, MessageImage, ModelProvider } from "@/types"
 import {
   IconBolt,
@@ -34,6 +34,7 @@ const ICON_SIZE = 32
 interface MessageProps {
   message: Tables<"messages">
   fileItems: Tables<"file_items">[]
+  bibliography?: BibliographyItem[]
   isEditing: boolean
   isLast: boolean
   onStartEdit: (message: Tables<"messages">) => void
@@ -44,6 +45,7 @@ interface MessageProps {
 export const Message: FC<MessageProps> = ({
   message,
   fileItems,
+  bibliography,
   isEditing,
   isLast,
   onStartEdit,
@@ -77,18 +79,37 @@ export const Message: FC<MessageProps> = ({
   const [showImagePreview, setShowImagePreview] = useState(false)
   const [selectedImage, setSelectedImage] = useState<MessageImage | null>(null)
   
-  // Parsear bibliografía del mensaje
-  const { bibliographyItems, contentWithoutBibliography } = useBibliographyParser(message.content)
-  const displayContent =
-    contentWithoutBibliography && contentWithoutBibliography.length > 0
-      ? contentWithoutBibliography
-      : message.content
+  // Convertir bibliografía al formato esperado por BibliographySection
+  const convertBibliographyItems = (items: BibliographyItem[]) => {
+    return items.map((item, index) => ({
+      id: `bib-${index}`,
+      title: item.title,
+      type: mapTypeToBibliographyType(item.type),
+      source: item.type,
+      url: item.url,
+      description: `${item.type} - ${item.title}`
+    }))
+  }
 
-  const [showFileItemPreview, setShowFileItemPreview] = useState(false)
-  const [selectedFileItem, setSelectedFileItem] =
-    useState<Tables<"file_items"> | null>(null)
+  // Mapear tipos de fuente a tipos de bibliografía
+  const mapTypeToBibliographyType = (type: string): 'sentencia' | 'ley' | 'decreto' | 'articulo' | 'jurisprudencia' | 'doctrina' => {
+    const typeLower = type.toLowerCase()
+    if (typeLower.includes('jurisprudencia') || typeLower.includes('sentencia')) return 'jurisprudencia'
+    if (typeLower.includes('ley')) return 'ley'
+    if (typeLower.includes('decreto')) return 'decreto'
+    if (typeLower.includes('artículo') || typeLower.includes('codigo')) return 'articulo'
+    if (typeLower.includes('doctrina') || typeLower.includes('académica')) return 'doctrina'
+    return 'ley' // Por defecto
+  }
+
+  // Usar bibliografía del prop si está disponible, sino parsear del contenido
+  const bibliographyItems = bibliography || []
+  const { bibliographyItems: parsedBibliography, contentWithoutBibliography } = useBibliographyParser(message.content)
+  const finalBibliographyItems = bibliographyItems.length > 0 ? convertBibliographyItems(bibliographyItems) : parsedBibliography
+  const displayContent = bibliographyItems.length > 0 ? message.content : contentWithoutBibliography
 
   const [viewSources, setViewSources] = useState(false)
+  const [showFileItemPreview, setShowFileItemPreview] = useState(false)
 
   const handleCopy = () => {
     if (navigator.clipboard) {
@@ -228,35 +249,18 @@ export const Message: FC<MessageProps> = ({
 
   // Contenido del mensaje
   const renderMessageContent = () => {
+    // Solo mostrar indicador de carga si es el último mensaje del asistente y está generando
     if (!firstTokenReceived && isGenerating && isLast && message.role === "assistant") {
       return (
-        <>
-          {(() => {
-            switch (toolInUse) {
-              case "none":
-                return <IconCircleFilled className="animate-pulse" size={20} />
-              case "retrieval":
-                return (
-                  <div className="flex animate-pulse items-center space-x-2">
-                    <IconFileText size={20} />
-                    <div>Buscando archivos...</div>
-                  </div>
-                )
-              default:
-                return (
-                  <div className="flex flex-col animate-pulse space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <IconBolt size={20} />
-                      <div>Pensando a profundidad...</div>
-                    </div>
-                    <div className="text-xs text-muted-foreground ml-7">
-                      Buscando en fuentes oficiales colombianas
-                    </div>
-                  </div>
-                )
-            }
-          })()}
-        </>
+        <div className="flex flex-col animate-pulse space-y-1">
+          <div className="flex items-center space-x-2">
+            <IconBolt size={20} />
+            <div>Pensando a profundidad...</div>
+          </div>
+          <div className="text-xs text-muted-foreground ml-7">
+            Buscando en fuentes oficiales colombianas
+          </div>
+        </div>
       )
     }
     
@@ -321,8 +325,8 @@ export const Message: FC<MessageProps> = ({
           {renderMessageContent()}
 
           {/* Bibliografía */}
-          {bibliographyItems.length > 0 && (
-            <BibliographySection items={bibliographyItems} />
+          {finalBibliographyItems.length > 0 && (
+            <BibliographySection items={finalBibliographyItems} />
           )}
 
           {/* File items */}
