@@ -26,9 +26,15 @@ export async function POST(request: Request) {
     sourceCount: number
   }
 
-  // 🔥 FORZAR OpenAI Embeddings para retrieval
-  // OpenRouter no tiene API de embeddings, local tiene problemas
-  if (embeddingsProvider === "openrouter" || embeddingsProvider === "local") {
+  // Detectar si hay API key de OpenAI disponible
+  const hasOpenAI = profile.openai_api_key || process.env.OPENAI_API_KEY
+  
+  // Si no hay OpenAI pero sí OpenRouter, usar OpenRouter
+  if (!hasOpenAI && (profile.openrouter_api_key || process.env.OPENROUTER_API_KEY)) {
+    embeddingsProvider = "openrouter"
+    console.log("🔍 Usando OpenRouter para retrieval (OpenAI no disponible)")
+  } else if (embeddingsProvider === "openrouter" || embeddingsProvider === "local") {
+    // FORZAR OpenAI Embeddings para retrieval
     embeddingsProvider = "openai"
     console.log("🔍 Cambiando a 'openai' para retrieval (más confiable)")
   }

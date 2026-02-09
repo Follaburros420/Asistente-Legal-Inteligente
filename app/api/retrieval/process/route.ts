@@ -42,11 +42,18 @@ export async function POST(req: Request) {
     const file_id = formData.get("file_id") as string
     let embeddingsProvider = formData.get("embeddingsProvider") as string
 
-    // 🔥 FORZAR OpenAI Embeddings - SOLUCIÓN DEFINITIVA
-    // OpenRouter no tiene embeddings, local tiene problemas de descarga
-    // OpenAI embeddings son baratos (~$0.0001/1K tokens) y muy confiables
-    embeddingsProvider = "openai"
-    console.log("🔥 FORZANDO embeddingsProvider a 'openai' (más confiable y económico)")
+    // Detectar si hay API key de OpenAI disponible
+    const hasOpenAI = profile.openai_api_key || process.env.OPENAI_API_KEY
+    
+    // Si no hay OpenAI pero sí OpenRouter, usar OpenRouter
+    if (!hasOpenAI && (profile.openrouter_api_key || process.env.OPENROUTER_API_KEY)) {
+      embeddingsProvider = "openrouter"
+      console.log("🔥 Usando OpenRouter para embeddings (OpenAI no disponible)")
+    } else {
+      // FORZAR OpenAI Embeddings - SOLUCIÓN DEFINITIVA
+      embeddingsProvider = "openai"
+      console.log("🔥 FORZANDO embeddingsProvider a 'openai' (más confiable y económico)")
+    }
 
     const fileMetadata = await assertFileAccess(supabaseAdmin, file_id, profile.user_id)
 
@@ -54,8 +61,10 @@ export async function POST(req: Request) {
       .from("files")
       .download(fileMetadata.file_path)
 
-    if (fileError)
-      throw new Error(`Failed to retrieve file: ${fileError.message}`)
+    if (fileError) {
+      console.error("❌ Storage error:", fileError)
+      throw new Error(`Failed to retrieve file from storage: ${fileError.message}. Please ensure the storage bucket exists and the file path is correct.`)
+    }
 
     const fileBuffer = Buffer.from(await file.arrayBuffer())
     const blob = new Blob([fileBuffer])

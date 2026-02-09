@@ -111,7 +111,7 @@ export const fetchOpenRouterModels = async () => {
 
     return openRouterModels
   } catch (error) {
-    console.error("Error fetching Open Router models: " + error)
-    toast.error("Error fetching Open Router models: " + error)
+    // Silenciar error - no mostrar al usuario
+    console.warn("OpenRouter models fetch failed (non-critical): " + error)
   }
 }

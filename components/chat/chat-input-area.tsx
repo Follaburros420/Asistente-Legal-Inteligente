@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowUp, Square } from "lucide-react"
-import { FC, useEffect, useRef, useState, ReactNode } from "react"
+import { FC, useEffect, useRef, useState, ReactNode, useCallback } from "react"
 import ReactTextareaAutosize from "react-textarea-autosize"
 
 interface ChatInputAreaProps {
@@ -37,17 +37,32 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
 }) => {
     const [isFocused, setIsFocused] = useState(false)
     const [currentPlaceholder, setCurrentPlaceholder] = useState(0)
+    const [localValue, setLocalValue] = useState(value)
+    const isComposingRef = useRef(false)
+    
+    // Sync local value with external value
+    useEffect(() => {
+        setLocalValue(value)
+    }, [value])
+    
+    // Handle change with immediate local update
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newValue = e.target.value
+        setLocalValue(newValue)
+        // Use setTimeout to avoid blocking the input
+        setTimeout(() => onChange(newValue), 0)
+    }
 
     // Rotating placeholders logic
     useEffect(() => {
-        if (!showSuggestions || value || placeholders.length === 0) return
+        if (!showSuggestions || localValue || placeholders.length === 0) return
 
         const interval = setInterval(() => {
             setCurrentPlaceholder((prev) => (prev + 1) % placeholders.length)
         }, 3000)
 
         return () => clearInterval(interval)
-    }, [showSuggestions, value, placeholders.length])
+    }, [showSuggestions, localValue, placeholders.length])
 
     return (
         <div
@@ -58,7 +73,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                 "border border-white/10 dark:border-white/5",
                 "transition-colors duration-200",
                 isFocused && "border-primary/30",
-                value && "bg-background"
+                localValue && "bg-background"
             )}
             style={{ minHeight: "60px" }}
         >
@@ -84,8 +99,8 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                         )}
                         minRows={1}
                         maxRows={8}
-                        value={value}
-                        onChange={(e) => onChange(e.target.value)}
+                        value={localValue}
+                        onChange={handleChange}
                         onKeyDown={onKeyDown}
                         onPaste={onPaste}
                         onCompositionStart={onCompositionStart}
@@ -96,7 +111,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                     />
 
                     {/* Animated Placeholders */}
-                    {showSuggestions && !value && placeholders.length > 0 && (
+                    {showSuggestions && !localValue && placeholders.length > 0 && (
                         <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-10">
                             <AnimatePresence mode="wait">
                                 <motion.p
@@ -114,7 +129,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                     )}
 
                     {/* Static Placeholder fallback */}
-                    {!value && (!showSuggestions || placeholders.length === 0) && placeholder && (
+                    {!localValue && (!showSuggestions || placeholders.length === 0) && placeholder && (
                         <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-10">
                             <p className="truncate">{placeholder}</p>
                         </div>

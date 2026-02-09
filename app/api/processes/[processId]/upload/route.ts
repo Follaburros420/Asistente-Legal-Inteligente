@@ -85,6 +85,11 @@ export async function POST(
         .upload(filePath, file, { upsert: true })
 
       if (uploadError) {
+        console.error("❌ Error uploading file to storage:", uploadError)
+        // Try to create bucket if it doesn't exist
+        if (uploadError.message?.includes("bucket") || uploadError.message?.includes("not found")) {
+          console.log("⚠️ Storage bucket 'files' may not exist. Please create it in Supabase.")
+        }
         continue
       }
 
