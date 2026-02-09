@@ -252,7 +252,7 @@ export class LegalAgent {
       ["system", LEGAL_AGENT_SYSTEM_PROMPT],
       new MessagesPlaceholder("chat_history"),
       ["human", "{input}"],
-      new MessagesPlaceholder("agent_scratchpad"],
+      new MessagesPlaceholder("agent_scratchpad"),
     ])
 
     // Crear el agente con tool calling
