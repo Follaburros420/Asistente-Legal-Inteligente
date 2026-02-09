@@ -2,7 +2,25 @@ import { LLM } from "@/types"
 
 const OPENAI_PLATORM_LINK = "https://platform.openai.com/docs/overview"
 
-// OpenAI Models (UPDATED 1/25/24) -----------------------------
+// OpenAI Models (UPDATED 02/2025) -----------------------------
+
+// GPT-5 Mini - Modelo para tareas simples (M1)
+const GPT5_MINI: LLM = {
+  modelId: "openai/gpt-5-mini",
+  modelName: "GPT-5 Mini",
+  provider: "openai",
+  hostedId: "openai/gpt-5-mini",
+  platformLink: OPENAI_PLATORM_LINK,
+  imageInput: false,
+  pricing: {
+    currency: "USD",
+    unit: "1M tokens",
+    inputCost: 0.15,
+    outputCost: 0.60
+  }
+}
+
+// GPT-4o
 const GPT4o: LLM = {
   modelId: "gpt-4o",
   modelName: "GPT-4o",
@@ -18,7 +36,7 @@ const GPT4o: LLM = {
   }
 }
 
-// GPT-4 Turbo (UPDATED 1/25/24)
+// GPT-4 Turbo
 const GPT4Turbo: LLM = {
   modelId: "gpt-4-turbo-preview",
   modelName: "GPT-4 Turbo",
@@ -34,7 +52,7 @@ const GPT4Turbo: LLM = {
   }
 }
 
-// GPT-4 Vision (UPDATED 12/18/23)
+// GPT-4 Vision
 const GPT4Vision: LLM = {
   modelId: "gpt-4-vision-preview",
   modelName: "GPT-4 Vision",
@@ -49,7 +67,7 @@ const GPT4Vision: LLM = {
   }
 }
 
-// GPT-4 (UPDATED 1/29/24)
+// GPT-4
 const GPT4: LLM = {
   modelId: "gpt-4",
   modelName: "GPT-4",
@@ -65,7 +83,7 @@ const GPT4: LLM = {
   }
 }
 
-// GPT-3.5 Turbo (UPDATED 1/25/24)
+// GPT-3.5 Turbo
 const GPT3_5Turbo: LLM = {
   modelId: "gpt-3.5-turbo",
   modelName: "GPT-3.5 Turbo",
@@ -82,6 +100,7 @@ const GPT3_5Turbo: LLM = {
 }
 
 export const OPENAI_LLM_LIST: LLM[] = [
+  GPT5_MINI,  // Modelo para tareas simples recomendado
   GPT4o,
   GPT4Turbo,
   GPT4Vision,

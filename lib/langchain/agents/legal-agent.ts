@@ -1,33 +1,160 @@
 /**
  * Agente Legal Principal con LangChain
  * 
- * Implementa un agente con tool calling nativo que:
- * - Soporta múltiples modelos (Kimi K2, Tongyi, GPT-4o, Claude)
- * - Decide autónomamente cuándo usar herramientas
- * - Mantiene contexto de conversación
- * - Es completamente extensible
+ * Implementa un agente con tool calling nativo usando:
+ * - Gemini 3 Pro Preview: Para tareas complejas (M1 Pro)
+ * - GPT-5 Mini: Para tareas simples (M1)
+ * - Serper: Única herramienta de búsqueda web
  */
 
 import { AgentExecutor, createToolCallingAgent } from "langchain/agents"
 import { ChatOpenAI } from "@langchain/openai"
 import { AIMessage, HumanMessage, SystemMessage, BaseMessage } from "@langchain/core/messages"
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts"
-
-import { createModel, ModelId, getModelConfig } from "../config/models"
-import { LEGAL_AGENT_SYSTEM_PROMPT } from "../config/prompts"
-import { ALL_TOOLS, getToolsByNames } from "../tools"
 import { StructuredTool } from "@langchain/core/tools"
+import { tool } from "@langchain/core/tools"
+import { z } from "zod"
+
+import { 
+  createModel, 
+  ModelId, 
+  getModelConfig, 
+  routeModel,
+  ModelRouterConfig,
+  DEFAULT_MODEL,
+  SIMPLE_TASK_MODEL
+} from "../config/models"
+import { LEGAL_AGENT_SYSTEM_PROMPT } from "../config/prompts"
+import { 
+  searchLegalColombia, 
+  searchJurisprudencia, 
+  searchArticuloLey,
+  formatSearchResultsForLLM 
+} from "../../tools/search/serper-legal-search"
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HERRAMIENTAS LANGCHAIN (Tools)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const searchLegalOfficialTool = tool(
+  async ({ query, num_results }) => {
+    console.log(`🔧 Tool: search_legal_official("${query}")`)
+    const results = await searchLegalColombia(query, { 
+      numResults: num_results,
+      includeAcademic: false 
+    })
+    return formatSearchResultsForLLM(results)
+  },
+  {
+    name: "search_legal_official",
+    description: "Busca información legal en fuentes oficiales colombianas. " +
+      "Usa esta herramienta para consultas sobre leyes, decretos, normas, jurisprudencia. " +
+      "SIEMPRE usa esta herramienta PRIMERO antes de responder consultas legales.",
+    schema: z.object({
+      query: z.string().describe("Términos de búsqueda específicos"),
+      num_results: z.number().optional().default(5).describe("Número de resultados (1-10)")
+    })
+  }
+)
+
+const searchJurisprudenciaTool = tool(
+  async ({ query, tribunal, num_results }) => {
+    console.log(`🔧 Tool: search_jurisprudencia("${query}", tribunal=${tribunal})`)
+    const results = await searchJurisprudencia(query, {
+      tribunal: tribunal as any,
+      numResults: num_results
+    })
+    return formatSearchResultsForLLM(results)
+  },
+  {
+    name: "search_jurisprudencia",
+    description: "Busca sentencias y jurisprudencia de altas cortes colombianas. " +
+      "Especializado en Corte Constitucional, Corte Suprema y Consejo de Estado.",
+    schema: z.object({
+      query: z.string().describe("Términos de búsqueda de jurisprudencia"),
+      tribunal: z.enum(["constitucional", "suprema", "consejo", "all"])
+        .optional()
+        .default("all")
+        .describe("Tribunal específico o todos"),
+      num_results: z.number().optional().default(5).describe("Número de sentencias")
+    })
+  }
+)
+
+const buscarArticuloTool = tool(
+  async ({ articulo, norma }) => {
+    console.log(`🔧 Tool: buscar_articulo_ley("${articulo}", "${norma}")`)
+    const results = await searchArticuloLey(articulo, norma)
+    
+    if (results.length === 0) {
+      return `No se encontró el artículo ${articulo} de ${norma}.`
+    }
+    
+    let output = `📜 **Artículo ${articulo} - ${norma}**\n\n`
+    const officialResult = results.find(r => r.source === 'official')
+    
+    if (officialResult) {
+      output += `🏛️ **Fuente:** ${officialResult.sourceName}\n`
+      output += `📎 ${officialResult.url}\n\n`
+      output += `📝 ${officialResult.snippet}\n`
+    } else {
+      output += results.map((r, i) => 
+        `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet}`
+      ).join('\n\n')
+    }
+    
+    return output
+  },
+  {
+    name: "buscar_articulo_ley",
+    description: "Busca el texto literal de un artículo específico de una norma colombiana. " +
+      "Úsala cuando el usuario pregunte por un artículo específico (ej: 'artículo 25 CP').",
+    schema: z.object({
+      articulo: z.string().describe("Número del artículo (ej: '25', '82')"),
+      norma: z.string().describe("Nombre de la norma (ej: 'Código Penal')")
+    })
+  }
+)
+
+const serperWebSearchTool = tool(
+  async ({ query, num_results }) => {
+    console.log(`🔧 Tool: serper_web_search("${query}")`)
+    const results = await searchLegalColombia(query, { 
+      numResults: num_results,
+      includeAcademic: true 
+    })
+    return formatSearchResultsForLLM(results)
+  },
+  {
+    name: "serper_web_search",
+    description: "Búsqueda web general usando Serper. " +
+      "Usa solo cuando necesites información actual no disponible en fuentes legales oficiales.",
+    schema: z.object({
+      query: z.string().describe("Consulta de búsqueda"),
+      num_results: z.number().optional().default(5).describe("Número de resultados")
+    })
+  }
+)
+
+// Todas las herramientas disponibles
+export const ALL_TOOLS = [
+  searchLegalOfficialTool,
+  searchJurisprudenciaTool,
+  buscarArticuloTool,
+  serperWebSearchTool
+]
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TIPOS E INTERFACES
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface AgentConfig {
-  modelId: ModelId | string
+  modelId?: ModelId | string
   temperature?: number
   maxIterations?: number
   verbose?: boolean
-  tools?: string[] | StructuredTool[] // Nombres de tools o instancias de tools
+  tools?: StructuredTool[]
+  useRouter?: boolean // Usar el router inteligente
 }
 
 export interface AgentInput {
@@ -40,6 +167,7 @@ export interface AgentResponse {
   intermediateSteps?: any[]
   sources?: Array<{ title: string; url: string }>
   toolsUsed?: string[]
+  modelUsed?: string
   metadata?: {
     model: string
     iterations: number
@@ -57,66 +185,74 @@ export interface ConversationMessage {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export class LegalAgent {
-  private executor: AgentExecutor
-  private model: ChatOpenAI
+  private executor: AgentExecutor | null = null
+  private model: ChatOpenAI | null = null
   private config: AgentConfig
   private chatHistory: BaseMessage[] = []
+  private currentModelId: string = DEFAULT_MODEL
 
-  private constructor(executor: AgentExecutor, model: ChatOpenAI, config: AgentConfig) {
-    this.executor = executor
-    this.model = model
-    this.config = config
+  private constructor(config: AgentConfig) {
+    this.config = {
+      maxIterations: 10,
+      verbose: false,
+      useRouter: true,
+      ...config
+    }
   }
 
   /**
    * Crea una nueva instancia del agente legal
    */
-  static async create(config: AgentConfig): Promise<LegalAgent> {
-    const { 
-      modelId, 
-      temperature = 0.3, 
-      maxIterations = 10, // Aumentado de 6 a 10 para consultas legales complejas
-      verbose = false,
-      tools: toolNames
-    } = config
-
-    console.log(`\n🤖 Creando Agente Legal con modelo: ${modelId}`)
-
-    // Verificar que el modelo soporte tools
-    const modelConfig = getModelConfig(modelId)
-    if (modelConfig && !modelConfig.supportsTools) {
-      throw new Error(`El modelo ${modelId} no soporta tool calling`)
+  static async create(config: AgentConfig = {}): Promise<LegalAgent> {
+    const agent = new LegalAgent(config)
+    
+    // Si no se especifica modelo, usar el router
+    if (config.useRouter !== false && !config.modelId) {
+      // El modelo se seleccionará en invoke según la consulta
+      console.log(`🤖 Agente Legal creado con router inteligente`)
+    } else {
+      await agent.initializeModel(config.modelId || DEFAULT_MODEL)
     }
+    
+    return agent
+  }
 
-    // Crear el modelo LLM
-    const model = createModel({
+  /**
+   * Inicializa el modelo con el ID especificado
+   */
+  private async initializeModel(modelId: string): Promise<void> {
+    console.log(`\n🤖 Inicializando modelo: ${modelId}`)
+    
+    this.currentModelId = modelId
+    
+    // Obtener configuración del modelo
+    const modelConfig = getModelConfig(modelId)
+    const temperature = this.config.temperature ?? (modelConfig?.useCase === 'simple' ? 0.1 : 0.3)
+
+    // Crear el modelo
+    this.model = createModel({
       modelId,
       temperature,
-      maxTokens: 4096,
+      maxTokens: modelConfig?.useCase === 'complex' ? 8192 : 4096,
       streaming: true
     })
 
-    // Seleccionar herramientas
-    let tools: StructuredTool[]
-    if (toolNames) {
-      if (Array.isArray(toolNames) && toolNames.length > 0 && typeof toolNames[0] === 'string') {
-        // Si son nombres de herramientas, obtenerlas por nombre
-        tools = getToolsByNames(toolNames as string[])
-      } else {
-        // Si son instancias de herramientas, usarlas directamente
-        tools = toolNames as StructuredTool[]
-      }
-    } else {
-      tools = ALL_TOOLS
-    }
-    console.log(`🔧 Herramientas cargadas: ${tools.map(t => t.name).join(', ')}`)
+    // Crear el executor del agente
+    this.executor = await this.createExecutor(this.model, this.config.tools || ALL_TOOLS)
 
+    console.log(`✅ Modelo ${modelId} inicializado`)
+  }
+
+  /**
+   * Crea el executor del agente
+   */
+  private async createExecutor(model: ChatOpenAI, tools: StructuredTool[]): Promise<AgentExecutor> {
     // Crear el prompt del agente
     const prompt = ChatPromptTemplate.fromMessages([
       ["system", LEGAL_AGENT_SYSTEM_PROMPT],
       new MessagesPlaceholder("chat_history"),
       ["human", "{input}"],
-      new MessagesPlaceholder("agent_scratchpad"),
+      new MessagesPlaceholder("agent_scratchpad"],
     ])
 
     // Crear el agente con tool calling
@@ -126,22 +262,16 @@ export class LegalAgent {
       prompt,
     })
 
-    // Crear el ejecutor del agente
-    const executor = new AgentExecutor({
+    // Crear el ejecutor
+    return new AgentExecutor({
       agent,
       tools,
-      maxIterations,
-      verbose,
+      maxIterations: this.config.maxIterations,
+      verbose: this.config.verbose,
       returnIntermediateSteps: true,
       handleParsingErrors: true,
-      // Importante: cuando se alcance el límite de iteraciones, generar respuesta parcial
-      // en lugar de lanzar error "Agent stopped due to max iterations"
       earlyStoppingMethod: "generate",
     })
-
-    console.log(`✅ Agente Legal creado exitosamente`)
-
-    return new LegalAgent(executor, model, config)
   }
 
   /**
@@ -154,10 +284,36 @@ export class LegalAgent {
     console.log(`🧠 LEGAL AGENT - PROCESANDO CONSULTA`)
     console.log(`${'═'.repeat(70)}`)
     console.log(`📝 Input: "${input.input.substring(0, 100)}..."`)
-    console.log(`🤖 Modelo: ${this.config.modelId}`)
-    console.log(`💬 Historial: ${(input.chatHistory || this.chatHistory).length} mensajes`)
 
     try {
+      // Determinar modelo a usar
+      let routerConfig: ModelRouterConfig
+      
+      if (this.config.useRouter !== false && !this.config.modelId) {
+        routerConfig = routeModel(input.input)
+        console.log(`🎯 Router seleccionó: ${routerConfig.model} (caso: ${this.getUseCaseLabel(routerConfig.model)})`)
+        
+        // Re-inicializar si el modelo cambió
+        if (routerConfig.model !== this.currentModelId) {
+          await this.initializeModel(routerConfig.model)
+        }
+      } else {
+        // Usar modelo fijo
+        if (!this.executor || !this.model) {
+          await this.initializeModel(this.config.modelId || DEFAULT_MODEL)
+        }
+        routerConfig = {
+          model: this.currentModelId as ModelId,
+          temperature: this.config.temperature ?? 0.3,
+          maxTokens: 4096,
+          tools: ALL_TOOLS.map(t => t.name)
+        }
+      }
+
+      if (!this.executor) {
+        throw new Error('Agente no inicializado correctamente')
+      }
+
       // Usar historial proporcionado o el interno
       const history = input.chatHistory || this.chatHistory
 
@@ -180,6 +336,7 @@ export class LegalAgent {
       console.log(`\n${'─'.repeat(70)}`)
       console.log(`✅ RESPUESTA COMPLETADA`)
       console.log(`   ⏱️ Tiempo: ${(processingTime / 1000).toFixed(1)}s`)
+      console.log(`   🤖 Modelo: ${this.currentModelId}`)
       console.log(`   🔧 Tools usadas: ${toolsUsed.length > 0 ? toolsUsed.join(', ') : 'Ninguna'}`)
       console.log(`   📚 Fuentes: ${sources.length}`)
       console.log(`${'═'.repeat(70)}\n`)
@@ -189,8 +346,9 @@ export class LegalAgent {
         intermediateSteps: result.intermediateSteps,
         sources,
         toolsUsed,
+        modelUsed: this.currentModelId,
         metadata: {
-          model: this.config.modelId,
+          model: this.currentModelId,
           iterations: result.intermediateSteps?.length || 0,
           processingTime
         }
@@ -199,21 +357,18 @@ export class LegalAgent {
     } catch (error: any) {
       console.error(`❌ Error en el agente:`, error)
       
-      // Manejar específicamente el error de max iterations
       if (error.message?.includes('max iterations') || error.message?.includes('Agent stopped')) {
-        console.warn(`⚠️ Agente alcanzó límite de iteraciones, generando respuesta parcial...`)
-        
         return {
-          output: "He recopilado información relevante pero la consulta requiere más investigación de la que puedo completar en este momento. " +
-                  "Te recomiendo dividir tu pregunta en consultas más específicas para obtener respuestas más detalladas. " +
-                  "También puedes consultar directamente las fuentes oficiales como la Corte Constitucional (corteconstitucional.gov.co) " +
-                  "o la Secretaría del Senado (secretariasenado.gov.co).",
+          output: "He recopilado información relevante pero la consulta requiere más investigación. " +
+                  "Te recomiendo dividir tu pregunta en consultas más específicas. " +
+                  "También puedes consultar directamente las fuentes oficiales.",
           intermediateSteps: [],
           sources: [],
           toolsUsed: [],
+          modelUsed: this.currentModelId,
           metadata: {
-            model: this.config.modelId,
-            iterations: this.config.maxIterations || 6,
+            model: this.currentModelId,
+            iterations: this.config.maxIterations || 10,
             processingTime: Date.now() - startTime
           }
         }
@@ -229,6 +384,18 @@ export class LegalAgent {
   async *stream(input: AgentInput): AsyncGenerator<string> {
     console.log(`\n🔄 Iniciando streaming para: "${input.input.substring(0, 50)}..."`)
 
+    // Determinar modelo
+    if (this.config.useRouter !== false && !this.config.modelId) {
+      const routerConfig = routeModel(input.input)
+      if (routerConfig.model !== this.currentModelId) {
+        await this.initializeModel(routerConfig.model)
+      }
+    }
+
+    if (!this.executor) {
+      throw new Error('Agente no inicializado')
+    }
+
     const history = input.chatHistory || this.chatHistory
 
     try {
@@ -240,19 +407,17 @@ export class LegalAgent {
       let fullOutput = ''
 
       for await (const chunk of stream) {
-        // El chunk puede contener diferentes tipos de datos
         if (chunk.output) {
           yield chunk.output
           fullOutput = chunk.output
         } else if (chunk.intermediateSteps) {
-          // Información sobre pasos intermedios (tools llamadas)
           for (const step of chunk.intermediateSteps) {
-            console.log(`🔧 Tool: ${step.action?.tool} -> ${step.observation?.substring(0, 100)}...`)
+            console.log(`🔧 Tool: ${step.action?.tool}`)
           }
         }
       }
 
-      // Actualizar historial después del streaming
+      // Actualizar historial
       this.chatHistory.push(new HumanMessage(input.input))
       this.chatHistory.push(new AIMessage(fullOutput))
 
@@ -278,8 +443,26 @@ export class LegalAgent {
   }
 
   /**
-   * Extrae las herramientas usadas de los pasos intermedios
+   * Obtiene el modelo actual
    */
+  getCurrentModel(): string {
+    return this.currentModelId
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PRIVADOS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private getUseCaseLabel(modelId: string): string {
+    const config = getModelConfig(modelId)
+    const labels: Record<string, string> = {
+      'simple': 'tarea simple',
+      'complex': 'tarea compleja',
+      'research': 'investigación'
+    }
+    return labels[config?.useCase || ''] || 'general'
+  }
+
   private extractToolsUsed(steps: any[]): string[] {
     const tools = new Set<string>()
     for (const step of steps) {
@@ -290,9 +473,6 @@ export class LegalAgent {
     return Array.from(tools)
   }
 
-  /**
-   * Extrae fuentes de los pasos intermedios (resultados de tools) y del output
-   */
   private extractSourcesFromSteps(
     steps: any[], 
     output: string
@@ -300,52 +480,36 @@ export class LegalAgent {
     const sources: Array<{ title: string; url: string }> = []
     const seenUrls = new Set<string>()
 
-    // PASO 1: Extraer fuentes de los resultados de las herramientas
+    // Extraer de los pasos intermedios
     for (const step of steps) {
       try {
         const observation = step.observation
         if (typeof observation === 'string') {
-          // Intentar parsear como JSON (los resultados de search_legal_official son JSON)
-          try {
-            const parsed = JSON.parse(observation)
-            if (parsed.results && Array.isArray(parsed.results)) {
-              for (const result of parsed.results) {
-                if (result.url && !seenUrls.has(result.url)) {
-                  seenUrls.add(result.url)
-                  sources.push({
-                    title: result.title || this.extractTitleFromUrl(result.url),
-                    url: result.url
-                  })
-                }
-              }
-            }
-          } catch {
-            // No es JSON, buscar URLs directamente
-            const urlMatches = observation.match(/https?:\/\/[^\s\)\]\>"]+/g) || []
-            for (const url of urlMatches) {
-              const cleanUrl = url.replace(/[,.\]}]+$/, '') // Limpiar caracteres finales
-              if (!seenUrls.has(cleanUrl)) {
-                seenUrls.add(cleanUrl)
-                sources.push({
-                  title: this.extractTitleFromUrl(cleanUrl),
-                  url: cleanUrl
-                })
-              }
+          // Buscar URLs en el resultado
+          const urlMatches = observation.match(/https?:\/\/[^\s\)\]\>"]+/g) || []
+          for (const url of urlMatches) {
+            const cleanUrl = url.replace(/[,\.\]\}]+$/, '')
+            if (!seenUrls.has(cleanUrl)) {
+              seenUrls.add(cleanUrl)
+              sources.push({
+                title: this.extractTitleFromUrl(cleanUrl),
+                url: cleanUrl
+              })
             }
           }
         }
       } catch (e) {
-        console.log('Error extrayendo fuentes de step:', e)
+        console.log('Error extrayendo fuentes:', e)
       }
     }
 
-    // PASO 2: Si no hay fuentes de las tools, buscar en el output
+    // Si no hay fuentes de las tools, buscar en el output
     if (sources.length === 0) {
       const urlRegex = /https?:\/\/[^\s\)\]\>"]+/g
       const urls = output.match(urlRegex) || []
 
       for (const url of urls) {
-        const cleanUrl = url.replace(/[,.\]}]+$/, '')
+        const cleanUrl = url.replace(/[,\.\]\}]+$/, '')
         if (!seenUrls.has(cleanUrl)) {
           seenUrls.add(cleanUrl)
           sources.push({
@@ -356,19 +520,14 @@ export class LegalAgent {
       }
     }
 
-    // Limitar a máximo 10 fuentes
     return sources.slice(0, 10)
   }
 
-  /**
-   * Extrae un título legible de una URL
-   */
   private extractTitleFromUrl(url: string): string {
     try {
       const urlObj = new URL(url)
       const hostname = urlObj.hostname.replace('www.', '')
       
-      // Mapeo de dominios conocidos a nombres legibles
       const domainNames: Record<string, string> = {
         'secretariasenado.gov.co': 'Secretaría del Senado',
         'corteconstitucional.gov.co': 'Corte Constitucional',
@@ -380,9 +539,9 @@ export class LegalAgent {
         'procuraduria.gov.co': 'Procuraduría',
         'defensoria.gov.co': 'Defensoría del Pueblo',
         'ramajudicial.gov.co': 'Rama Judicial',
+        'cortesuprema.gov.co': 'Corte Suprema'
       }
 
-      // Buscar coincidencia parcial
       for (const [domain, name] of Object.entries(domainNames)) {
         if (hostname.includes(domain.split('.')[0])) {
           return name
@@ -419,13 +578,35 @@ export function convertToLangChainMessages(messages: ConversationMessage[]): Bas
 }
 
 /**
- * Crea un agente con configuración por defecto para investigación legal
+ * Crea un agente con el router inteligente (recomendado)
  */
-export async function createDefaultLegalAgent(modelId?: string): Promise<LegalAgent> {
+export async function createSmartLegalAgent(): Promise<LegalAgent> {
   return LegalAgent.create({
-    modelId: modelId || 'alibaba/tongyi-deepresearch-30b-a3b',
-    temperature: 0.3,
+    useRouter: true,
+    verbose: process.env.NODE_ENV === 'development'
+  })
+}
+
+/**
+ * Crea un agente con Gemini 3 Pro (tareas complejas)
+ */
+export async function createComplexLegalAgent(): Promise<LegalAgent> {
+  return LegalAgent.create({
+    modelId: 'google/gemini-3-pro-preview',
+    temperature: 0.2,
     maxIterations: 10,
+    verbose: process.env.NODE_ENV === 'development'
+  })
+}
+
+/**
+ * Crea un agente con GPT-5 Mini (tareas simples)
+ */
+export async function createSimpleLegalAgent(): Promise<LegalAgent> {
+  return LegalAgent.create({
+    modelId: 'openai/gpt-5-mini',
+    temperature: 0.1,
+    maxIterations: 5,
     verbose: process.env.NODE_ENV === 'development'
   })
 }
@@ -435,4 +616,3 @@ export async function createDefaultLegalAgent(modelId?: string): Promise<LegalAg
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default LegalAgent
-

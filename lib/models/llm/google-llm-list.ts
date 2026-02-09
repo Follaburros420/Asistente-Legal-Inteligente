@@ -2,7 +2,39 @@ import { LLM } from "@/types"
 
 const GOOGLE_PLATORM_LINK = "https://ai.google.dev/"
 
-// Google Models (UPDATED 12/22/23) -----------------------------
+// Google Models (UPDATED 02/2025) -----------------------------
+
+// Gemini 3 Pro Preview - Modelo principal para derecho colombiano
+const GEMINI_3_PRO: LLM = {
+  modelId: "google/gemini-3-pro-preview",
+  modelName: "Gemini 3 Pro Preview",
+  provider: "google",
+  hostedId: "google/gemini-3-pro-preview",
+  platformLink: GOOGLE_PLATORM_LINK,
+  imageInput: true,
+  pricing: {
+    currency: "USD",
+    unit: "1M tokens",
+    inputCost: 0,
+    outputCost: 0
+  }
+}
+
+// Gemini 2.0 Flash Thinking - Razonamiento rápido gratuito
+const GEMINI_2_FLASH_THINKING: LLM = {
+  modelId: "google/gemini-2.0-flash-thinking-exp:free",
+  modelName: "Gemini 2.0 Flash Thinking",
+  provider: "google",
+  hostedId: "google/gemini-2.0-flash-thinking-exp:free",
+  platformLink: GOOGLE_PLATORM_LINK,
+  imageInput: true,
+  pricing: {
+    currency: "USD",
+    unit: "1M tokens",
+    inputCost: 0,
+    outputCost: 0
+  }
+}
 
 // Gemini 1.5 Flash
 const GEMINI_1_5_FLASH: LLM = {
@@ -14,7 +46,7 @@ const GEMINI_1_5_FLASH: LLM = {
   imageInput: true
 }
 
-// Gemini 1.5 Pro (UPDATED 05/28/24)
+// Gemini 1.5 Pro
 const GEMINI_1_5_PRO: LLM = {
   modelId: "gemini-1.5-pro-latest",
   modelName: "Gemini 1.5 Pro",
@@ -24,7 +56,7 @@ const GEMINI_1_5_PRO: LLM = {
   imageInput: true
 }
 
-// Gemini Pro (UPDATED 12/22/23)
+// Gemini Pro
 const GEMINI_PRO: LLM = {
   modelId: "gemini-pro",
   modelName: "Gemini Pro",
@@ -34,14 +66,10 @@ const GEMINI_PRO: LLM = {
   imageInput: false
 }
 
-// Gemini Pro Vision (UPDATED 12/22/23)
-const GEMINI_PRO_VISION: LLM = {
-  modelId: "gemini-pro-vision",
-  modelName: "Gemini Pro Vision",
-  provider: "google",
-  hostedId: "gemini-pro-vision",
-  platformLink: GOOGLE_PLATORM_LINK,
-  imageInput: true
-}
-
-export const GOOGLE_LLM_LIST: LLM[] = [GEMINI_PRO, GEMINI_PRO_VISION, GEMINI_1_5_PRO, GEMINI_1_5_FLASH]
+export const GOOGLE_LLM_LIST: LLM[] = [
+  GEMINI_3_PRO,           // Modelo principal recomendado
+  GEMINI_2_FLASH_THINKING, // Alternativa gratuita
+  GEMINI_1_5_PRO,
+  GEMINI_1_5_FLASH,
+  GEMINI_PRO
+]
