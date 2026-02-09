@@ -6,6 +6,10 @@
  * - GPT-5 Mini: Modelo para tareas simples y rápidas (M1)
  * 
  * Búsqueda web: Serper (única herramienta)
+ * 
+ * NOTA: Si los modelos principales no están disponibles, se usan fallbacks:
+ * - Fallback M1 Pro: google/gemini-1.5-pro-latest o anthropic/claude-3.5-sonnet
+ * - Fallback M1: openai/gpt-4o-mini
  */
 
 import { ChatOpenAI } from "@langchain/openai"
@@ -28,8 +32,10 @@ export interface ModelConfig {
   }
   capabilities: string[]
   useCase: 'simple' | 'complex' | 'research' | 'default'
+  fallback?: string // Modelo alternativo si este no está disponible
 }
 
+// Modelos principales deseados
 export type ModelId = 
   | 'google/gemini-3-pro-preview'         // M1 Pro - Tareas complejas
   | 'openai/gpt-5-mini'                   // M1 - Tareas simples
@@ -61,6 +67,50 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
       'complex-research',
       'colombian-law-expertise'
     ],
+    useCase: 'complex',
+    fallback: 'google/gemini-1.5-pro-latest' // Fallback si no está disponible
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FALLBACK M1 PRO: Gemini 1.5 Pro (modelo estable)
+  // ═══════════════════════════════════════════════════════════════════════════
+  'google/gemini-1.5-pro-latest': {
+    id: 'google/gemini-1.5-pro-latest',
+    name: 'Gemini 1.5 Pro',
+    provider: 'Google',
+    description: 'Modelo Pro estable de Google. Usado como fallback cuando Gemini 3 Pro no está disponible.',
+    contextLength: 1000000,
+    supportsTools: true,
+    supportsStreaming: true,
+    pricing: { input: 3.5, output: 10.5 },
+    capabilities: [
+      'tool-calling',
+      'long-context',
+      'legal-analysis',
+      'multi-document-analysis'
+    ],
+    useCase: 'complex',
+    fallback: 'anthropic/claude-3.5-sonnet' // Segundo fallback
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEGUNDO FALLBACK: Claude 3.5 Sonnet (muy capaz)
+  // ═══════════════════════════════════════════════════════════════════════════
+  'anthropic/claude-3.5-sonnet': {
+    id: 'anthropic/claude-3.5-sonnet',
+    name: 'Claude 3.5 Sonnet',
+    provider: 'Anthropic',
+    description: 'Modelo alternativo de Anthropic con excelente capacidad de razonamiento legal.',
+    contextLength: 200000,
+    supportsTools: true,
+    supportsStreaming: true,
+    pricing: { input: 3.0, output: 15.0 },
+    capabilities: [
+      'tool-calling',
+      'long-context',
+      'legal-analysis',
+      'complex-reasoning'
+    ],
     useCase: 'complex'
   },
 
@@ -83,6 +133,27 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
       'article-lookup',
       'simple-research'
     ],
+    useCase: 'simple',
+    fallback: 'openai/gpt-4o-mini' // Fallback si no está disponible
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FALLBACK M1: GPT-4o Mini (modelo estable y económico)
+  // ═══════════════════════════════════════════════════════════════════════════
+  'openai/gpt-4o-mini': {
+    id: 'openai/gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    provider: 'OpenAI',
+    description: 'Modelo estable de OpenAI. Usado como fallback cuando GPT-5 Mini no está disponible.',
+    contextLength: 128000,
+    supportsTools: true,
+    supportsStreaming: true,
+    pricing: { input: 0.15, output: 0.60 },
+    capabilities: [
+      'tool-calling',
+      'quick-responses',
+      'instruction-following'
+    ],
     useCase: 'simple'
   },
 
@@ -104,7 +175,27 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
       'fast-inference',
       'logical-analysis'
     ],
-    useCase: 'research'
+    useCase: 'research',
+    fallback: 'google/gemini-1.5-flash'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FALLBACK FLASH: Gemini 1.5 Flash
+  // ═══════════════════════════════════════════════════════════════════════════
+  'google/gemini-1.5-flash': {
+    id: 'google/gemini-1.5-flash',
+    name: 'Gemini 1.5 Flash',
+    provider: 'Google',
+    description: 'Modelo rápido y económico de Google.',
+    contextLength: 1000000,
+    supportsTools: true,
+    supportsStreaming: true,
+    pricing: { input: 0.35, output: 0.70 },
+    capabilities: [
+      'tool-calling',
+      'fast-inference'
+    ],
+    useCase: 'simple'
   }
 }
 
@@ -116,12 +207,19 @@ export const DEFAULT_MODEL: ModelId = 'google/gemini-3-pro-preview'
 export const SIMPLE_TASK_MODEL: ModelId = 'openai/gpt-5-mini'
 export const RESEARCH_MODEL: ModelId = 'google/gemini-3-pro-preview'
 
+// Modelos de fallback garantizados (siempre deberían funcionar)
+export const GUARANTEED_FALLBACKS = {
+  complex: 'anthropic/claude-3.5-sonnet',
+  simple: 'openai/gpt-4o-mini',
+  fast: 'google/gemini-1.5-flash'
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ROUTER INTELIGENTE DE MODELOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface ModelRouterConfig {
-  model: ModelId
+  model: ModelId | string
   temperature: number
   maxTokens: number
   tools: string[]
@@ -150,7 +248,7 @@ export function routeModel(query: string): ModelRouterConfig {
     normalized.length > 200
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // M1: Tareas simples (GPT-5 Mini)
+  // M1: Tareas simples (GPT-5 Mini o fallback)
   // ═══════════════════════════════════════════════════════════════════════════
   if (isArticleQuery || isSimpleQuery) {
     return {
@@ -163,7 +261,7 @@ export function routeModel(query: string): ModelRouterConfig {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // M1 PRO: Tareas complejas (Gemini 3 Pro Preview)
+  // M1 PRO: Tareas complejas (Gemini 3 Pro Preview o fallback)
   // ═══════════════════════════════════════════════════════════════════════════
   if (isComplexResearch || isCaseAnalysis) {
     return {
@@ -183,6 +281,44 @@ export function routeModel(query: string): ModelRouterConfig {
     tools: ['search_legal_official', 'serper_web_search'],
     reasoning: false
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESOLUCIÓN DE FALLBACKS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Obtiene el modelo efectivo, resolviendo fallbacks si es necesario
+ * Verifica si un modelo existe en OpenRouter y retorna el fallback si no
+ */
+export function resolveModel(modelId: string, availableModels?: string[]): string {
+  // Si tenemos lista de modelos disponibles, verificar
+  if (availableModels && availableModels.length > 0) {
+    if (availableModels.includes(modelId)) {
+      return modelId
+    }
+    
+    // Buscar fallback
+    const config = MODEL_REGISTRY[modelId]
+    if (config?.fallback && availableModels.includes(config.fallback)) {
+      console.log(`⚠️ Modelo ${modelId} no disponible, usando fallback: ${config.fallback}`)
+      return config.fallback
+    }
+    
+    // Fallback final garantizado
+    const useCase = config?.useCase || 'complex'
+    const guaranteed = GUARANTEED_FALLBACKS[useCase as keyof typeof GUARANTEED_FALLBACKS] 
+                      || GUARANTEED_FALLBACKS.complex
+    
+    if (availableModels.includes(guaranteed)) {
+      console.log(`⚠️ Usando fallback garantizado: ${guaranteed}`)
+      return guaranteed
+    }
+  }
+  
+  // Si no tenemos lista de disponibles, asumir que el modelo existe
+  // y dejar que falle en runtime si realmente no existe
+  return modelId
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -250,4 +386,24 @@ export function getToolCapableModels(): ModelConfig[] {
 export function getModelForUseCase(useCase: 'simple' | 'complex' | 'research'): ModelConfig {
   const model = Object.values(MODEL_REGISTRY).find(m => m.useCase === useCase)
   return model || MODEL_REGISTRY[DEFAULT_MODEL]
+}
+
+/**
+ * Lista todos los modelos configurados con sus fallbacks
+ */
+export function getModelHierarchy(): Record<string, { primary: string; fallbacks: string[] }> {
+  return {
+    'M1 Pro (Complejas)': {
+      primary: 'google/gemini-3-pro-preview',
+      fallbacks: ['google/gemini-1.5-pro-latest', 'anthropic/claude-3.5-sonnet']
+    },
+    'M1 (Simples)': {
+      primary: 'openai/gpt-5-mini',
+      fallbacks: ['openai/gpt-4o-mini', 'google/gemini-1.5-flash']
+    },
+    'Research': {
+      primary: 'google/gemini-2.0-flash-thinking-exp:free',
+      fallbacks: ['google/gemini-1.5-flash']
+    }
+  }
 }

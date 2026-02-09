@@ -16,7 +16,15 @@ import {
 import { detectDraftIntent } from "@/lib/draft-detection"
 import { classifyDocumentIntent } from "@/lib/classifiers/document-classifier"
 import { validateDraftContent } from "@/lib/utils/draft-utils"
-import { routeModel, DEFAULT_MODEL, SIMPLE_TASK_MODEL } from "@/lib/langchain/config/models"
+import { 
+  routeModel, 
+  DEFAULT_MODEL, 
+  SIMPLE_TASK_MODEL, 
+  resolveModel,
+  GUARANTEED_FALLBACKS,
+  getModelHierarchy 
+} from "@/lib/langchain/config/models"
+import { checkSerperConfig } from "@/lib/tools/search/serper-legal-search"
 import { LEGAL_AGENT_SYSTEM_PROMPT } from "@/lib/langchain/config/prompts"
 
 export const runtime = "nodejs"
@@ -182,23 +190,97 @@ function extractSourcesFromResponse(text: string): Array<{ title: string; url: s
   return sources.slice(0, 10)
 }
 
-function selectModel(userQuery: string, requestedModel: string): string {
-  // Si el modelo solicitado es válido, usarlo
+/**
+ * Selecciona el modelo a usar con fallback automático
+ */
+async function selectModelWithFallback(
+  client: OpenAI, 
+  userQuery: string, 
+  requestedModel: string
+): Promise<{ model: string; usedFallback: boolean; originalModel?: string }> {
+  
+  // Determinar modelo objetivo
+  let targetModel: string
+  
   const validModels = [
     'google/gemini-3-pro-preview',
     'openai/gpt-5-mini',
-    'google/gemini-2.0-flash-thinking-exp:free'
+    'google/gemini-2.0-flash-thinking-exp:free',
+    'google/gemini-1.5-pro-latest',
+    'anthropic/claude-3.5-sonnet',
+    'openai/gpt-4o-mini'
   ]
   
-  if (validModels.includes(requestedModel)) {
-    return requestedModel
+  if (requestedModel && requestedModel !== 'auto' && validModels.includes(requestedModel)) {
+    targetModel = requestedModel
+    console.log(`🎯 Modelo solicitado: ${targetModel}`)
+  } else {
+    // Usar router inteligente
+    const routerConfig = routeModel(userQuery)
+    targetModel = routerConfig.model
+    console.log(`🎯 Router seleccionó: ${targetModel}`)
   }
   
-  // Usar router inteligente
-  const routerConfig = routeModel(userQuery)
-  console.log(`🎯 Router seleccionó: ${routerConfig.model}`)
+  // Intentar usar el modelo seleccionado
+  try {
+    // Hacer una petición de prueba ligera
+    const testResponse = await client.chat.completions.create({
+      model: targetModel,
+      messages: [{ role: 'user', content: 'OK' }],
+      max_tokens: 5
+    })
+    
+    if (testResponse.choices && testResponse.choices.length > 0) {
+      console.log(`✅ Modelo ${targetModel} disponible`)
+      return { model: targetModel, usedFallback: false }
+    }
+  } catch (error: any) {
+    console.warn(`⚠️ Modelo ${targetModel} no disponible:`, error.message || error)
+    
+    // Intentar fallbacks
+    const hierarchy = getModelHierarchy()
+    let fallbackModel: string | null = null
+    
+    // Determinar qué tipo de fallback necesitamos
+    if (targetModel.includes('gemini-3') || targetModel.includes('gemini-1.5-pro')) {
+      fallbackModel = hierarchy['M1 Pro (Complejas)'].fallbacks[0]
+    } else if (targetModel.includes('gpt-5') || targetModel.includes('gpt-4o-mini')) {
+      fallbackModel = hierarchy['M1 (Simples)'].fallbacks[0]
+    }
+    
+    // Si no hay fallback específico, usar garantizado
+    if (!fallbackModel) {
+      fallbackModel = targetModel.includes('gemini') 
+        ? GUARANTEED_FALLBACKS.complex 
+        : GUARANTEED_FALLBACKS.simple
+    }
+    
+    console.log(`🔄 Intentando fallback: ${fallbackModel}`)
+    
+    try {
+      const testFallback = await client.chat.completions.create({
+        model: fallbackModel,
+        messages: [{ role: 'user', content: 'OK' }],
+        max_tokens: 5
+      })
+      
+      if (testFallback.choices && testFallback.choices.length > 0) {
+        console.log(`✅ Usando fallback: ${fallbackModel}`)
+        return { 
+          model: fallbackModel, 
+          usedFallback: true, 
+          originalModel: targetModel 
+        }
+      }
+    } catch (fallbackError) {
+      console.error(`❌ Fallback también falló:`, fallbackError)
+    }
+  }
   
-  return routerConfig.model
+  // Último recurso: usar modelo garantizado
+  const lastResort = GUARANTEED_FALLBACKS.simple
+  console.log(`⚠️ Usando último recurso: ${lastResort}`)
+  return { model: lastResort, usedFallback: true, originalModel: targetModel }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -252,11 +334,15 @@ export async function POST(request: NextRequest) {
     const isDraft = classificationResult.is_document && classificationResult.confidence >= 0.6
     const draftType = classificationResult.doc_type
 
-    // Seleccionar modelo
-    const modelName = selectModel(userQuery, chatSettings.model)
+    // Seleccionar modelo con fallback automático
+    const { model: modelName, usedFallback, originalModel } = await selectModelWithFallback(
+      client, 
+      userQuery, 
+      chatSettings.model
+    )
 
     console.log(`📝 Query: "${userQuery.substring(0, 100)}..."`)
-    console.log(`🤖 Modelo: ${modelName}`)
+    console.log(`🤖 Modelo: ${modelName}${usedFallback ? ` (fallback de ${originalModel})` : ''}`)
     console.log(`🔍 Consulta legal: ${isLegalQuery}`)
     console.log(`📄 Modo borrador: ${isDraft}`)
 
@@ -405,17 +491,55 @@ export async function POST(request: NextRequest) {
         'Transfer-Encoding': 'chunked',
         'X-Tool-Calls': String(totalToolCalls),
         'X-Sources-Count': String(sources.length),
-        'X-Model-Used': modelName
+        'X-Model-Used': modelName,
+        'X-Model-Original': usedFallback ? (originalModel || '') : '',
+        'X-Model-Fallback': usedFallback ? 'true' : 'false'
       }
     })
 
   } catch (error: any) {
     console.error(`❌ Error en Legal Agent:`, error)
+    
+    // Detectar errores específicos de modelo
+    const errorMessage = error.message || error.toString()
+    
+    if (errorMessage.includes('model') && errorMessage.includes('not found')) {
+      return NextResponse.json(
+        {
+          error: "Modelo no encontrado en OpenRouter",
+          details: "El modelo seleccionado no está disponible. Se debería haber usado un fallback automático.",
+          suggestion: "Verifica la lista de modelos disponibles en https://openrouter.ai/docs#models",
+          availableFallbacks: GUARANTEED_FALLBACKS
+        },
+        { status: 503 }
+      )
+    }
+    
+    if (errorMessage.includes('authentication') || errorMessage.includes('api key')) {
+      return NextResponse.json(
+        {
+          error: "Error de autenticación con OpenRouter",
+          details: "Verifica que OPENROUTER_API_KEY esté configurada correctamente"
+        },
+        { status: 401 }
+      )
+    }
+    
+    if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests')) {
+      return NextResponse.json(
+        {
+          error: "Límite de peticiones alcanzado",
+          details: "Has excedido el límite de requests. Espera un momento e intenta de nuevo."
+        },
+        { status: 429 }
+      )
+    }
 
     return NextResponse.json(
       {
-        error: error.message || "Error procesando la consulta",
-        details: error.toString()
+        error: errorMessage || "Error procesando la consulta",
+        type: error.name || 'Error',
+        fallbacksAvailable: GUARANTEED_FALLBACKS
       },
       { status: 500 }
     )
@@ -427,15 +551,31 @@ export async function POST(request: NextRequest) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function GET() {
+  const serperConfig = checkSerperConfig()
+  const hierarchy = getModelHierarchy()
+  
   return NextResponse.json({
     status: "ok",
     endpoint: "Legal Agent",
+    version: "2.0",
     models: {
-      complex: "google/gemini-3-pro-preview",
-      simple: "openai/gpt-5-mini"
+      primary: {
+        m1_pro: "google/gemini-3-pro-preview",
+        m1: "openai/gpt-5-mini"
+      },
+      fallbacks: {
+        m1_pro: ["google/gemini-1.5-pro-latest", "anthropic/claude-3.5-sonnet"],
+        m1: ["openai/gpt-4o-mini", "google/gemini-1.5-flash"]
+      },
+      hierarchy
     },
-    search: "Serper (única herramienta)",
+    search: {
+      provider: "Serper",
+      status: serperConfig.configured ? "configured" : "missing_api_key",
+      message: serperConfig.message
+    },
     tools: LEGAL_TOOLS_DEFINITIONS.map(t => t.function.name),
-    requiredEnvVars: ["OPENROUTER_API_KEY", "SERPER_API_KEY"]
+    requiredEnvVars: ["OPENROUTER_API_KEY", "SERPER_API_KEY"],
+    note: "Si el modelo primario no está disponible, se usa automáticamente el fallback"
   })
 }
