@@ -22,7 +22,11 @@
       "Bash(node:*)",
       "Bash(git push:*)",
       "Bash(dir:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(curl:*)",
+      "Bash(npx playwright install:*)",
+      "Bash(npx tsx:*)",
+      "Bash(timeout:*)"
     ]
   }
 }

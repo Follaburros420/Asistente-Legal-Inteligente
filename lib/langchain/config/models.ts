@@ -36,10 +36,10 @@ export interface ModelConfig {
 }
 
 // Modelos principales deseados
-export type ModelId = 
+export type ModelId =
   | 'google/gemini-3-pro-preview'         // M1 Pro - Tareas complejas
   | 'openai/gpt-5-mini'                   // M1 - Tareas simples
-  | 'google/gemini-2.0-flash-thinking-exp:free' // Razonamiento rápido
+  | 'google/gemini-3-flash-preview'              // M1 Small - Rápido y eficiente
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // REGISTRO DE MODELOS
@@ -158,24 +158,24 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ALTERNATIVA: Gemini 2.0 Flash Thinking - Razonamiento rápido gratuito
+  // M1 SMALL: Gemini 3 Flash Preview - Rápido y eficiente
   // ═══════════════════════════════════════════════════════════════════════════
-  'google/gemini-2.0-flash-thinking-exp:free': {
-    id: 'google/gemini-2.0-flash-thinking-exp:free',
-    name: 'Gemini 2.0 Flash Thinking',
+  'google/gemini-3-flash-preview': {
+    id: 'google/gemini-3-flash-preview',
+    name: 'Gemini 3 Flash Preview',
     provider: 'Google',
-    description: 'Modelo de razonamiento rápido con capacidad de pensamiento step-by-step. Gratuito vía OpenRouter.',
+    description: 'Modelo Flash de última generación. Rápido, eficiente y con capacidad de tool calling.',
     contextLength: 1000000,
     supportsTools: true,
     supportsStreaming: true,
     pricing: { input: 0, output: 0 },
     capabilities: [
-      'step-by-step-reasoning',
       'tool-calling',
       'fast-inference',
-      'logical-analysis'
+      'logical-analysis',
+      'step-by-step-reasoning'
     ],
-    useCase: 'research',
+    useCase: 'simple',
     fallback: 'google/gemini-1.5-flash'
   },
 
@@ -259,25 +259,25 @@ export function resolveModel(modelId: string, availableModels?: string[]): strin
     if (availableModels.includes(modelId)) {
       return modelId
     }
-    
+
     // Buscar fallback
     const config = MODEL_REGISTRY[modelId]
     if (config?.fallback && availableModels.includes(config.fallback)) {
       console.log(`⚠️ Modelo ${modelId} no disponible, usando fallback: ${config.fallback}`)
       return config.fallback
     }
-    
+
     // Fallback final garantizado
     const useCase = config?.useCase || 'complex'
-    const guaranteed = GUARANTEED_FALLBACKS[useCase as keyof typeof GUARANTEED_FALLBACKS] 
-                      || GUARANTEED_FALLBACKS.complex
-    
+    const guaranteed = GUARANTEED_FALLBACKS[useCase as keyof typeof GUARANTEED_FALLBACKS]
+      || GUARANTEED_FALLBACKS.complex
+
     if (availableModels.includes(guaranteed)) {
       console.log(`⚠️ Usando fallback garantizado: ${guaranteed}`)
       return guaranteed
     }
   }
-  
+
   // Si no tenemos lista de disponibles, asumir que el modelo existe
   // y dejar que falle en runtime si realmente no existe
   return modelId
@@ -299,7 +299,7 @@ export interface CreateModelOptions {
  */
 export function createModel(options: CreateModelOptions): ChatOpenAI {
   const { modelId, temperature = 0.3, maxTokens = 4096, streaming = true } = options
-  
+
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY no está configurada en las variables de entorno')
@@ -359,12 +359,12 @@ export function getModelHierarchy(): Record<string, { primary: string; fallbacks
       primary: 'google/gemini-3-pro-preview',
       fallbacks: ['google/gemini-1.5-pro-latest', 'google/gemini-1.5-flash']
     },
-    'Alternativa Gratuita': {
-      primary: 'google/gemini-2.0-flash-thinking-exp:free',
+    'M1 Small (Flash)': {
+      primary: 'google/gemini-3-flash-preview',
       fallbacks: ['google/gemini-1.5-flash']
     }
   }
 }
 
 // Exportar RESEARCH_MODELS para compatibilidad
-export const RESEARCH_MODELS = ['google/gemini-3-pro-preview', 'google/gemini-2.0-flash-thinking-exp:free']
+export const RESEARCH_MODELS = ['google/gemini-3-pro-preview', 'google/gemini-3-flash-preview']

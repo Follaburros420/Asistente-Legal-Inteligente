@@ -335,6 +335,7 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
             placeholders={placeholders}
             onChange={handleChange}
             onSubmit={handleSubmit}
+            value={inputValue}
             leftElement={
               <CreateFileModal onFileCreated={(file) => console.log(file)}>
                 <motion.div

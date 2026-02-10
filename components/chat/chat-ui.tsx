@@ -156,7 +156,7 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
 
     // Modelos válidos - Solo Gemini
     const validModels = [
-      'google/gemini-2.0-flash-thinking-exp:free',
+      'google/gemini-3-flash-preview',
       'google/gemini-3-pro-preview'
     ]
 

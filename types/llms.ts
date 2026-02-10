@@ -10,8 +10,10 @@ export type LLMID =
   | OpenRouterLLMID
 
 export type OpenRouterLLMID =
-  | "alibaba/tongyi-deepresearch-30b-a3b" // Tongyi 30B (M1)
-  | "moonshotai/kimi-k2-thinking" // Kimi k2 Thinking (M1 Pro)
+  | "google/gemini-3-pro-preview"            // Gemini 3 Pro Preview (M1 / M1 Pro)
+  | "google/gemini-3-flash-preview"          // Gemini 3 Flash Preview (M1 Small)
+  | "alibaba/tongyi-deepresearch-30b-a3b"    // Tongyi 30B
+  | "moonshotai/kimi-k2-thinking"            // Kimi k2 Thinking
 
 // OpenAI Models (UPDATED 5/13/24)
 export type OpenAILLMID =

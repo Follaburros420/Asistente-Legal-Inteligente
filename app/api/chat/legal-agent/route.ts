@@ -8,9 +8,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import OpenAI from "openai"
-import { 
-  LEGAL_TOOLS_DEFINITIONS, 
-  executeTool 
+import {
+  LEGAL_TOOLS_DEFINITIONS,
+  executeTool
 } from "@/lib/tools/legal/legal-search-toolkit"
 import { detectDraftIntent } from "@/lib/draft-detection"
 import { classifyDocumentIntent } from "@/lib/classifiers/document-classifier"
@@ -148,7 +148,7 @@ function extractSourcesFromResponse(text: string): Array<{ title: string; url: s
     const cleanUrl = url.replace(/[,\.\]\}]+$/, '')
     if (!seenUrls.has(cleanUrl)) {
       seenUrls.add(cleanUrl)
-      
+
       // Extraer título del contexto
       let title = 'Fuente legal'
       const lines = text.split('\n')
@@ -159,7 +159,7 @@ function extractSourcesFromResponse(text: string): Array<{ title: string; url: s
           break
         }
       }
-      
+
       // Mapeo de dominios conocidos
       const domainNames: Record<string, string> = {
         'corteconstitucional.gov.co': 'Corte Constitucional',
@@ -170,14 +170,14 @@ function extractSourcesFromResponse(text: string): Array<{ title: string; url: s
         'funcionpublica.gov.co': 'Función Pública',
         'ramajudicial.gov.co': 'Rama Judicial'
       }
-      
+
       for (const [domain, name] of Object.entries(domainNames)) {
         if (cleanUrl.includes(domain)) {
           title = name
           break
         }
       }
-      
+
       sources.push({ title, url: cleanUrl })
     }
   }
@@ -201,7 +201,7 @@ async function selectModelWithFallback(
   // Solo modelos Gemini están disponibles en OpenRouter
   const validModels = [
     'google/gemini-3-pro-preview',
-    'google/gemini-2.0-flash-thinking-exp:free',
+    'google/gemini-3-flash-preview',
     'google/gemini-1.5-pro-latest',
     'google/gemini-1.5-flash'
   ]
@@ -304,11 +304,11 @@ export async function POST(request: NextRequest) {
     // Extraer consulta del usuario
     const userQuery = extractLastUserMessage(messages)
     const isLegalQuery = requiresLegalSearch(userQuery)
-    
+
     // Detección de modo borrador
     const heuristicResult = detectDraftIntent(userQuery)
     let classificationResult = await classifyDocumentIntent(userQuery, heuristicResult, true)
-    
+
     if (heuristicResult.isDraft && heuristicResult.confidence >= 0.8 && !classificationResult.is_document) {
       classificationResult = {
         is_document: true,
@@ -316,14 +316,14 @@ export async function POST(request: NextRequest) {
         confidence: heuristicResult.confidence * 0.9
       }
     }
-    
+
     const isDraft = classificationResult.is_document && classificationResult.confidence >= 0.6
     const draftType = classificationResult.doc_type
 
     // Seleccionar modelo con fallback automático
     const { model: modelName, usedFallback, originalModel } = await selectModelWithFallback(
-      client, 
-      userQuery, 
+      client,
+      userQuery,
       chatSettings.model
     )
 
@@ -433,7 +433,7 @@ export async function POST(request: NextRequest) {
       const validation = validateDraftContent(finalResponse)
       if (validation.valid && validation.draft) {
         if (!validation.draft.notes?.some((n: string) => n.includes("preliminar"))) {
-          validation.draft.notes = [...(validation.draft.notes || []), 
+          validation.draft.notes = [...(validation.draft.notes || []),
             "⚠️ Documento preliminar, requiere revisión profesional."]
         }
         finalResponse = JSON.stringify(validation.draft)
@@ -486,10 +486,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error(`❌ Error en Legal Agent:`, error)
-    
+
     // Detectar errores específicos de modelo
     const errorMessage = error.message || error.toString()
-    
+
     if (errorMessage.includes('model') && errorMessage.includes('not found')) {
       return NextResponse.json(
         {
@@ -501,7 +501,7 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       )
     }
-    
+
     if (errorMessage.includes('authentication') || errorMessage.includes('api key')) {
       return NextResponse.json(
         {
@@ -511,7 +511,7 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-    
+
     if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests')) {
       return NextResponse.json(
         {

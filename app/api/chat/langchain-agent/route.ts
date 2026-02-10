@@ -11,7 +11,7 @@
  *
  * Modelos recomendados:
  * - google/gemini-3-pro-preview: Razonamiento avanzado (M1 Pro)
- * - google/gemini-2.0-flash-thinking-exp:free: Razonamiento rápido (M1 Small)
+ * - google/gemini-3-flash-preview: Rápido y eficiente (M1 Small)
  *
  * Formato de streaming (JSON Lines):
  * - {"type": "thinking", "content": "..."} - Proceso de razonamiento
@@ -278,7 +278,7 @@ export async function POST(request: NextRequest) {
             error: modelCheck.reason || "Has alcanzado el límite de uso de este modelo",
             code: "MODEL_LIMIT_EXCEEDED",
             needsUpgrade: true,
-            suggestModel: "google/gemini-2.0-flash-thinking-exp:free", // M1 Small - ilimitado
+            suggestModel: "google/gemini-3-flash-preview", // M1 Small
             usage: modelCheck.usage
           },
           { status: 402 } // Payment Required
