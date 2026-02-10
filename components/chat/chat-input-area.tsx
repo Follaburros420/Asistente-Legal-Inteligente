@@ -94,7 +94,8 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                             "text-sm sm:text-base",
                             "text-foreground placeholder:text-muted-foreground/0", // Hide default placeholder
                             "focus:outline-none focus:ring-0",
-                            "relative z-20"
+                            "relative z-20",
+                            "cursor-text"
                         )}
                         minRows={1}
                         maxRows={8}

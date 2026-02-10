@@ -45,9 +45,9 @@ export const ChatMessages: FC<ChatMessagesProps> = ({ }) => {
           })
       }, [chatMessages, chatFileItems, editingMessage, handleSendEdit])}
 
-      {/* Typing Indicator cuando está generando - Solo si no hay mensaje del asistente */}
+      {/* Typing Indicator cuando está generando - Se muestra siempre que está generando */}
       <AnimatePresence>
-        {isGenerating && !firstTokenReceived && chatMessages.length === 0 && <TypingIndicator />}
+        {isGenerating && !firstTokenReceived && <TypingIndicator />}
       </AnimatePresence>
     </>
   )

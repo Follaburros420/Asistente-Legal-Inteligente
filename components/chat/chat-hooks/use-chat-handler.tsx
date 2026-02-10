@@ -230,7 +230,7 @@ export const useChatHandler = () => {
 
       // Crear chatSettings por defecto si es null
       const effectiveChatSettings = chatSettings || {
-        model: "alibaba/tongyi-deepresearch-30b-a3b" as LLMID,
+        model: "google/gemini-3-pro-preview" as LLMID,
         prompt: "Eres un asistente legal inteligente especializado en derecho colombiano.",
         temperature: 0.3,
         contextLength: 4096,
@@ -244,7 +244,7 @@ export const useChatHandler = () => {
         setChatSettings(effectiveChatSettings)
       }
 
-      // Usar Tongyi Deep Research 30B A3B por defecto para asegurar funcionalidad
+      // Buscar el modelo en la lista de modelos disponibles
       let modelData = [
         ...models.map(model => ({
           modelId: model.model_id as LLMID,
@@ -259,15 +259,15 @@ export const useChatHandler = () => {
         ...availableOpenRouterModels
       ].find(llm => llm.modelId === effectiveChatSettings.model)
 
-      // Si no se encuentra el modelo, usar Tongyi Deep Research por defecto
+      // Si no se encuentra el modelo, usar Gemini 3 Pro Preview por defecto
       if (!modelData) {
         modelData = {
-          modelId: "alibaba/tongyi-deepresearch-30b-a3b" as LLMID,
-          modelName: "Tongyi Deep Research 30B",
-          provider: "openrouter" as ModelProvider,
-          hostedId: "alibaba/tongyi-deepresearch-30b-a3b",
-          platformLink: "https://openrouter.ai",
-          imageInput: false
+          modelId: "google/gemini-3-pro-preview" as LLMID,
+          modelName: "Gemini 3 Pro Preview",
+          provider: "google" as ModelProvider,
+          hostedId: "google/gemini-3-pro-preview",
+          platformLink: "https://ai.google.dev/",
+          imageInput: true
         }
       }
 

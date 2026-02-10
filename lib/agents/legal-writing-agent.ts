@@ -30,7 +30,7 @@ interface PromptBlockPayload {
   }>
 }
 
-const DEFAULT_MODEL = "gpt-4o-mini"
+const DEFAULT_MODEL = "google/gemini-3-pro-preview"
 
 const REQUIREMENT_LIBRARY: Record<string, { label: string; reference?: string; items: RequirementItem[] }> = {
   tutela: {
