@@ -4,15 +4,14 @@
  * Este endpoint usa LangChain para implementar un agente con tool calling nativo.
  *
  * Características:
- * - Soporta múltiples modelos (Gemini 3 Pro, GPT-5 Mini, Kimi K2, Tongyi)
+ * - Soporta modelos Google Gemini vía OpenRouter
  * - Tool calling nativo (el modelo decide cuándo usar herramientas)
  * - Streaming REAL de respuestas y razonamiento
  * - Manejo de historial de conversación
  *
  * Modelos recomendados:
- * - google/gemini-3-pro-preview: Razonamiento avanzado (M1 y M1 Pro)
+ * - google/gemini-3-pro-preview: Razonamiento avanzado (M1 Pro)
  * - google/gemini-2.0-flash-thinking-exp:free: Razonamiento rápido (M1 Small)
- * - alibaba/tongyi-deepresearch-30b-a3b: Investigación profunda (Legacy)
  *
  * Formato de streaming (JSON Lines):
  * - {"type": "thinking", "content": "..."} - Proceso de razonamiento
@@ -600,7 +599,7 @@ export async function GET() {
     version: "1.0.0",
     features: [
       "Tool calling nativo",
-      "Múltiples modelos soportados (Kimi K2, Tongyi, GPT-4o, Claude)",
+      "Modelos Google Gemini vía OpenRouter",
       "El modelo decide autónomamente cuándo usar herramientas",
       "Streaming de respuestas",
       "Cache de agentes por sesión"

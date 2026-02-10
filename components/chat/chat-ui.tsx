@@ -154,15 +154,14 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
 
     setSelectedChat(chat)
 
-    // Modelos válidos (M1 Small, M1 y M1 Pro)
+    // Modelos válidos - Solo Gemini
     const validModels = [
       'google/gemini-2.0-flash-thinking-exp:free',
-      'google/gemini-3-pro-preview',
-      'alibaba/tongyi-deepresearch-30b-a3b', // Mantener para compatibilidad con chats existentes
-      'moonshotai/kimi-k2-thinking' // Mantener para compatibilidad con chats existentes
+      'google/gemini-3-pro-preview'
     ]
 
     // Usar el modelo del chat si es válido, sino usar Gemini 3 Pro por defecto
+    // NOTA: Chats antiguos con modelos obsoletos se migran automáticamente a Gemini 3 Pro
     const chatModel = validModels.includes(chat.model)
       ? chat.model
       : 'google/gemini-3-pro-preview'

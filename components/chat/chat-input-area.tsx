@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowUp, Square } from "lucide-react"
-import { FC, useEffect, useRef, useState, ReactNode, useCallback } from "react"
+import { FC, useEffect, useRef, useState, ReactNode } from "react"
 import ReactTextareaAutosize from "react-textarea-autosize"
 
 interface ChatInputAreaProps {
@@ -20,6 +20,18 @@ interface ChatInputAreaProps {
     showSuggestions?: boolean
 }
 
+/**
+ * ChatInputArea - Componente de input para el chat
+ *
+ * NOTA SOBRE EL MANEJO DE ESTADO:
+ * Este componente usa un estado local (localValue) para evitar race conditions
+ * durante el typing. La sincronización con el valor externo solo ocurre cuando:
+ * 1. El input NO está enfocado (usuario no está escribiendo activamente)
+ * 2. El valor externo es vacío (reset intencional, ej: después de enviar mensaje)
+ * 3. El valor externo es significativamente diferente (ej: navegación de historial)
+ *
+ * Esto previene el bug donde solo se capturaba la última letra del input.
+ */
 export const ChatInputArea: FC<ChatInputAreaProps> = ({
     value,
     onChange,
@@ -39,17 +51,39 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
     const [currentPlaceholder, setCurrentPlaceholder] = useState(0)
     const [localValue, setLocalValue] = useState(value)
     const isComposingRef = useRef(false)
-    
-    // Sync local value with external value
+
+    // Track the last value we synced from externally
+    const lastSyncedValueRef = useRef(value)
+
+    // Sync local value with external value when appropriate
     useEffect(() => {
-        setLocalValue(value)
-    }, [value])
-    
+        // Always sync if the external value is empty (likely a reset/clear action)
+        const isEmptyReset = value === "" && localValue !== ""
+
+        // Sync if not focused (user isn't actively typing)
+        const notFocused = !isFocused
+
+        // Sync if the external value changed and it's different from what we last synced
+        // This handles cases like navigating through chat history
+        const externalChange = value !== lastSyncedValueRef.current && value !== localValue
+
+        if (isEmptyReset || (notFocused && externalChange)) {
+            setLocalValue(value)
+            lastSyncedValueRef.current = value
+        }
+    }, [value, isFocused, localValue])
+
     // Handle change with immediate local update
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value
         setLocalValue(newValue)
+        lastSyncedValueRef.current = newValue
         onChange(newValue)
+    }
+
+    // Handle blur - reset focus state
+    const handleBlur = () => {
+        setIsFocused(false)
     }
 
     // Rotating placeholders logic
@@ -92,7 +126,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                             "w-full resize-none border-none bg-transparent",
                             "px-2 py-3",
                             "text-sm sm:text-base",
-                            "text-foreground placeholder:text-muted-foreground/0", // Hide default placeholder
+                            "text-foreground placeholder:text-muted-foreground/0",
                             "focus:outline-none focus:ring-0",
                             "relative z-30",
                             "cursor-text"
@@ -106,7 +140,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                         onCompositionStart={onCompositionStart}
                         onCompositionEnd={onCompositionEnd}
                         onFocus={() => setIsFocused(true)}
-                        onBlur={() => setIsFocused(false)}
+                        onBlur={handleBlur}
                         disabled={disabled}
                     />
 

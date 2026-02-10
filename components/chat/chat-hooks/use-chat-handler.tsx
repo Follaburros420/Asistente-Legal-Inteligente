@@ -342,13 +342,9 @@ export const useChatHandler = () => {
       let generatedText = ""
       let bibliography: BibliographyItem[] | undefined
 
-      // Detectar si es un modelo de investigación que debe usar LangChain
+      // Detectar si es un modelo que debe usar LangChain
       const modelId = payload.chatSettings.model?.toLowerCase() || ''
-      const isResearchModel = modelId.includes('tongyi') || 
-                              modelId.includes('deepresearch') || 
-                              modelId.includes('alibaba') ||
-                              modelId.includes('kimi') ||
-                              modelId.includes('moonshot')
+      const isResearchModel = modelId.includes('gemini') // Todos los modelos Gemini usan LangChain
       
       // Usar LangChain Agent para modelos de investigación O si hay tools seleccionadas
       if (isResearchModel || selectedTools.length > 0) {
