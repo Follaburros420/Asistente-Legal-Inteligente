@@ -7,30 +7,31 @@ import { useModelUsage, formatRemainingCount } from "@/lib/hooks/use-model-usage
 import { toast } from "sonner"
 
 // Internal model IDs - not exposed to users
-export const M1_SMALL_MODEL = "liquid/lfm-2.2-6b"
-export const M1_MODEL = "alibaba/tongyi-deepresearch-30b-a3b"
-export const M1_PRO_MODEL = "moonshotai/kimi-k2-thinking"
+// M1 y M1 Pro ambos usan Gemini 3 Pro Preview según configuración
+export const M1_SMALL_MODEL = "google/gemini-2.0-flash-thinking-exp:free"
+export const M1_MODEL = "google/gemini-3-pro-preview"
+export const M1_PRO_MODEL = "google/gemini-3-pro-preview"
 
 const MODELS = [
-  { 
-    id: M1_SMALL_MODEL, 
-    name: "M1 Small", 
+  {
+    id: M1_SMALL_MODEL,
+    name: "M1 Small",
     description: "Ligero y veloz",
     icon: IconBolt,
     iconColor: "text-emerald-500",
     bgColor: "from-emerald-500/15 to-emerald-600/10"
   },
-  { 
-    id: M1_MODEL, 
-    name: "M1", 
-    description: "Rápido y eficiente",
+  {
+    id: M1_MODEL,
+    name: "M1",
+    description: "Eficiente y rápido",
     icon: IconCpu,
     iconColor: "text-primary",
     bgColor: "from-primary/15 to-primary/10"
   },
-  { 
-    id: M1_PRO_MODEL, 
-    name: "M1 Pro", 
+  {
+    id: M1_PRO_MODEL,
+    name: "M1 Pro",
     description: "Razonamiento avanzado",
     icon: IconBrain,
     iconColor: "text-violet-500",

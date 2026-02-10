@@ -81,7 +81,7 @@ export const GlobalState: FC<GlobalStateProps> = ({ children }) => {
   const [userInput, setUserInput] = useState<string>("")
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatSettings, setChatSettings] = useState<ChatSettings>({
-    model: "alibaba/tongyi-deepresearch-30b-a3b",
+    model: "google/gemini-3-pro-preview",
     prompt: `Eres un Asistente Legal Especializado en Derecho Colombiano de élite, entrenado para proporcionar análisis jurídicos de la más alta calidad.
 
 **INSTRUCCIÓN FUNDAMENTAL**: 

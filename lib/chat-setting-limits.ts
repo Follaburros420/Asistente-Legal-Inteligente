@@ -239,6 +239,18 @@ export const CHAT_SETTING_LIMITS: Record<LLMID, ChatSettingLimits> = {
   },
 
   // OPENROUTER MODELS
+  "google/gemini-3-pro-preview": {
+    MIN_TEMPERATURE: 0.0,
+    MAX_TEMPERATURE: 1.0,
+    MAX_TOKEN_OUTPUT_LENGTH: 8192,
+    MAX_CONTEXT_LENGTH: 1000000
+  },
+  "google/gemini-2.0-flash-thinking-exp:free": {
+    MIN_TEMPERATURE: 0.0,
+    MAX_TEMPERATURE: 1.0,
+    MAX_TOKEN_OUTPUT_LENGTH: 8192,
+    MAX_CONTEXT_LENGTH: 1000000
+  },
   "alibaba/tongyi-deepresearch-30b-a3b": {
     MIN_TEMPERATURE: 0.0,
     MAX_TEMPERATURE: 1.0,

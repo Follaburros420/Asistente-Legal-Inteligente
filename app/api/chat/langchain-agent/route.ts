@@ -1,22 +1,23 @@
 /**
  * Endpoint Unificado del Agente Legal con LangChain
- * 
+ *
  * Este endpoint usa LangChain para implementar un agente con tool calling nativo.
- * 
+ *
  * Características:
- * - Soporta múltiples modelos (Kimi K2, Tongyi, GPT-4o, Claude)
+ * - Soporta múltiples modelos (Gemini 3 Pro, GPT-5 Mini, Kimi K2, Tongyi)
  * - Tool calling nativo (el modelo decide cuándo usar herramientas)
  * - Streaming REAL de respuestas y razonamiento
  * - Manejo de historial de conversación
- * 
+ *
  * Modelos recomendados:
- * - moonshotai/kimi-k2-thinking: Razonamiento profundo (M1 Pro)
- * - alibaba/tongyi-deepresearch-30b-a3b: Investigación profunda (M1)
- * 
+ * - google/gemini-3-pro-preview: Razonamiento avanzado (M1 y M1 Pro)
+ * - google/gemini-2.0-flash-thinking-exp:free: Razonamiento rápido (M1 Small)
+ * - alibaba/tongyi-deepresearch-30b-a3b: Investigación profunda (Legacy)
+ *
  * Formato de streaming (JSON Lines):
  * - {"type": "thinking", "content": "..."} - Proceso de razonamiento
  * - {"type": "tool_start", "tool": "...", "input": "..."} - Inicio de herramienta
- * - {"type": "tool_end", "tool": "...", "output": "..."} - Fin de herramienta  
+ * - {"type": "tool_end", "tool": "...", "output": "..."} - Fin de herramienta
  * - {"type": "token", "content": "..."} - Token de respuesta
  * - {"type": "sources", "sources": [...]} - Fuentes encontradas
  * - {"type": "done"} - Fin del stream
@@ -269,7 +270,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Check model-specific usage limits
-      const modelId = chatSettings.model || 'alibaba/tongyi-deepresearch-30b-a3b'
+      const modelId = chatSettings.model || 'google/gemini-3-pro-preview'
       const modelCheck = await canUseModel(effectiveUserId, modelId)
 
       if (!modelCheck.allowed) {
@@ -278,7 +279,7 @@ export async function POST(request: NextRequest) {
             error: modelCheck.reason || "Has alcanzado el límite de uso de este modelo",
             code: "MODEL_LIMIT_EXCEEDED",
             needsUpgrade: true,
-            suggestModel: "liquid/lfm-2.2-6b", // M1 Small - ilimitado
+            suggestModel: "google/gemini-2.0-flash-thinking-exp:free", // M1 Small - ilimitado
             usage: modelCheck.usage
           },
           { status: 402 } // Payment Required
@@ -296,7 +297,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Determinar modelo a usar
-    const modelId = chatSettings.model || 'alibaba/tongyi-deepresearch-30b-a3b'
+    const modelId = chatSettings.model || 'google/gemini-3-pro-preview'
     const temperature = chatSettings.temperature ?? 0.3
 
     // Verificar que el modelo soporte tools

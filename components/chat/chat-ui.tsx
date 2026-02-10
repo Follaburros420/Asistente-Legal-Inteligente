@@ -154,16 +154,18 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
 
     setSelectedChat(chat)
 
-    // Modelos de investigación válidos (M1 y M1 Pro)
+    // Modelos válidos (M1 Small, M1 y M1 Pro)
     const validModels = [
-      'alibaba/tongyi-deepresearch-30b-a3b',
-      'moonshotai/kimi-k2-thinking'
+      'google/gemini-2.0-flash-thinking-exp:free',
+      'google/gemini-3-pro-preview',
+      'alibaba/tongyi-deepresearch-30b-a3b', // Mantener para compatibilidad con chats existentes
+      'moonshotai/kimi-k2-thinking' // Mantener para compatibilidad con chats existentes
     ]
 
-    // Usar el modelo del chat si es válido, sino usar Tongyi por defecto
+    // Usar el modelo del chat si es válido, sino usar Gemini 3 Pro por defecto
     const chatModel = validModels.includes(chat.model)
       ? chat.model
-      : 'alibaba/tongyi-deepresearch-30b-a3b'
+      : 'google/gemini-3-pro-preview'
 
     setChatSettings({
       model: chatModel as LLMID,
