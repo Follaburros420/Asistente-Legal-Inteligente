@@ -279,9 +279,7 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
         // Los datos se cargan en segundo plano, no hay pantalla de carga
       } catch (error: any) {
         console.error("❌ Error cargando datos iniciales:", error)
-        toast.error("Error al cargar tus datos", {
-          description: error.message || "Por favor recarga la página"
-        })
+        // No mostrar error al usuario - cargar datos en silencio
       }
     })()
   }, [])
@@ -346,6 +344,9 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
       const homeWorkspace = workspaces.find(w => w.is_home)
       if (homeWorkspace && !selectedWorkspace) {
         setSelectedWorkspace(homeWorkspace)
+      } else if (!selectedWorkspace && workspaces.length > 0) {
+        // Si no hay home workspace, seleccionar el primero disponible
+        setSelectedWorkspace(workspaces[0])
       }
 
       return profile

@@ -94,7 +94,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                             "text-sm sm:text-base",
                             "text-foreground placeholder:text-muted-foreground/0", // Hide default placeholder
                             "focus:outline-none focus:ring-0",
-                            "relative z-20",
+                            "relative z-30",
                             "cursor-text"
                         )}
                         minRows={1}
@@ -112,7 +112,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
 
                     {/* Animated Placeholders */}
                     {showSuggestions && !localValue && placeholders.length > 0 && (
-                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-10">
+                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-0 select-none">
                             <AnimatePresence mode="wait">
                                 <motion.p
                                     key={`placeholder-${currentPlaceholder}`}
@@ -130,7 +130,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
 
                     {/* Static Placeholder fallback */}
                     {!localValue && (!showSuggestions || placeholders.length === 0) && placeholder && (
-                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-10">
+                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-0 select-none">
                             <p className="truncate">{placeholder}</p>
                         </div>
                     )}

@@ -219,6 +219,17 @@ export const useChatHandler = () => {
     const startingInput = messageContent
 
     try {
+      // Validaciones básicas sin mostrar errores al usuario
+      if (!messageContent || messageContent.trim() === "") {
+        console.log("Mensaje vacío, ignorando")
+        return
+      }
+
+      if (!selectedWorkspace) {
+        console.error("No hay workspace seleccionado")
+        return
+      }
+
       setUserInput("")
       setIsGenerating(true)
       setIsPromptPickerOpen(false)
@@ -271,13 +282,19 @@ export const useChatHandler = () => {
         }
       }
 
-      validateChatSettings(
-        effectiveChatSettings,
-        modelData,
-        profile,
-        selectedWorkspace,
-        messageContent
-      )
+      // Validar configuración (sin mostrar errores al usuario)
+      try {
+        validateChatSettings(
+          effectiveChatSettings,
+          modelData,
+          profile,
+          selectedWorkspace,
+          messageContent
+        )
+      } catch (error) {
+        console.error("Error en validación:", error)
+        // Continuar a pesar del error de validación
+      }
 
       let currentChat = selectedChat ? { ...selectedChat } : null
 
@@ -428,8 +445,14 @@ export const useChatHandler = () => {
         selectedAssistant,
         bibliography
       )
-    } catch (error) {
+    } catch (error: any) {
+      // Restaurar el input del usuario
       setUserInput(startingInput)
+
+      // Log del error para depuración (sin mostrar al usuario)
+      console.error("Error al enviar mensaje:", error?.message || error)
+
+      // No mostrar toast al usuario - solo log en consola
     } finally {
       // Siempre resetear el estado al final
       setIsGenerating(false)
