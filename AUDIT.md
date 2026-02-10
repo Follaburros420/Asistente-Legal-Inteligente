@@ -1,184 +1,116 @@
-# Auditoría del Chatbot - 2026-02-10
+# Auditoría del Chatbot - 2026-02-10 (Actualizado)
 
 ## Resumen Ejecutivo
 
-Se realizaron correcciones críticas en el módulo de chatbot para garantizar que el sistema use el modelo correcto (Google Gemini 3 Pro Preview) y para solucionar un bug que impedía escribir correctamente en el input del chat.
+Se realizaron **dos rondas de correcciones** en el módulo de chatbot:
 
-### Problemas Identificados
+### Ronda 1 (Commit e54be29)
+- Eliminados modelos obsoletos `alibaba/tongyi` y `moonshot/kimi` de `validModels`
+- Primer intento de corregir el bug del input (fallido)
 
-1. **Modelo incorrecto en producción**: Los logs mostraban que se usaba `alibaba/tongyi-deepresearch-30b-a3b` en lugar de `google/gemini-3-pro-preview`
-   - **Causa raíz**: En `chat-ui.tsx`, la lista de `validModels` incluía modelos obsoletos para "compatibilidad con chats existentes", permitiendo que chats antiguos cargaran con el modelo equivocado.
-
-2. **Bug del input que solo capturaba la última letra**: El usuario no podía escribir palabras completas en el chat.
-   - **Causa raíz**: El `useEffect` de sincronización en `ChatInputArea` creaba un race condition donde el valor externo (aún no actualizado) sobrescribía el valor local durante el typing.
+### Ronda 2 (Commit 9c09ffb) - CRÍTICO
+- **Corregido el bug del input** que impedía escribir correctamente
+- **Eliminados modelos OpenAI** (`gpt-5-mini`, `gpt-4o-mini`) que NO existen en OpenRouter
+- **Forzado uso exclusivo de Gemini 3 Pro Preview**
+- **Corregido error "content: got null"** que causaba fallos en el API
 
 ---
 
-## Cambios por Archivo
+## Problemas Identificados y Corregidos
 
-### 1. `components/chat/chat-ui.tsx`
-
-**Cambio**: Eliminados modelos obsoletos de la lista de modelos válidos.
-
-```diff
-- const validModels = [
--   'google/gemini-2.0-flash-thinking-exp:free',
--   'google/gemini-3-pro-preview',
--   'alibaba/tongyi-deepresearch-30b-a3b', // Mantener para compatibilidad
--   'moonshotai/kimi-k2-thinking' // Mantener para compatibilidad
-- ]
-+ // Modelos válidos - Solo Gemini
-+ const validModels = [
-+   'google/gemini-2.0-flash-thinking-exp:free',
-+   'google/gemini-3-pro-preview'
-+ ]
+### 1. Modelo incorrecto: `openai/gpt-5-mini`
+**Síntoma**: Los logs mostraban:
+```
+🎯 Router seleccionó: openai/gpt-5-mini
+🔄 Intentando fallback: openai/gpt-4o-mini
+⚠️ Modelo openai/gpt-5-mini no disponible: 400 Provider returned error
 ```
 
-**Razón**: Los chats existentes con modelos obsoletos se migran automáticamente a Gemini 3 Pro Preview.
+**Causa raíz**: El router (`routeModel()`) seleccionaba `gpt-5-mini` para consultas simples, pero ese modelo NO existe en OpenRouter.
 
-### 2. `components/chat/chat-helpers/index.ts`
+**Corrección**:
+- `SIMPLE_TASK_MODEL` cambiado de `'openai/gpt-5-mini'` a `'google/gemini-3-pro-preview'`
+- `routeModel()` ahora siempre devuelve Gemini 3 Pro Preview
+- Fallbacks solo usan modelos Gemini
 
-**Cambio**: Simplificada la detección de modelos LangChain.
-
-```diff
-- const isLangChainModel = modelId.includes('tongyi') ||
--                          modelId.includes('deepresearch') ||
--                          modelId.includes('alibaba') ||
--                          modelId.includes('kimi') ||
--                          modelId.includes('moonshot') ||
--                          modelId.includes('gemini')
-+ // Solo modelos Gemini usan LangChain Agent (tool calling nativo)
-+ const isLangChainModel = modelId.includes('gemini')
+### 2. Error "content: expected a string, got null"
+**Síntoma**: El API retornaba error 400 con mensaje:
+```
+Invalid value for 'content': expected a string, got null
 ```
 
-### 3. `components/chat/chat-hooks/use-chat-handler.tsx`
-
-**Cambio**: Simplificada la detección de modelos de investigación.
-
-```diff
-- const isResearchModel = modelId.includes('tongyi') ||
--                         modelId.includes('deepresearch') ||
--                         modelId.includes('alibaba') ||
--                         modelId.includes('kimi') ||
--                         modelId.includes('moonshot')
-+ // Solo modelos Gemini usan LangChain
-+ const isResearchModel = modelId.includes('gemini')
-```
-
-### 4. `app/api/chat/langchain-agent/route.ts`
-
-**Cambio**: Actualizados comentarios y documentación para reflejar solo modelos Gemini.
-
-### 5. `components/ui/chat-settings-form.tsx`
-
-**Cambio**: Actualizado comentario sobre el selector de modelo.
-
-### 6. `components/chat/chat-input-area.tsx` (CORRECCIÓN CRÍTICA)
-
-**Cambio**: Reescrita la lógica de sincronización del estado para prevenir race conditions.
-
-**Antes (problemático)**:
+**Causa raíz**: En `legal-agent/route.ts`, cuando había tool calls, el content se pasaba como `null`:
 ```typescript
-useEffect(() => {
-    setLocalValue(value)
-}, [value])
+content: message.content || null,  // ❌ null causa error
 ```
 
-**Después (corregido)**:
+**Corrección**:
 ```typescript
-useEffect(() => {
-    // Solo sincronizar si:
-    // 1. El valor externo está vacío (reset intencional)
-    // 2. El input no está enfocado Y el valor cambió externamente
-    const isEmptyReset = value === "" && localValue !== ""
-    const notFocused = !isFocused
-    const externalChange = value !== lastSyncedValueRef.current && value !== localValue
-
-    if (isEmptyReset || (notFocused && externalChange)) {
-        setLocalValue(value)
-        lastSyncedValueRef.current = value
-    }
-}, [value, isFocused, localValue])
+content: message.content || "",  // ✅ string vacío funciona
 ```
 
-**Razón**: El enfoque anterior sincronizaba inmediatamente cuando el valor externo cambiaba, pero durante el typing, el valor externo puede no haberse actualizado todavía en el contexto de React, causando que el input se resetee.
+### 3. Bug del input que solo capturaba la última letra
+**Causa raíz**: El componente `ChatInputArea` tenía un estado local (`localValue`) que se sincronizaba con el valor externo mediante un `useEffect`. Esto creaba un race condition donde el valor externo (aún no actualizado por React) sobrescribía el valor local durante el typing.
+
+**Corrección**: Refactorización completa a controlled component:
+- Eliminado el estado local `localValue`
+- El componente ahora es un controlled input puro
+- El valor se gestiona EXCLUSIVAMENTE desde el contexto (`userInput`)
 
 ---
 
-## Configuración de Modelos
+## Archivos Modificados
 
-### Modelo por Defecto
-- **Producción**: `google/gemini-3-pro-preview`
-- **Definido en**: `lib/langchain/config/models.ts`
-
-### Fallbacks
-1. `google/gemini-3-pro-preview` → `google/gemini-1.5-pro-latest` → `anthropic/claude-3.5-sonnet`
-2. `openai/gpt-5-mini` → `openai/gpt-4o-mini`
-
-### Flujo de Selección de Modelo
-```
-1. chat-ui.tsx: fetchChat() → usa modelo del chat o Gemini 3 Pro
-2. use-chat-handler.tsx: handleSendMessage() → pasa modelo a backend
-3. chat-helpers/index.ts: handleHostedChat() → detecta si es Gemini
-4. api/chat/langchain-agent/route.ts → usa modelo recibido
-5. legal-agent.ts: initializeModel() → crea instancia del modelo
-```
+| Archivo | Cambios |
+|---------|---------|
+| `lib/langchain/config/models.ts` | `SIMPLE_TASK_MODEL` = Gemini, router simplificado, fallbacks solo Gemini |
+| `app/api/chat/legal-agent/route.ts` | Modelos válidos solo Gemini, corregido content null |
+| `components/chat/chat-input-area.tsx` | Refactorizado a controlled component puro |
+| `lib/langchain/agents/index.ts` | Agregado alias `createDefaultLegalAgent` |
 
 ---
 
-## Verificación
+## Configuración Final de Modelos
 
-### Tests Recomendados
+### Modelo Único
+```
+Principal: google/gemini-3-pro-preview
+Fallbacks: google/gemini-1.5-pro-latest → google/gemini-1.5-flash
+```
 
-1. **Test de input**: Escribir "hola mundo" completo sin que se pierdan caracteres
-2. **Test de modelo**: Verificar en logs que aparezca `google/gemini-3-pro-preview`
-3. **Test de chat existente**: Cargar un chat antiguo y verificar que use Gemini 3 Pro
+### Por qué solo Gemini
+1. Los modelos OpenAI (`gpt-5-mini`, `gpt-4o-mini`) NO están disponibles en OpenRouter
+2. Gemini 3 Pro Preview tiene 1M de contexto y soporta tool calling
+3. Los modelos Claude no están garantizados en OpenRouter
 
-### Comando de Build
+---
+
+## Verificación en Producción
+
+### Logs esperados
+```
+🎯 Modelo por defecto: google/gemini-3-pro-preview
+✅ Modelo google/gemini-3-pro-preview disponible
+📝 Query: "..."
+🤖 Modelo: google/gemini-3-pro-preview
+```
+
+### Tests manuales
+1. **Input**: Escribir "hola mundo completo" y verificar que queda completo
+2. **Envío**: Presionar Enter y verificar que el mensaje se envía
+3. **Modelo**: Verificar en logs que aparezca `google/gemini-3-pro-preview`
+
+---
+
+## Commits
+
+1. `e54be29` - Primera ronda de correcciones (incompleta)
+2. `9c09ffb` - Correcciones críticas definitivas
+
+---
+
+## Rollback
+
 ```bash
-npm run build
+git revert 9c09ffb  # Si hay problemas con los cambios
 ```
-
-### Variables de Entorno Requeridas
-- `OPENROUTER_API_KEY` - Para acceso a modelos
-- `NEXT_PUBLIC_SUPABASE_URL` - URL de Supabase
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Key de Supabase
-- `SERPER_API_KEY` - Para búsqueda web
-
----
-
-## Código Legacy (No Modificado)
-
-Los siguientes archivos contienen referencias a modelos obsoletos pero no se modificaron porque:
-1. Son endpoints legacy que probablemente no se usan en producción
-2. Son archivos de test
-3. Modificarlos podría romper compatibilidad con features existentes
-
-- `lib/tongyi/` - Librería legacy de Tongyi
-- `app/api/tongyi/` - Endpoints legacy
-- `__tests__/setup.ts` - Configuración de tests
-
-**Recomendación**: Evaluar si estos archivos se pueden eliminar en una futura limpieza.
-
----
-
-## Instrucciones de Deploy
-
-1. **Verificar variables de entorno** en producción
-2. **Ejecutar build**: `npm run build`
-3. **Deploy**: `git push origin produccion`
-
-### Rollback
-Si hay problemas, revertir los commits:
-```bash
-git log --oneline -5  # Identificar commits
-git revert <commit-hash>
-```
-
----
-
-## Contacto
-
-- Auditor realizado por: Claude Code
-- Fecha: 2026-02-10
-- Branch: produccion
