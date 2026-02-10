@@ -1,15 +1,15 @@
 /**
  * Configuración de Modelos LLM para el Asistente Legal Inteligente
- * 
+ *
  * Modelos utilizados (todos vía OpenRouter):
- * - Gemini 3 Pro Preview: Modelo principal para tareas complejas (M1 Pro)
- * - GPT-5 Mini: Modelo para tareas simples y rápidas (M1)
- * 
+ * - Gemini 3 Pro Preview: Modelo principal para TODAS las tareas
+ * - Gemini 2.0 Flash Thinking: Alternativa gratuita con razonamiento
+ *
  * Búsqueda web: Serper (única herramienta)
- * 
- * NOTA: Si los modelos principales no están disponibles, se usan fallbacks:
- * - Fallback M1 Pro: google/gemini-1.5-pro-latest o anthropic/claude-3.5-sonnet
- * - Fallback M1: openai/gpt-4o-mini
+ *
+ * NOTA: Solo se usan modelos Google Gemini para garantizar disponibilidad.
+ * Los modelos OpenAI (gpt-5-mini, gpt-4o-mini) fueron removidos porque
+ * no están disponibles en OpenRouter.
  */
 
 import { ChatOpenAI } from "@langchain/openai"
@@ -200,17 +200,18 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CONFIGURACIÓN POR DEFECTO
+// CONFIGURACIÓN POR DEFECTO - SIEMPRE USAR GEMINI
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Modelo único para todas las tareas: Gemini 3 Pro Preview
 export const DEFAULT_MODEL: ModelId = 'google/gemini-3-pro-preview'
-export const SIMPLE_TASK_MODEL: ModelId = 'openai/gpt-5-mini'
+export const SIMPLE_TASK_MODEL: ModelId = 'google/gemini-3-pro-preview'
 export const RESEARCH_MODEL: ModelId = 'google/gemini-3-pro-preview'
 
-// Modelos de fallback garantizados (siempre deberían funcionar)
+// Modelos de fallback garantizados (solo Gemini)
 export const GUARANTEED_FALLBACKS = {
-  complex: 'anthropic/claude-3.5-sonnet',
-  simple: 'openai/gpt-4o-mini',
+  complex: 'google/gemini-1.5-pro-latest',
+  simple: 'google/gemini-1.5-flash',
   fast: 'google/gemini-1.5-flash'
 }
 
@@ -228,57 +229,18 @@ export interface ModelRouterConfig {
 
 /**
  * Determina el modelo y configuración óptima según el tipo de consulta
+ *
+ * NOTA: Por ahora siempre usamos Gemini 3 Pro Preview para garantizar
+ * disponibilidad. El router puede reactivarse cuando haya más modelos
+ * disponibles en OpenRouter.
  */
 export function routeModel(query: string): ModelRouterConfig {
-  const normalized = query.toLowerCase()
-  
-  // Detectar consulta simple de artículo específico
-  const isArticleQuery = /art(í|i)culo\s+\d+/i.test(normalized) && normalized.length < 150
-  
-  // Detectar consulta simple
-  const isSimpleQuery = normalized.length < 100 && 
-    !/(investiga|analiza|compara|diferencia|estudio|tesis)/i.test(normalized)
-  
-  // Detectar investigación compleja
-  const isComplexResearch = /(investiga|analiza en profundidad|compara|diferencia|estudio|tesis|doctrina|jurisprudencia completa)/i.test(normalized) ||
-    normalized.length > 500
-  
-  // Detectar caso práctico complejo
-  const isCaseAnalysis = /(caso|situaci(ó|o)n|me pas(ó|o)|fue despedido|quiere demandar|problema legal)/i.test(normalized) &&
-    normalized.length > 200
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // M1: Tareas simples (GPT-5 Mini o fallback)
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (isArticleQuery || isSimpleQuery) {
-    return {
-      model: SIMPLE_TASK_MODEL,
-      temperature: 0.1,
-      maxTokens: 2048,
-      tools: ['search_legal_official', 'buscar_articulo_ley'],
-      reasoning: false
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // M1 PRO: Tareas complejas (Gemini 3 Pro Preview o fallback)
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (isComplexResearch || isCaseAnalysis) {
-    return {
-      model: RESEARCH_MODEL,
-      temperature: 0.2,
-      maxTokens: 8192,
-      tools: ['search_legal_official', 'serper_web_search', 'buscar_articulo_ley'],
-      reasoning: true
-    }
-  }
-
-  // Default: Gemini 3 Pro Preview para todo lo demás
+  // Siempre usar Gemini 3 Pro Preview - modelo principal
   return {
-    model: DEFAULT_MODEL,
+    model: DEFAULT_MODEL, // google/gemini-3-pro-preview
     temperature: 0.3,
     maxTokens: 4096,
-    tools: ['search_legal_official', 'serper_web_search'],
+    tools: ['search_legal_official', 'serper_web_search', 'buscar_articulo_ley'],
     reasoning: false
   }
 }
@@ -393,17 +355,16 @@ export function getModelForUseCase(useCase: 'simple' | 'complex' | 'research'): 
  */
 export function getModelHierarchy(): Record<string, { primary: string; fallbacks: string[] }> {
   return {
-    'M1 Pro (Complejas)': {
+    'Principal (Todas las tareas)': {
       primary: 'google/gemini-3-pro-preview',
-      fallbacks: ['google/gemini-1.5-pro-latest', 'anthropic/claude-3.5-sonnet']
+      fallbacks: ['google/gemini-1.5-pro-latest', 'google/gemini-1.5-flash']
     },
-    'M1 (Simples)': {
-      primary: 'openai/gpt-5-mini',
-      fallbacks: ['openai/gpt-4o-mini', 'google/gemini-1.5-flash']
-    },
-    'Research': {
+    'Alternativa Gratuita': {
       primary: 'google/gemini-2.0-flash-thinking-exp:free',
       fallbacks: ['google/gemini-1.5-flash']
     }
   }
 }
+
+// Exportar RESEARCH_MODELS para compatibilidad
+export const RESEARCH_MODELS = ['google/gemini-3-pro-preview', 'google/gemini-2.0-flash-thinking-exp:free']

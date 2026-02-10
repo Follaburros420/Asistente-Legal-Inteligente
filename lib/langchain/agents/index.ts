@@ -1,12 +1,12 @@
 /**
  * Índice de Agentes
- * 
+ *
  * Exporta los agentes disponibles del sistema.
  */
 
 export {
   LegalAgent,
-  createDefaultLegalAgent,
+  createSmartLegalAgent as createDefaultLegalAgent, // Alias para compatibilidad
   convertToLangChainMessages,
   type AgentConfig,
   type AgentInput,

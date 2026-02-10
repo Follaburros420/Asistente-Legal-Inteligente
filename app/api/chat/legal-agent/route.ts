@@ -1,9 +1,8 @@
 /**
  * Endpoint del Agente Legal con Tool Calling
- * 
+ *
  * Usa:
- * - Gemini 3 Pro Preview (M1 Pro) para tareas complejas
- * - GPT-5 Mini (M1) para tareas simples
+ * - Gemini 3 Pro Preview (vía OpenRouter) como modelo principal
  * - Serper como única herramienta de búsqueda web
  */
 
@@ -16,13 +15,9 @@ import {
 import { detectDraftIntent } from "@/lib/draft-detection"
 import { classifyDocumentIntent } from "@/lib/classifiers/document-classifier"
 import { validateDraftContent } from "@/lib/utils/draft-utils"
-import { 
-  routeModel, 
-  DEFAULT_MODEL, 
-  SIMPLE_TASK_MODEL, 
-  resolveModel,
-  GUARANTEED_FALLBACKS,
-  getModelHierarchy 
+import {
+  DEFAULT_MODEL,
+  GUARANTEED_FALLBACKS
 } from "@/lib/langchain/config/models"
 import { checkSerperConfig } from "@/lib/tools/search/serper-legal-search"
 import { LEGAL_AGENT_SYSTEM_PROMPT } from "@/lib/langchain/config/prompts"
@@ -192,35 +187,34 @@ function extractSourcesFromResponse(text: string): Array<{ title: string; url: s
 
 /**
  * Selecciona el modelo a usar con fallback automático
+ * SIEMPRE usa modelos Google Gemini vía OpenRouter
  */
 async function selectModelWithFallback(
-  client: OpenAI, 
-  userQuery: string, 
+  client: OpenAI,
+  userQuery: string,
   requestedModel: string
 ): Promise<{ model: string; usedFallback: boolean; originalModel?: string }> {
-  
-  // Determinar modelo objetivo
+
+  // Determinar modelo objetivo - SIEMPRE usar Gemini
   let targetModel: string
-  
+
+  // Solo modelos Gemini están disponibles en OpenRouter
   const validModels = [
     'google/gemini-3-pro-preview',
-    'openai/gpt-5-mini',
     'google/gemini-2.0-flash-thinking-exp:free',
     'google/gemini-1.5-pro-latest',
-    'anthropic/claude-3.5-sonnet',
-    'openai/gpt-4o-mini'
+    'google/gemini-1.5-flash'
   ]
-  
+
   if (requestedModel && requestedModel !== 'auto' && validModels.includes(requestedModel)) {
     targetModel = requestedModel
     console.log(`🎯 Modelo solicitado: ${targetModel}`)
   } else {
-    // Usar router inteligente
-    const routerConfig = routeModel(userQuery)
-    targetModel = routerConfig.model
-    console.log(`🎯 Router seleccionó: ${targetModel}`)
+    // Siempre usar Gemini 3 Pro Preview como modelo principal
+    targetModel = 'google/gemini-3-pro-preview'
+    console.log(`🎯 Modelo por defecto: ${targetModel}`)
   }
-  
+
   // Intentar usar el modelo seleccionado
   try {
     // Hacer una petición de prueba ligera
@@ -229,56 +223,48 @@ async function selectModelWithFallback(
       messages: [{ role: 'user', content: 'OK' }],
       max_tokens: 5
     })
-    
+
     if (testResponse.choices && testResponse.choices.length > 0) {
       console.log(`✅ Modelo ${targetModel} disponible`)
       return { model: targetModel, usedFallback: false }
     }
   } catch (error: any) {
     console.warn(`⚠️ Modelo ${targetModel} no disponible:`, error.message || error)
-    
-    // Intentar fallbacks
-    const hierarchy = getModelHierarchy()
-    let fallbackModel: string | null = null
-    
-    // Determinar qué tipo de fallback necesitamos
-    if (targetModel.includes('gemini-3') || targetModel.includes('gemini-1.5-pro')) {
-      fallbackModel = hierarchy['M1 Pro (Complejas)'].fallbacks[0]
-    } else if (targetModel.includes('gpt-5') || targetModel.includes('gpt-4o-mini')) {
-      fallbackModel = hierarchy['M1 (Simples)'].fallbacks[0]
-    }
-    
-    // Si no hay fallback específico, usar garantizado
-    if (!fallbackModel) {
-      fallbackModel = targetModel.includes('gemini') 
-        ? GUARANTEED_FALLBACKS.complex 
-        : GUARANTEED_FALLBACKS.simple
-    }
-    
-    console.log(`🔄 Intentando fallback: ${fallbackModel}`)
-    
-    try {
-      const testFallback = await client.chat.completions.create({
-        model: fallbackModel,
-        messages: [{ role: 'user', content: 'OK' }],
-        max_tokens: 5
-      })
-      
-      if (testFallback.choices && testFallback.choices.length > 0) {
-        console.log(`✅ Usando fallback: ${fallbackModel}`)
-        return { 
-          model: fallbackModel, 
-          usedFallback: true, 
-          originalModel: targetModel 
+
+    // Intentar fallbacks - Solo modelos Gemini
+    const geminiFallbacks = [
+      'google/gemini-1.5-pro-latest',
+      'google/gemini-1.5-flash'
+    ]
+
+    for (const fallbackModel of geminiFallbacks) {
+      if (fallbackModel === targetModel) continue
+
+      console.log(`🔄 Intentando fallback: ${fallbackModel}`)
+
+      try {
+        const testFallback = await client.chat.completions.create({
+          model: fallbackModel,
+          messages: [{ role: 'user', content: 'OK' }],
+          max_tokens: 5
+        })
+
+        if (testFallback.choices && testFallback.choices.length > 0) {
+          console.log(`✅ Usando fallback: ${fallbackModel}`)
+          return {
+            model: fallbackModel,
+            usedFallback: true,
+            originalModel: targetModel
+          }
         }
+      } catch (fallbackError) {
+        console.warn(`⚠️ Fallback ${fallbackModel} también falló:`, fallbackError)
       }
-    } catch (fallbackError) {
-      console.error(`❌ Fallback también falló:`, fallbackError)
     }
   }
-  
-  // Último recurso: usar modelo garantizado
-  const lastResort = GUARANTEED_FALLBACKS.simple
+
+  // Último recurso: usar Gemini 1.5 Flash (generalmente disponible)
+  const lastResort = 'google/gemini-1.5-flash'
   console.log(`⚠️ Usando último recurso: ${lastResort}`)
   return { model: lastResort, usedFallback: true, originalModel: targetModel }
 }
@@ -405,9 +391,10 @@ export async function POST(request: NextRequest) {
 
       // Si hay tool calls, procesarlas
       if (message.tool_calls && message.tool_calls.length > 0) {
+        // IMPORTANTE: content debe ser string o undefined, nunca null
         currentMessages.push({
           role: "assistant",
-          content: message.content || null,
+          content: message.content || "",
           tool_calls: message.tool_calls
         })
 
@@ -552,22 +539,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   const serperConfig = checkSerperConfig()
-  const hierarchy = getModelHierarchy()
-  
+
   return NextResponse.json({
     status: "ok",
     endpoint: "Legal Agent",
-    version: "2.0",
+    version: "2.1",
     models: {
-      primary: {
-        m1_pro: "google/gemini-3-pro-preview",
-        m1: "openai/gpt-5-mini"
-      },
-      fallbacks: {
-        m1_pro: ["google/gemini-1.5-pro-latest", "anthropic/claude-3.5-sonnet"],
-        m1: ["openai/gpt-4o-mini", "google/gemini-1.5-flash"]
-      },
-      hierarchy
+      primary: "google/gemini-3-pro-preview",
+      fallbacks: ["google/gemini-1.5-pro-latest", "google/gemini-1.5-flash"]
     },
     search: {
       provider: "Serper",
@@ -576,6 +555,6 @@ export async function GET() {
     },
     tools: LEGAL_TOOLS_DEFINITIONS.map(t => t.function.name),
     requiredEnvVars: ["OPENROUTER_API_KEY", "SERPER_API_KEY"],
-    note: "Si el modelo primario no está disponible, se usa automáticamente el fallback"
+    note: "Solo modelos Google Gemini están disponibles vía OpenRouter"
   })
 }
