@@ -49,8 +49,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value
         setLocalValue(newValue)
-        // Use setTimeout to avoid blocking the input
-        setTimeout(() => onChange(newValue), 0)
+        onChange(newValue)
     }
 
     // Rotating placeholders logic

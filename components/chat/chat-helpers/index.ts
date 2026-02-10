@@ -231,11 +231,12 @@ export const handleHostedChat = async (
   const modelId = payload.chatSettings.model?.toLowerCase() || ''
   
   // Modelos de investigación profunda con tool calling nativo
-  const isLangChainModel = modelId.includes('tongyi') || 
-                           modelId.includes('deepresearch') || 
+  const isLangChainModel = modelId.includes('tongyi') ||
+                           modelId.includes('deepresearch') ||
                            modelId.includes('alibaba') ||
                            modelId.includes('kimi') ||
-                           modelId.includes('moonshot')
+                           modelId.includes('moonshot') ||
+                           modelId.includes('gemini') // Todos los modelos Gemini usan LangChain
   
   if (chatMode === 'legal-writing') {
     apiEndpoint = "/api/chat/legal-writing"
