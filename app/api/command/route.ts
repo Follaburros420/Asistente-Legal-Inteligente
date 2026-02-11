@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     })
 
     const response = await openai.chat.completions.create({
-      model: "alibaba/tongyi-deepresearch-30b-a3b",
+      model: "google/gemini-3-pro-preview",
       messages: [
         {
           role: "system",

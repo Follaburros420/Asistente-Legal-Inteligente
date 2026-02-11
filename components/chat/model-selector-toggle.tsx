@@ -8,7 +8,7 @@ import { toast } from "sonner"
 
 // Internal model IDs - not exposed to users
 // M1 y M1 Pro ambos usan Gemini 3 Pro Preview según configuración
-export const M1_SMALL_MODEL = "google/gemini-2.0-flash-thinking-exp:free"
+export const M1_SMALL_MODEL = "google/gemini-3-flash-preview"
 export const M1_MODEL = "google/gemini-3-pro-preview"
 export const M1_PRO_MODEL = "google/gemini-3-pro-preview"
 
@@ -47,7 +47,7 @@ export const ModelSelectorToggle = () => {
   const currentModel = chatSettings?.model || M1_MODEL
   const selectedModel = MODELS.find(m => m.id === currentModel) || MODELS[0]
   const [isOpen, setIsOpen] = useState(false)
-  
+
   // Check if user is on student plan
   const isStudentPlan = profile?.plan_type === 'basic'
   const isProfessionalPlan = profile?.plan_type === 'pro' || profile?.plan_type === 'enterprise'
@@ -65,7 +65,7 @@ export const ModelSelectorToggle = () => {
       })
       return
     }
-    
+
     if (chatSettings) {
       setChatSettings({
         ...chatSettings,
@@ -87,7 +87,7 @@ export const ModelSelectorToggle = () => {
   }
 
   const SelectedIcon = selectedModel.icon
-  
+
   // Get remaining for selected model (for badge display)
   const selectedRemaining = getRemainingForModel(selectedModel.id)
 
@@ -110,29 +110,29 @@ export const ModelSelectorToggle = () => {
           <span className={cn(
             "text-[10px] px-1.5 py-0.5 rounded-full",
             selectedRemaining === 0 ? "bg-red-500/20 text-red-400" :
-            selectedRemaining <= 5 ? "bg-amber-500/20 text-amber-400" :
-            "bg-muted text-muted-foreground"
+              selectedRemaining <= 5 ? "bg-amber-500/20 text-amber-400" :
+                "bg-muted text-muted-foreground"
           )}>
             {selectedRemaining}
           </span>
         )}
-        <IconChevronDown 
-          size={14} 
+        <IconChevronDown
+          size={14}
           className={cn(
             "text-muted-foreground/60 transition-transform duration-200",
             isOpen && "rotate-180"
-          )} 
+          )}
         />
       </button>
 
       {isOpen && (
         <>
           {/* Backdrop */}
-          <div 
-            className="fixed inset-0 z-40" 
-            onClick={() => setIsOpen(false)} 
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
           />
-          
+
           {/* Dropdown */}
           <div className={cn(
             "absolute right-0 top-full mt-2 z-50",
@@ -149,7 +149,7 @@ export const ModelSelectorToggle = () => {
                 </p>
               </div>
             )}
-            
+
             {MODELS.map((model) => {
               const Icon = model.icon
               const isSelected = model.id === currentModel
@@ -157,7 +157,7 @@ export const ModelSelectorToggle = () => {
               const remaining = getRemainingForModel(model.id)
               const usage = getUsageForModel(model.id)
               const isUnlimited = remaining === null || usage?.is_unlimited
-              
+
               return (
                 <button
                   key={model.id}
@@ -179,7 +179,7 @@ export const ModelSelectorToggle = () => {
                     {!modelCanUse ? (
                       <IconLock size={18} className="text-muted-foreground" />
                     ) : (
-                    <Icon size={18} className={model.iconColor} />
+                      <Icon size={18} className={model.iconColor} />
                     )}
                   </div>
                   <div className="flex flex-col flex-1 min-w-0 text-left">
@@ -190,9 +190,9 @@ export const ModelSelectorToggle = () => {
                       )}>
                         {model.name}
                       </span>
-                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                      {model.description}
-                    </span>
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                        {model.description}
+                      </span>
                     </div>
                     {/* Usage info for student plan */}
                     {isStudentPlan && (
@@ -206,12 +206,12 @@ export const ModelSelectorToggle = () => {
                           <span className={cn(
                             "text-[10px]",
                             !modelCanUse ? "text-red-400" :
-                            remaining !== null && remaining <= 5 ? "text-amber-400" :
-                            "text-muted-foreground"
+                              remaining !== null && remaining <= 5 ? "text-amber-400" :
+                                "text-muted-foreground"
                           )}>
                             {!modelCanUse ? "Agotado este mes" :
-                             usage ? `${usage.usage_count}/${usage.monthly_limit} usados` :
-                             "Cargando..."}
+                              usage ? `${usage.usage_count}/${usage.monthly_limit} usados` :
+                                "Cargando..."}
                           </span>
                         )}
                       </div>
@@ -226,12 +226,12 @@ export const ModelSelectorToggle = () => {
                 </button>
               )
             })}
-            
+
             {/* Footer for upgrade CTA */}
             {isStudentPlan && (
               <div className="px-2.5 py-2 mt-1 border-t border-border/30">
-                <a 
-                  href="/precios" 
+                <a
+                  href="/precios"
                   className="text-[11px] text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1"
                   onClick={() => setIsOpen(false)}
                 >

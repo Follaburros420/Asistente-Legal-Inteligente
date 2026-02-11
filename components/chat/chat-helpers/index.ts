@@ -229,14 +229,8 @@ export const handleHostedChat = async (
   
   // Detectar modelos que usan LangChain Agent (tool calling nativo)
   const modelId = payload.chatSettings.model?.toLowerCase() || ''
-  
-  // Modelos de investigación profunda con tool calling nativo
-  const isLangChainModel = modelId.includes('tongyi') ||
-                           modelId.includes('deepresearch') ||
-                           modelId.includes('alibaba') ||
-                           modelId.includes('kimi') ||
-                           modelId.includes('moonshot') ||
-                           modelId.includes('gemini') // Todos los modelos Gemini usan LangChain
+  // Solo modelos Gemini usan LangChain Agent (tool calling nativo)
+  const isLangChainModel = modelId.includes('gemini')
   
   if (chatMode === 'legal-writing') {
     apiEndpoint = "/api/chat/legal-writing"

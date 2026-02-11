@@ -39,7 +39,7 @@ export const ChatSettingsForm: FC<ChatSettingsFormProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* Selector de modelo oculto - siempre usa Tongyi */}
+      {/* Selector de modelo oculto - siempre usa Gemini 3 Pro Preview */}
 
       <div className="space-y-1">
         <Label>Instrucciones del Sistema</Label>

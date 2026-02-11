@@ -12,7 +12,7 @@ const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 const FALLBACK_USERNAME = "usuario-anonimo"
 const DEFAULT_MAX_TOKENS = 8000
 const DEFAULT_TEMPERATURE = 0.2
-const DEFAULT_RESEARCH_MODEL = "alibaba/tongyi-deepresearch-30b-a3b"
+const DEFAULT_RESEARCH_MODEL = "google/gemini-3-pro-preview"
 
 interface RequestBody {
   chatSettings: ChatSettings

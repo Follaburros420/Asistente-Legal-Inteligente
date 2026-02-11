@@ -1,7 +1,8 @@
+"use client"
+
 import { cn } from "@/lib/utils"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowUp, Square } from "lucide-react"
-import { FC, useEffect, useRef, useState, ReactNode, useCallback } from "react"
+import { FC, useEffect, useState, ReactNode, useRef } from "react"
 import ReactTextareaAutosize from "react-textarea-autosize"
 
 interface ChatInputAreaProps {
@@ -20,6 +21,19 @@ interface ChatInputAreaProps {
     showSuggestions?: boolean
 }
 
+/**
+ * ChatInputArea - Componente de input para el chat
+ *
+ * REFACTORIZACIÓN: Este componente ahora usa un enfoque completamente controlado.
+ * El valor se gestiona EXCLUSIVAMENTE desde el padre (userInput del contexto).
+ * No hay estado local que pueda causar race conditions.
+ *
+ * La sincronización funciona así:
+ * - El usuario escribe → onChange(actualValue) → padre actualiza userInput
+ * - Padre re-renderiza con nuevo value → input muestra el valor correcto
+ *
+ * Para limpiar el input, el padre debe llamar setUserInput("")
+ */
 export const ChatInputArea: FC<ChatInputAreaProps> = ({
     value,
     onChange,
@@ -37,31 +51,27 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
 }) => {
     const [isFocused, setIsFocused] = useState(false)
     const [currentPlaceholder, setCurrentPlaceholder] = useState(0)
-    const [localValue, setLocalValue] = useState(value)
-    const isComposingRef = useRef(false)
-    
-    // Sync local value with external value
-    useEffect(() => {
-        setLocalValue(value)
-    }, [value])
-    
-    // Handle change with immediate local update
-    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const newValue = e.target.value
-        setLocalValue(newValue)
-        onChange(newValue)
-    }
 
-    // Rotating placeholders logic
+
+    // Internal ref as fallback if external ref not provided
+    const internalRef = useRef<HTMLTextAreaElement>(null)
+    const textAreaRef = textareaRef || internalRef
+
+    // Rotating placeholders logic - solo cuando el input está vacío
     useEffect(() => {
-        if (!showSuggestions || localValue || placeholders.length === 0) return
+        if (!showSuggestions || value || placeholders.length === 0) return
 
         const interval = setInterval(() => {
             setCurrentPlaceholder((prev) => (prev + 1) % placeholders.length)
         }, 3000)
 
         return () => clearInterval(interval)
-    }, [showSuggestions, localValue, placeholders.length])
+    }, [showSuggestions, value, placeholders.length])
+
+    // Handler simple que pasa el valor directamente al padre
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onChange(e.target.value)
+    }
 
     return (
         <div
@@ -72,7 +82,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                 "border border-white/10 dark:border-white/5",
                 "transition-colors duration-200",
                 isFocused && "border-primary/30",
-                localValue && "bg-background"
+                value && "bg-background"
             )}
             style={{ minHeight: "60px" }}
         >
@@ -87,18 +97,19 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
 
                 <div className="relative flex-1 min-w-0 self-center">
                     <ReactTextareaAutosize
-                        ref={textareaRef}
+                        ref={textAreaRef}
                         className={cn(
                             "w-full resize-none border-none bg-transparent",
                             "px-2 py-3",
                             "text-sm sm:text-base",
-                            "text-foreground placeholder:text-muted-foreground/0", // Hide default placeholder
+                            "text-foreground placeholder:text-muted-foreground/0",
                             "focus:outline-none focus:ring-0",
-                            "relative z-20"
+                            "relative z-30",
+                            "cursor-text"
                         )}
                         minRows={1}
                         maxRows={8}
-                        value={localValue}
+                        value={value}
                         onChange={handleChange}
                         onKeyDown={onKeyDown}
                         onPaste={onPaste}
@@ -110,8 +121,8 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                     />
 
                     {/* Animated Placeholders */}
-                    {showSuggestions && !localValue && placeholders.length > 0 && (
-                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-10">
+                    {showSuggestions && !value && placeholders.length > 0 && (
+                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-0 select-none">
                             <AnimatePresence mode="wait">
                                 <motion.p
                                     key={`placeholder-${currentPlaceholder}`}
@@ -128,8 +139,8 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                     )}
 
                     {/* Static Placeholder fallback */}
-                    {!localValue && (!showSuggestions || placeholders.length === 0) && placeholder && (
-                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-10">
+                    {!value && (!showSuggestions || placeholders.length === 0) && placeholder && (
+                        <div className="pointer-events-none absolute inset-0 flex items-center px-2 text-sm sm:text-base text-muted-foreground/50 z-0 select-none">
                             <p className="truncate">{placeholder}</p>
                         </div>
                     )}

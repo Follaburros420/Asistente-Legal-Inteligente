@@ -97,7 +97,16 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
 
   const handleSend = async (text?: string) => {
     const message = text || inputValue.trim()
-    if (!message || isSending || !selectedWorkspace) return
+    if (!message || isSending) {
+      console.log("Mensaje vacío o ya enviando, ignorando")
+      return
+    }
+
+    if (!selectedWorkspace) {
+      console.error("No hay workspace seleccionado, no se puede enviar mensaje")
+      // No mostrar error al usuario
+      return
+    }
 
     // Guardar el mensaje y mostrar animación
     setSentMessage(message)
@@ -115,8 +124,10 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
           handleSendMessage(message, [], false)
         }, 150)
       } catch (e) {
+        console.error("Error al enviar mensaje:", e)
         setIsSending(false)
         setSentMessage("")
+        setInputValue(message) // Restaurar el mensaje
       }
     }, 900)
   }
@@ -324,6 +335,7 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
             placeholders={placeholders}
             onChange={handleChange}
             onSubmit={handleSubmit}
+            value={inputValue}
             leftElement={
               <CreateFileModal onFileCreated={(file) => console.log(file)}>
                 <motion.div

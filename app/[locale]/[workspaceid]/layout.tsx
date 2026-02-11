@@ -213,10 +213,10 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
       setChatSettings({
         model: (searchParams.get("model") ||
           workspace?.default_model ||
-          "alibaba/tongyi-deepresearch-30b-a3b") as LLMID,
+          "google/gemini-3-pro-preview") as LLMID,
         prompt:
           workspace?.default_prompt ||
-          "You are a friendly, helpful AI assistant.",
+          "Eres un Asistente Legal Especializado en Derecho Colombiano de élite, entrenado para proporcionar análisis jurídicos de la más alta calidad.",
         temperature: workspace?.default_temperature || 0.5,
         contextLength: workspace?.default_context_length || 4096,
         includeProfileContext: workspace?.include_profile_context || true,

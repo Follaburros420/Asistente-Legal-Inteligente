@@ -219,6 +219,17 @@ export const useChatHandler = () => {
     const startingInput = messageContent
 
     try {
+      // Validaciones básicas sin mostrar errores al usuario
+      if (!messageContent || messageContent.trim() === "") {
+        console.log("Mensaje vacío, ignorando")
+        return
+      }
+
+      if (!selectedWorkspace) {
+        console.error("No hay workspace seleccionado")
+        return
+      }
+
       setUserInput("")
       setIsGenerating(true)
       setIsPromptPickerOpen(false)
@@ -230,7 +241,7 @@ export const useChatHandler = () => {
 
       // Crear chatSettings por defecto si es null
       const effectiveChatSettings = chatSettings || {
-        model: "alibaba/tongyi-deepresearch-30b-a3b" as LLMID,
+        model: "google/gemini-3-pro-preview" as LLMID,
         prompt: "Eres un asistente legal inteligente especializado en derecho colombiano.",
         temperature: 0.3,
         contextLength: 4096,
@@ -244,7 +255,7 @@ export const useChatHandler = () => {
         setChatSettings(effectiveChatSettings)
       }
 
-      // Usar Tongyi Deep Research 30B A3B por defecto para asegurar funcionalidad
+      // Buscar el modelo en la lista de modelos disponibles
       let modelData = [
         ...models.map(model => ({
           modelId: model.model_id as LLMID,
@@ -259,25 +270,31 @@ export const useChatHandler = () => {
         ...availableOpenRouterModels
       ].find(llm => llm.modelId === effectiveChatSettings.model)
 
-      // Si no se encuentra el modelo, usar Tongyi Deep Research por defecto
+      // Si no se encuentra el modelo, usar Gemini 3 Pro Preview por defecto
       if (!modelData) {
         modelData = {
-          modelId: "alibaba/tongyi-deepresearch-30b-a3b" as LLMID,
-          modelName: "Tongyi Deep Research 30B",
-          provider: "openrouter" as ModelProvider,
-          hostedId: "alibaba/tongyi-deepresearch-30b-a3b",
-          platformLink: "https://openrouter.ai",
-          imageInput: false
+          modelId: "google/gemini-3-pro-preview" as LLMID,
+          modelName: "Gemini 3 Pro Preview",
+          provider: "google" as ModelProvider,
+          hostedId: "google/gemini-3-pro-preview",
+          platformLink: "https://ai.google.dev/",
+          imageInput: true
         }
       }
 
-      validateChatSettings(
-        effectiveChatSettings,
-        modelData,
-        profile,
-        selectedWorkspace,
-        messageContent
-      )
+      // Validar configuración (sin mostrar errores al usuario)
+      try {
+        validateChatSettings(
+          effectiveChatSettings,
+          modelData,
+          profile,
+          selectedWorkspace,
+          messageContent
+        )
+      } catch (error) {
+        console.error("Error en validación:", error)
+        // Continuar a pesar del error de validación
+      }
 
       let currentChat = selectedChat ? { ...selectedChat } : null
 
@@ -325,13 +342,9 @@ export const useChatHandler = () => {
       let generatedText = ""
       let bibliography: BibliographyItem[] | undefined
 
-      // Detectar si es un modelo de investigación que debe usar LangChain
+      // Detectar si es un modelo que debe usar LangChain
       const modelId = payload.chatSettings.model?.toLowerCase() || ''
-      const isResearchModel = modelId.includes('tongyi') || 
-                              modelId.includes('deepresearch') || 
-                              modelId.includes('alibaba') ||
-                              modelId.includes('kimi') ||
-                              modelId.includes('moonshot')
+      const isResearchModel = modelId.includes('gemini') // Todos los modelos Gemini usan LangChain
       
       // Usar LangChain Agent para modelos de investigación O si hay tools seleccionadas
       if (isResearchModel || selectedTools.length > 0) {
@@ -428,8 +441,14 @@ export const useChatHandler = () => {
         selectedAssistant,
         bibliography
       )
-    } catch (error) {
+    } catch (error: any) {
+      // Restaurar el input del usuario
       setUserInput(startingInput)
+
+      // Log del error para depuración (sin mostrar al usuario)
+      console.error("Error al enviar mensaje:", error?.message || error)
+
+      // No mostrar toast al usuario - solo log en consola
     } finally {
       // Siempre resetear el estado al final
       setIsGenerating(false)

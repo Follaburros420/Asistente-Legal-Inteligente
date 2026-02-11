@@ -20,12 +20,12 @@ const GEMINI_3_PRO: LLM = {
   }
 }
 
-// Gemini 2.0 Flash Thinking - Razonamiento rápido gratuito
-const GEMINI_2_FLASH_THINKING: LLM = {
-  modelId: "google/gemini-2.0-flash-thinking-exp:free",
-  modelName: "Gemini 2.0 Flash Thinking",
+// Gemini 3 Flash Preview - M1 Small, rápido y eficiente
+const GEMINI_3_FLASH: LLM = {
+  modelId: "google/gemini-3-flash-preview",
+  modelName: "Gemini 3 Flash Preview",
   provider: "google",
-  hostedId: "google/gemini-2.0-flash-thinking-exp:free",
+  hostedId: "google/gemini-3-flash-preview",
   platformLink: GOOGLE_PLATORM_LINK,
   imageInput: true,
   pricing: {
@@ -68,7 +68,7 @@ const GEMINI_PRO: LLM = {
 
 export const GOOGLE_LLM_LIST: LLM[] = [
   GEMINI_3_PRO,           // Modelo principal recomendado
-  GEMINI_2_FLASH_THINKING, // Alternativa gratuita
+  GEMINI_3_FLASH,          // M1 Small - rápido y eficiente
   GEMINI_1_5_PRO,
   GEMINI_1_5_FLASH,
   GEMINI_PRO
