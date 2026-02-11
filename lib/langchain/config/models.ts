@@ -209,8 +209,7 @@ export const SIMPLE_TASK_MODEL: ModelId = 'google/gemini-3-pro-preview'
 export const RESEARCH_MODEL: ModelId = 'google/gemini-3-pro-preview'
 export const RESEARCH_MODELS: ModelId[] = [
   RESEARCH_MODEL,
-  'google/gemini-2.0-flash-thinking-exp:free',
-  'anthropic/claude-3.5-sonnet'
+  'google/gemini-3-flash-preview'
 ]
 
 // Modelos de fallback garantizados (solo Gemini)
@@ -371,5 +370,3 @@ export function getModelHierarchy(): Record<string, { primary: string; fallbacks
   }
 }
 
-// Exportar RESEARCH_MODELS para compatibilidad
-export const RESEARCH_MODELS = ['google/gemini-3-pro-preview', 'google/gemini-3-flash-preview']
