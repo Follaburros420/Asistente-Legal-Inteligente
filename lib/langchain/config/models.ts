@@ -243,7 +243,7 @@ export function routeModel(query: string): ModelRouterConfig {
   return {
     model: DEFAULT_MODEL, // google/gemini-3-pro-preview
     temperature: 0.3,
-    maxTokens: 4096,
+    maxTokens: 16384,
     tools: ['search_legal_official', 'serper_web_search', 'buscar_articulo_ley'],
     reasoning: false
   }
@@ -302,7 +302,7 @@ export interface CreateModelOptions {
  * Crea una instancia de ChatOpenAI configurada para OpenRouter
  */
 export function createModel(options: CreateModelOptions): ChatOpenAI {
-  const { modelId, temperature = 0.3, maxTokens = 4096, streaming = true } = options
+  const { modelId, temperature = 0.3, maxTokens, streaming = true } = options
 
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) {
@@ -317,7 +317,7 @@ export function createModel(options: CreateModelOptions): ChatOpenAI {
   return new ChatOpenAI({
     modelName: modelId,
     temperature,
-    maxTokens,
+    ...(typeof maxTokens === "number" ? { maxTokens } : {}),
     streaming,
     configuration: {
       baseURL: 'https://openrouter.ai/api/v1',

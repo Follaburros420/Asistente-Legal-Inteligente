@@ -41,7 +41,7 @@ import {
 import type { NormalizedChatMessage } from "@/lib/chat/normalize-messages"
 
 export const runtime = "nodejs"
-export const maxDuration = 180 // 3 minutos para investigación completa
+export const maxDuration = 300 // 5 minutos para investigaciones largas
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INTERFACES
@@ -215,7 +215,7 @@ async function getOrCreateAgent(
   const agent = await LegalAgent.create({
     modelId,
     temperature,
-    maxIterations: 10, // Aumentado para consultas legales complejas
+    maxIterations: 20, // Mayor margen para consultas legales largas
     verbose: process.env.NODE_ENV === 'development'
   })
 
@@ -474,15 +474,11 @@ export async function POST(request: NextRequest) {
               .trim()
           }
 
-          // Emitir respuesta token por token (streaming real)
-          const words = cleanOutput.split(' ')
+          // Emitir respuesta en chunks para evitar cortes por streams demasiado largos.
+          const chunks = cleanOutput.match(/.{1,180}(\s|$)/g) ?? [cleanOutput]
 
-          for (let i = 0; i < words.length; i++) {
-            const word = words[i] + (i < words.length - 1 ? ' ' : '')
-            emit({ type: 'token', content: word })
-
-            // Pequeña pausa para efecto de streaming visual
-            await new Promise(resolve => setTimeout(resolve, 15))
+          for (const chunk of chunks) {
+            emit({ type: 'token', content: chunk })
           }
 
           // Emitir fuentes si existen
@@ -498,26 +494,6 @@ export async function POST(request: NextRequest) {
             if (uniqueSources.length > 0) {
               emit({ type: 'sources', sources: uniqueSources })
 
-              // También emitir como texto para compatibilidad
-              const sourcesSection = `\n\n---\n\n📚 **Fuentes consultadas:**\n\n${uniqueSources.map((s, i) => {
-                let title = s.title || 'Fuente legal'
-                try {
-                  const url = new URL(s.url)
-                  const hostname = url.hostname.replace('www.', '')
-                  const knownDomains: Record<string, string> = {
-                    'secretariasenado.gov.co': 'Secretaría del Senado',
-                    'corteconstitucional.gov.co': 'Corte Constitucional',
-                    'consejodeestado.gov.co': 'Consejo de Estado',
-                    'suin-juriscol.gov.co': 'SUIN-Juriscol',
-                  }
-                  if (!title || title === s.url || title.length < 3) {
-                    title = knownDomains[hostname] || hostname
-                  }
-                } catch { }
-                return `${i + 1}. [${title}](${s.url})`
-              }).join('\n')
-                }`
-              emit({ type: 'token', content: sourcesSection })
             }
           }
 

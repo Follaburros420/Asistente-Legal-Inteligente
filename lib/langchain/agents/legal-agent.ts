@@ -193,7 +193,7 @@ export class LegalAgent {
 
   private constructor(config: AgentConfig) {
     this.config = {
-      maxIterations: 10,
+      maxIterations: 20,
       verbose: false,
       useRouter: true,
       ...config
@@ -233,7 +233,6 @@ export class LegalAgent {
     this.model = createModel({
       modelId,
       temperature,
-      maxTokens: modelConfig?.useCase === 'complex' ? 8192 : 4096,
       streaming: true
     })
 
@@ -305,7 +304,7 @@ export class LegalAgent {
         routerConfig = {
           model: this.currentModelId as ModelId,
           temperature: this.config.temperature ?? 0.3,
-          maxTokens: 4096,
+          maxTokens: 16384,
           tools: ALL_TOOLS.map(t => t.name)
         }
       }
@@ -368,7 +367,7 @@ export class LegalAgent {
           modelUsed: this.currentModelId,
           metadata: {
             model: this.currentModelId,
-            iterations: this.config.maxIterations || 10,
+            iterations: this.config.maxIterations || 20,
             processingTime: Date.now() - startTime
           }
         }
@@ -594,7 +593,7 @@ export async function createComplexLegalAgent(): Promise<LegalAgent> {
   return LegalAgent.create({
     modelId: 'google/gemini-3-pro-preview',
     temperature: 0.2,
-    maxIterations: 10,
+    maxIterations: 20,
     verbose: process.env.NODE_ENV === 'development'
   })
 }
@@ -606,7 +605,7 @@ export async function createSimpleLegalAgent(): Promise<LegalAgent> {
   return LegalAgent.create({
     modelId: 'openai/gpt-5-mini',
     temperature: 0.1,
-    maxIterations: 5,
+    maxIterations: 10,
     verbose: process.env.NODE_ENV === 'development'
   })
 }

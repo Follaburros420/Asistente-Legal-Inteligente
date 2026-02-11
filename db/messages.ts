@@ -1,34 +1,25 @@
 import { supabase } from "@/lib/supabase/robust-client"
-import { Json, Tables, TablesInsert, TablesUpdate } from "@/supabase/types"
+import { Tables, TablesInsert, TablesUpdate } from "@/supabase/types"
 
-type LegacyMessage = Tables<"messages">
+type MessageRow = Tables<"messages">
 
-interface MessageRowActual {
-  id: string
-  session_id: string
-  role: string
-  content: string
-  metadata: Json | null
-  created_at: string | null
-}
-
-type LegacyMessageInsert = Partial<TablesInsert<"messages">> & {
+type MessageInsert = Partial<TablesInsert<"messages">> & {
   content: string
   role: string
+  chat_id?: string
   session_id?: string
 }
 
-type LegacyMessageUpdate = Partial<TablesUpdate<"messages">> & {
+type MessageUpdate = Partial<TablesUpdate<"messages">> & {
   content?: string
   role?: string
+  chat_id?: string
   session_id?: string
 }
 
-const LEGACY_MESSAGES_PERSISTENCE_ENABLED =
-  process.env.NEXT_PUBLIC_LEGACY_MESSAGES_PERSISTENCE === "true" ||
-  process.env.LEGACY_MESSAGES_PERSISTENCE === "true"
-
-const EMPTY_ARRAY: string[] = []
+const MESSAGE_PERSISTENCE_ENABLED =
+  process.env.NEXT_PUBLIC_LEGACY_MESSAGES_PERSISTENCE !== "false" &&
+  process.env.LEGACY_MESSAGES_PERSISTENCE !== "false"
 
 const asRecord = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -41,77 +32,46 @@ const asRecord = (value: unknown): Record<string, unknown> => {
 const asString = (value: unknown): string | null =>
   typeof value === "string" ? value : null
 
-const asStringArray = (value: unknown): string[] => {
-  if (!Array.isArray(value)) return EMPTY_ARRAY
+const asNumber = (value: unknown): number | null =>
+  typeof value === "number" ? value : null
 
+const asStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
   return value.filter((entry): entry is string => typeof entry === "string")
 }
 
-const toLegacyMessage = (
-  row: MessageRowActual,
-  fallbackSequence = 0
-): LegacyMessage => {
-  const metadata = asRecord(row.metadata)
-  const chatId = asString(metadata.chat_id) ?? row.session_id
-  const createdAt = row.created_at ?? new Date().toISOString()
-
-  return {
-    id: row.id,
-    chat_id: chatId,
-    assistant_id: asString(metadata.assistant_id),
-    user_id: asString(metadata.user_id) ?? "",
-    content: row.content,
-    model: asString(metadata.model) ?? "unknown",
-    role: row.role,
-    sequence_number:
-      typeof metadata.sequence_number === "number"
-        ? metadata.sequence_number
-        : fallbackSequence,
-    image_paths: asStringArray(metadata.image_paths),
-    metadata: row.metadata,
-    created_at: createdAt,
-    updated_at: asString(metadata.updated_at) ?? createdAt
-  }
-}
-
-const resolveSessionId = (message: Record<string, unknown>) => {
-  const sessionId = asString(message.session_id) ?? asString(message.chat_id)
-
-  if (!sessionId) {
-    throw new Error("Missing session_id/chat_id for message persistence")
+const resolveChatId = (payload: Record<string, unknown>) => {
+  const chatId = asString(payload.chat_id) ?? asString(payload.session_id)
+  if (!chatId) {
+    throw new Error("Missing chat_id for message persistence")
   }
 
-  return sessionId
+  return chatId
 }
 
-const buildMetadata = (
+const normalizeInsert = (
   message: Record<string, unknown>,
   fallbackSequence = 0
-): Json => {
+): TablesInsert<"messages"> => {
   const metadata = asRecord(message.metadata)
-  const messageImagePaths = asStringArray(message.image_paths)
 
   return {
-    ...metadata,
-    chat_id: asString(message.chat_id) ?? asString(message.session_id) ?? "",
-    user_id: asString(message.user_id) ?? asString(metadata.user_id) ?? "",
+    id: asString(message.id) ?? undefined,
+    chat_id: resolveChatId(message),
     assistant_id:
       asString(message.assistant_id) ?? asString(metadata.assistant_id) ?? null,
+    user_id: asString(message.user_id) ?? asString(metadata.user_id) ?? "",
+    content: asString(message.content) ?? "",
     model: asString(message.model) ?? asString(metadata.model) ?? "unknown",
+    role: asString(message.role) ?? "user",
     sequence_number:
-      typeof message.sequence_number === "number"
-        ? message.sequence_number
-        : typeof metadata.sequence_number === "number"
-          ? metadata.sequence_number
-          : fallbackSequence,
-    image_paths:
-      messageImagePaths.length > 0
-        ? messageImagePaths
-        : asStringArray(metadata.image_paths),
-    updated_at:
-      asString(message.updated_at) ??
-      asString(metadata.updated_at) ??
-      new Date().toISOString()
+      asNumber(message.sequence_number) ??
+      asNumber(metadata.sequence_number) ??
+      fallbackSequence,
+    image_paths: asStringArray(message.image_paths),
+    metadata: (message.metadata as MessageRow["metadata"]) ?? null,
+    created_at: asString(message.created_at) ?? new Date().toISOString(),
+    updated_at: asString(message.updated_at) ?? null
   }
 }
 
@@ -119,35 +79,33 @@ const buildFallbackMessage = (
   message: Record<string, unknown>,
   fallbackSequence = 0,
   fixedId?: string
-): LegacyMessage => {
-  const metadata = buildMetadata(message, fallbackSequence)
-  const createdAt = asString(message.created_at) ?? new Date().toISOString()
+): MessageRow => {
+  const normalized = normalizeInsert(message, fallbackSequence)
+  const createdAt = normalized.created_at || new Date().toISOString()
 
   return {
-    id: fixedId ?? crypto.randomUUID(),
-    chat_id: asString(message.chat_id) ?? asString(message.session_id) ?? "",
-    assistant_id: asString(message.assistant_id),
-    user_id: asString(message.user_id) ?? "",
-    content: asString(message.content) ?? "",
-    model: asString(message.model) ?? "unknown",
-    role: asString(message.role) ?? "user",
-    sequence_number:
-      typeof message.sequence_number === "number"
-        ? message.sequence_number
-        : fallbackSequence,
-    image_paths: asStringArray(message.image_paths),
-    metadata,
+    id: fixedId ?? normalized.id ?? crypto.randomUUID(),
+    chat_id: normalized.chat_id,
+    assistant_id: normalized.assistant_id,
+    user_id: normalized.user_id,
+    content: normalized.content,
+    model: normalized.model,
+    role: normalized.role,
+    sequence_number: normalized.sequence_number,
+    image_paths: normalized.image_paths,
+    metadata: normalized.metadata ?? null,
     created_at: createdAt,
-    updated_at: asString(message.updated_at) ?? createdAt
+    updated_at: normalized.updated_at
   }
 }
 
 export const getMessageById = async (messageId: string) => {
-  if (!LEGACY_MESSAGES_PERSISTENCE_ENABLED) {
+  if (!MESSAGE_PERSISTENCE_ENABLED) {
     throw new Error("Message persistence is disabled")
   }
 
-  const { data, error } = await (supabase.from("messages") as any)
+  const { data, error } = await supabase
+    .from("messages")
     .select("*")
     .eq("id", messageId)
     .single()
@@ -156,45 +114,36 @@ export const getMessageById = async (messageId: string) => {
     throw new Error(error?.message ?? "Message not found")
   }
 
-  return toLegacyMessage(data as MessageRowActual, 0)
+  return data
 }
 
 export const getMessagesByChatId = async (chatId: string) => {
-  if (!LEGACY_MESSAGES_PERSISTENCE_ENABLED) {
+  if (!MESSAGE_PERSISTENCE_ENABLED) {
     return []
   }
 
-  const { data, error } = await (supabase.from("messages") as any)
+  const { data, error } = await supabase
+    .from("messages")
     .select("*")
-    .eq("session_id", chatId)
-    .order("created_at", { ascending: true })
+    .eq("chat_id", chatId)
+    .order("sequence_number", { ascending: true })
 
   if (error || !data) {
     throw new Error(error?.message ?? "Messages not found")
   }
 
-  return (data as MessageRowActual[]).map((row, index) =>
-    toLegacyMessage(row, index)
-  )
+  return data
 }
 
-export const createMessage = async (message: LegacyMessageInsert) => {
+export const createMessage = async (message: MessageInsert) => {
   const payload = message as Record<string, unknown>
-  if (!LEGACY_MESSAGES_PERSISTENCE_ENABLED) {
+  if (!MESSAGE_PERSISTENCE_ENABLED) {
     return buildFallbackMessage(payload)
   }
 
-  const sessionId = resolveSessionId(payload)
-  const rowToInsert = {
-    id: asString(payload.id) ?? undefined,
-    session_id: sessionId,
-    role: asString(payload.role) ?? "user",
-    content: asString(payload.content) ?? "",
-    metadata: buildMetadata(payload),
-    created_at: asString(payload.created_at) ?? new Date().toISOString()
-  }
-
-  const { data, error } = await (supabase.from("messages") as any)
+  const rowToInsert = normalizeInsert(payload)
+  const { data, error } = await supabase
+    .from("messages")
     .insert([rowToInsert])
     .select("*")
     .single()
@@ -204,25 +153,21 @@ export const createMessage = async (message: LegacyMessageInsert) => {
     return buildFallbackMessage(payload)
   }
 
-  return toLegacyMessage(data as MessageRowActual, 0)
+  return data
 }
 
-export const createMessages = async (messages: LegacyMessageInsert[]) => {
+export const createMessages = async (messages: MessageInsert[]) => {
   const payloads = messages.map(message => message as Record<string, unknown>)
-  if (!LEGACY_MESSAGES_PERSISTENCE_ENABLED) {
+  if (!MESSAGE_PERSISTENCE_ENABLED) {
     return payloads.map((payload, index) => buildFallbackMessage(payload, index))
   }
 
-  const rowsToInsert = payloads.map((payload, index) => ({
-    id: asString(payload.id) ?? undefined,
-    session_id: resolveSessionId(payload),
-    role: asString(payload.role) ?? "user",
-    content: asString(payload.content) ?? "",
-    metadata: buildMetadata(payload, index),
-    created_at: asString(payload.created_at) ?? new Date().toISOString()
-  }))
+  const rowsToInsert = payloads.map((payload, index) =>
+    normalizeInsert(payload, index)
+  )
 
-  const { data, error } = await (supabase.from("messages") as any)
+  const { data, error } = await supabase
+    .from("messages")
     .insert(rowsToInsert)
     .select("*")
 
@@ -231,29 +176,30 @@ export const createMessages = async (messages: LegacyMessageInsert[]) => {
     return payloads.map((payload, index) => buildFallbackMessage(payload, index))
   }
 
-  return (data as MessageRowActual[]).map((row, index) =>
-    toLegacyMessage(row, index)
-  )
+  return data
 }
 
-export const updateMessage = async (
-  messageId: string,
-  message: LegacyMessageUpdate
-) => {
+export const updateMessage = async (messageId: string, message: MessageUpdate) => {
   const payload = message as Record<string, unknown>
-  if (!LEGACY_MESSAGES_PERSISTENCE_ENABLED) {
+  if (!MESSAGE_PERSISTENCE_ENABLED) {
     return buildFallbackMessage(payload, 0, messageId)
   }
 
-  const metadata = buildMetadata(payload)
-  const rowToUpdate: Record<string, unknown> = { metadata }
-  const content = asString(payload.content)
-  const role = asString(payload.role)
-  if (content !== null) rowToUpdate.content = content
-  if (role !== null) rowToUpdate.role = role
+  const update: Record<string, unknown> = {}
+  if ("assistant_id" in payload) update.assistant_id = asString(payload.assistant_id)
+  if ("content" in payload) update.content = asString(payload.content)
+  if ("model" in payload) update.model = asString(payload.model)
+  if ("role" in payload) update.role = asString(payload.role)
+  if ("sequence_number" in payload) {
+    update.sequence_number = asNumber(payload.sequence_number)
+  }
+  if ("image_paths" in payload) update.image_paths = asStringArray(payload.image_paths)
+  if ("metadata" in payload) update.metadata = payload.metadata
+  if ("updated_at" in payload) update.updated_at = asString(payload.updated_at)
 
-  const { data, error } = await (supabase.from("messages") as any)
-    .update(rowToUpdate)
+  const { data, error } = await supabase
+    .from("messages")
+    .update(update as TablesUpdate<"messages">)
     .eq("id", messageId)
     .select("*")
     .single()
@@ -263,17 +209,15 @@ export const updateMessage = async (
     return buildFallbackMessage(payload, 0, messageId)
   }
 
-  return toLegacyMessage(data as MessageRowActual, 0)
+  return data
 }
 
 export const deleteMessage = async (messageId: string) => {
-  if (!LEGACY_MESSAGES_PERSISTENCE_ENABLED) {
+  if (!MESSAGE_PERSISTENCE_ENABLED) {
     return true
   }
 
-  const { error } = await (supabase.from("messages") as any)
-    .delete()
-    .eq("id", messageId)
+  const { error } = await supabase.from("messages").delete().eq("id", messageId)
 
   if (error) {
     throw new Error(error.message)
@@ -287,41 +231,19 @@ export async function deleteMessagesIncludingAndAfter(
   chatId: string,
   sequenceNumber: number
 ) {
-  if (!LEGACY_MESSAGES_PERSISTENCE_ENABLED) {
+  if (!MESSAGE_PERSISTENCE_ENABLED) {
     return true
   }
 
   void userId
-  const { data: rows, error: rowsError } = await (supabase.from("messages") as any)
-    .select("id,metadata,created_at")
-    .eq("session_id", chatId)
-    .order("created_at", { ascending: true })
 
-  if (rowsError || !rows) {
-    return true
-  }
-
-  const idsToDelete = (rows as Array<{ id: string; metadata: Json | null }>)
-    .filter((row, index) => {
-      const metadata = asRecord(row.metadata)
-      const rowSequence =
-        typeof metadata.sequence_number === "number"
-          ? metadata.sequence_number
-          : index
-
-      return rowSequence >= sequenceNumber
-    })
-    .map(row => row.id)
-
-  if (idsToDelete.length === 0) {
-    return true
-  }
-
-  const { error: deleteError } = await (supabase.from("messages") as any)
+  const { error } = await supabase
+    .from("messages")
     .delete()
-    .in("id", idsToDelete)
+    .eq("chat_id", chatId)
+    .gte("sequence_number", sequenceNumber)
 
-  if (deleteError) {
+  if (error) {
     return true
   }
 

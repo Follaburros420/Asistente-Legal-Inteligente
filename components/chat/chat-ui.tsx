@@ -10,6 +10,7 @@ import { getMessageImageFromStorage } from "@/db/storage/message-images"
 import { convertBlobToBase64 } from "@/lib/blob-to-b64"
 import useHotkey from "@/lib/hooks/use-hotkey"
 import { LLMID, MessageImage } from "@/types"
+import { BibliographyItem } from "@/types/chat-message"
 import { useParams } from "next/navigation"
 import { FC, useContext, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -53,6 +54,41 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
   } = useScroll()
 
   const [loading, setLoading] = useState(true)
+
+  const parseBibliographyFromMetadata = (
+    metadata: unknown
+  ): BibliographyItem[] | undefined => {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return undefined
+    }
+
+    const maybeBibliography = (metadata as Record<string, unknown>).bibliography
+    if (!Array.isArray(maybeBibliography)) {
+      return undefined
+    }
+
+    const parsed = maybeBibliography
+      .filter(
+        item =>
+          item &&
+          typeof item === "object" &&
+          typeof (item as Record<string, unknown>).title === "string" &&
+          typeof (item as Record<string, unknown>).url === "string"
+      )
+      .map((item, index) => {
+        const source = item as Record<string, unknown>
+        return {
+          id: typeof source.id === "string" ? source.id : `source-${index + 1}`,
+          title: source.title as string,
+          url: source.url as string,
+          type: typeof source.type === "string" ? source.type : "source",
+          description:
+            typeof source.description === "string" ? source.description : undefined
+        } satisfies BibliographyItem
+      })
+
+    return parsed.length > 0 ? parsed : undefined
+  }
 
   useEffect(() => {
     const fetchData = async () => {
@@ -120,8 +156,11 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     setShowFilesDisplay(true)
 
     const fetchedChatMessages = fetchedMessages.map(message => {
+      const bibliography = parseBibliographyFromMetadata(message.metadata)
+
       return {
         message,
+        ...(bibliography ? { bibliography } : {}),
         fileItems: messageFileItems
           .filter(messageFileItem => messageFileItem.id === message.id)
           .flatMap(messageFileItem =>

@@ -24,6 +24,11 @@ import { toast } from "sonner"
 import { v4 as uuidv4 } from "uuid"
 import { getPublicEnvVar } from "@/lib/env/public-env"
 
+export interface ChatResponseResult {
+  text: string
+  bibliography?: BibliographyItem[]
+}
+
 export const validateChatSettings = (
   chatSettings: ChatSettings | null,
   modelData: LLM | undefined,
@@ -154,7 +159,7 @@ export const handleLocalChat = async (
   setFirstTokenReceived: React.Dispatch<React.SetStateAction<boolean>>,
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setToolInUse: React.Dispatch<React.SetStateAction<string>>
-) => {
+): Promise<ChatResponseResult> => {
   const formattedMessages = await buildFinalMessages(payload, profile, [])
 
   const baseUrl = getPublicEnvVar('NEXT_PUBLIC_OLLAMA_URL')
@@ -205,7 +210,7 @@ export const handleHostedChat = async (
   setFirstTokenReceived: React.Dispatch<React.SetStateAction<boolean>>,
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setToolInUse: React.Dispatch<React.SetStateAction<string>>
-) => {
+): Promise<ChatResponseResult> => {
   const provider =
     modelData.provider === "openai" && profile.use_azure_openai
       ? "azure"
@@ -296,9 +301,10 @@ export const processResponse = async (
   setFirstTokenReceived: React.Dispatch<React.SetStateAction<boolean>>,
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setToolInUse: React.Dispatch<React.SetStateAction<string>>
-) => {
+): Promise<ChatResponseResult> => {
   let fullText = ""
   let contentToAdd = ""
+  let bibliography: BibliographyItem[] | undefined
 
   // Verificar si es respuesta de texto plano (como la del endpoint simple-direct)
   const contentType = response.headers.get('content-type') || ''
@@ -314,11 +320,12 @@ export const processResponse = async (
           : typeof data?.message === "string"
           ? data.message
           : JSON.stringify(data)
-      const bibliography = Array.isArray(data?.bibliography)
+      const responseBibliography = Array.isArray(data?.bibliography)
         ? data.bibliography
         : undefined
 
       fullText = messageText
+      bibliography = responseBibliography
 
       setChatMessages(prev =>
         prev.map(chatMessage => {
@@ -329,17 +336,17 @@ export const processResponse = async (
                 ...chatMessage.message,
                 content: messageText
               },
-              bibliography: bibliography ?? chatMessage.bibliography
+              bibliography: responseBibliography ?? chatMessage.bibliography
             }
           }
           return chatMessage
         })
       )
 
-      return messageText
+      return { text: messageText, bibliography: responseBibliography }
     } catch (error) {
       console.error('Error parsing JSON response:', error)
-      return ""
+      return { text: "" }
     }
   }
 
@@ -362,7 +369,7 @@ export const processResponse = async (
       })
     )
 
-    return fullText
+    return { text: fullText }
   }
 
   // Código para streaming con eventos JSON (langchain-agent) o texto plano
@@ -372,6 +379,26 @@ export const processResponse = async (
     const isEventStream = contentType.includes('text/event-stream')
     let thinkingContent = ''
     let eventBuffer = ''
+    const mapSourcesToBibliography = (sources: any[]): BibliographyItem[] => {
+      return sources
+        .filter(source => source && typeof source.url === "string" && source.url.length > 0)
+        .map((source, index) => ({
+          id: typeof source.id === "string" ? source.id : `source-${index + 1}`,
+          title:
+            typeof source.title === "string" && source.title.trim()
+              ? source.title
+              : "Fuente legal",
+          url: source.url,
+          type: typeof source.type === "string" ? source.type : "source",
+          description:
+            typeof source.description === "string"
+              ? source.description
+              : typeof source.snippet === "string"
+              ? source.snippet
+              : undefined
+        }))
+    }
+
     
     await consumeReadableStream(
       response.body,
@@ -382,7 +409,7 @@ export const processResponse = async (
           // Procesar eventos JSON solo cuando el endpoint responde event-stream.
           if (isEventStream) {
             eventBuffer += chunkStr
-            const lines = eventBuffer.split('\n')
+            const lines = eventBuffer.split(/\r?\n/)
             eventBuffer = lines.pop() || ''
 
             for (const line of lines) {
@@ -417,6 +444,12 @@ export const processResponse = async (
                     break
                     
                   case 'sources':
+                    if (Array.isArray(event.sources)) {
+                      const mappedSources = mapSourcesToBibliography(event.sources)
+                      if (mappedSources.length > 0) {
+                        bibliography = mappedSources
+                      }
+                    }
                     break
                     
                   case 'done':
@@ -561,6 +594,7 @@ export const processResponse = async (
                   content: fullText
                 },
                 fileItems: chatMessage.fileItems,
+                bibliography: bibliography ?? chatMessage.bibliography,
                 // Agregar razonamiento al mensaje si existe
                 thinking: thinkingContent || undefined,
                 // Agregar draft si se detectó
@@ -577,7 +611,46 @@ export const processResponse = async (
       controller.signal
     )
 
-    return fullText
+    if (isEventStream && eventBuffer.trim().length > 0) {
+      try {
+        const lastEvent = JSON.parse(eventBuffer)
+        if (lastEvent.type === "token" && typeof lastEvent.content === "string") {
+          fullText += lastEvent.content
+          setFirstTokenReceived(true)
+        } else if (lastEvent.type === "sources" && Array.isArray(lastEvent.sources)) {
+          const mappedSources = mapSourcesToBibliography(lastEvent.sources)
+          if (mappedSources.length > 0) {
+            bibliography = mappedSources
+          }
+        } else if (lastEvent.type === "error") {
+          fullText += lastEvent.message || "Error desconocido"
+          setFirstTokenReceived(true)
+        }
+      } catch {
+        fullText += eventBuffer
+        setFirstTokenReceived(true)
+      }
+
+      setChatMessages(prev =>
+        prev.map(chatMessage => {
+          if (chatMessage.message.id === lastChatMessage.message.id) {
+            return {
+              ...chatMessage,
+              message: {
+                ...chatMessage.message,
+                content: fullText
+              },
+              bibliography: bibliography ?? chatMessage.bibliography,
+              thinking: thinkingContent || undefined
+            }
+          }
+
+          return chatMessage
+        })
+      )
+    }
+
+    return { text: fullText, bibliography }
   } else {
     throw new Error("Response body is null")
   }
@@ -643,10 +716,12 @@ export const handleCreateMessages = async (
   bibliography?: BibliographyItem[]
 ) => {
   const legacyMessagesPersistenceEnabled =
-    getPublicEnvVar("NEXT_PUBLIC_LEGACY_MESSAGES_PERSISTENCE") === "true"
+    process.env.NEXT_PUBLIC_LEGACY_MESSAGES_PERSISTENCE === "true"
   const localImagePaths = newMessageImages
     .map(image => image.path || image.base64 || "")
     .filter(Boolean)
+  const assistantMetadata =
+    bibliography !== undefined ? ({ bibliography } as Record<string, unknown>) : undefined
 
   const finalUserMessage: TablesInsert<"messages"> = {
     chat_id: currentChat.id,
@@ -667,17 +742,30 @@ export const handleCreateMessages = async (
     model: modelData.modelId,
     role: "assistant",
     sequence_number: chatMessages.length + 1,
-    image_paths: []
+    image_paths: [],
+    metadata: assistantMetadata
   }
 
   let finalChatMessages: ChatMessage[] = []
 
   if (isRegeneration) {
     const lastStartingMessage = chatMessages[chatMessages.length - 1].message
+    const currentMetadata =
+      lastStartingMessage.metadata &&
+      typeof lastStartingMessage.metadata === "object" &&
+      !Array.isArray(lastStartingMessage.metadata)
+        ? (lastStartingMessage.metadata as Record<string, unknown>)
+        : {}
+
+    const nextMetadata =
+      bibliography !== undefined
+        ? { ...currentMetadata, bibliography }
+        : lastStartingMessage.metadata
 
     const updatedMessage = await updateMessage(lastStartingMessage.id, {
       ...lastStartingMessage,
-      content: generatedText
+      content: generatedText,
+      metadata: nextMetadata
     })
 
     chatMessages[chatMessages.length - 1].message = updatedMessage
@@ -722,7 +810,7 @@ export const handleCreateMessages = async (
         {
           message: createdMessages[1],
           fileItems: retrievedFileItems.map(fileItem => fileItem.id),
-          ...(bibliography ? { bibliography } : {})
+          ...(bibliography !== undefined ? { bibliography } : {})
         }
       ]
 
@@ -789,7 +877,7 @@ export const handleCreateMessages = async (
       {
         message: createdMessages[1],
         fileItems: retrievedFileItems.map(fileItem => fileItem.id),
-        ...(bibliography ? { bibliography } : {})
+        ...(bibliography !== undefined ? { bibliography } : {})
       }
     ]
 
