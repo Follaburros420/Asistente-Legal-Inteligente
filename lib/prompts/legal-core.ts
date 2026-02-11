@@ -274,11 +274,6 @@ export function getQueryMetadata(query: string): QueryAnalysis & { timestamp: st
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export {
-  LEGAL_CORE_SYSTEM_PROMPT as SYSTEM_PROMPT,
-  buildSystemMessage,
-  analyzeQuery,
-  getComplexityInstructions,
-  requiresSearch,
-  getQueryMetadata
-}
+// Las funciones ya están exportadas individualmente arriba
+// SYSTEM_PROMPT se exporta como alias de LEGAL_CORE_SYSTEM_PROMPT
+export { LEGAL_CORE_SYSTEM_PROMPT as SYSTEM_PROMPT }
