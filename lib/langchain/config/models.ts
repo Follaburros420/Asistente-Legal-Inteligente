@@ -206,6 +206,11 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
 export const DEFAULT_MODEL: ModelId = 'google/gemini-3-pro-preview'
 export const SIMPLE_TASK_MODEL: ModelId = 'openai/gpt-5-mini'
 export const RESEARCH_MODEL: ModelId = 'google/gemini-3-pro-preview'
+export const RESEARCH_MODELS: ModelId[] = [
+  RESEARCH_MODEL,
+  'google/gemini-2.0-flash-thinking-exp:free',
+  'anthropic/claude-3.5-sonnet'
+]
 
 // Modelos de fallback garantizados (siempre deberían funcionar)
 export const GUARANTEED_FALLBACKS = {

@@ -3,7 +3,7 @@
  * Mejora la calidad de extracción de texto y estructura
  */
 
-import pdfParse from 'pdf-parse'
+import pdfParse from "pdf-parse/lib/pdf-parse.js"
 import mammoth from 'mammoth'
 import cheerio from 'cheerio'
 import TurndownService from 'turndown'

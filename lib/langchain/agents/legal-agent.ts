@@ -611,6 +611,14 @@ export async function createSimpleLegalAgent(): Promise<LegalAgent> {
   })
 }
 
+/**
+ * Alias retrocompatible para el agente por defecto.
+ * Mantiene compatibilidad con imports antiguos.
+ */
+export async function createDefaultLegalAgent(): Promise<LegalAgent> {
+  return createSmartLegalAgent()
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // EXPORTACIONES
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -1,6 +1,6 @@
 import { FileItemChunk } from "@/types"
 import { encode } from "gpt-tokenizer"
-import pdfParse from "pdf-parse"
+import pdfParse from "pdf-parse/lib/pdf-parse.js"
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter"
 import { CHUNK_OVERLAP, CHUNK_SIZE } from "."
 

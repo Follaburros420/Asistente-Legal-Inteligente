@@ -6,7 +6,7 @@
 import { Tool } from "langchain/tools"
 import { z } from "zod"
 import * as cheerio from "cheerio"
-import * as pdfParse from "pdf-parse"
+import pdfParse from "pdf-parse/lib/pdf-parse.js"
 
 export interface HttpFetchResult {
   status: number
