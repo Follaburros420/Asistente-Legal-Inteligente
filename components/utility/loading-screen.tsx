@@ -64,21 +64,17 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
 
     return (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background">
-            {/* Fondo animado con efectos de luz usando variables de tema */}
+            {/* Fondo animado con un solo orbe morado */}
             <div className="absolute inset-0 overflow-hidden">
                 <div
-                    className="absolute -left-1/4 top-1/4 size-[600px] animate-pulse rounded-full bg-primary/5 blur-3xl dark:bg-primary/10"
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[600px] animate-pulse rounded-full bg-primary/10 blur-3xl"
                     style={{ animationDuration: "3s" }}
-                />
-                <div
-                    className="absolute -right-1/4 bottom-1/4 size-[600px] animate-pulse rounded-full bg-blue-500/5 blur-3xl dark:bg-blue-500/10"
-                    style={{ animationDuration: "3s", animationDelay: "1.5s" }}
                 />
             </div>
 
             {/* Contenido principal */}
             <div className="relative z-10 flex flex-col items-center gap-8">
-                {/* Logo ALI o Spinner */}
+                {/* Logo ALI o Spinner - Un solo anillo morado */}
                 <div className="relative flex items-center justify-center">
                     {/* Círculo exterior pulsante */}
                     <div
@@ -86,17 +82,11 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
                         style={{ animationDuration: "2s" }}
                     />
 
-                    {/* Anillos de spinner */}
+                    {/* Anillo de spinner - Solo uno morado */}
                     <div className="relative size-24">
-                        {/* Anillo exterior */}
                         <div
                             className="absolute inset-0 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary"
                             style={{ animationDuration: "1.2s" }}
-                        />
-                        {/* Anillo medio */}
-                        <div
-                            className="absolute inset-2 animate-spin rounded-full border-[3px] border-blue-500/20 border-t-blue-500"
-                            style={{ animationDuration: "1.8s", animationDirection: "reverse" }}
                         />
                         {/* Centro con brillo */}
                         <div className="absolute inset-6 flex items-center justify-center rounded-full bg-primary/5">
@@ -107,7 +97,7 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
 
                 {/* Branding */}
                 {variant === "branded" && (
-                    <div className="mb-2 bg-gradient-to-r from-primary via-purple-500 to-blue-500 bg-clip-text text-3xl font-bold tracking-wider text-transparent">
+                    <div className="mb-2 bg-gradient-to-r from-primary via-primary/80 to-primary bg-clip-text text-3xl font-bold tracking-wider text-transparent">
                         ALI
                     </div>
                 )}
@@ -123,7 +113,7 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
                 {/* Barra de progreso animada */}
                 <div className="h-1 w-56 overflow-hidden rounded-full bg-foreground/5">
                     <div
-                        className="h-full rounded-full bg-gradient-to-r from-primary via-blue-500 to-primary"
+                        className="h-full rounded-full bg-gradient-to-r from-primary via-primary/70 to-primary"
                         style={{
                             animation: "shimmer 2s ease-in-out infinite",
                             backgroundSize: "200% 100%"
@@ -131,7 +121,7 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
                     />
                 </div>
 
-                {/* Indicador secundario */}
+                {/* Indicador secundario - puntos en lugar de círculos */}
                 <div className="flex items-center gap-2">
                     <div className="size-1.5 animate-pulse rounded-full bg-primary/60" style={{ animationDelay: "0ms" }} />
                     <div className="size-1.5 animate-pulse rounded-full bg-primary/60" style={{ animationDelay: "200ms" }} />

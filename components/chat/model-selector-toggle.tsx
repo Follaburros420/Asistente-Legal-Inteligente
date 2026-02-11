@@ -7,7 +7,7 @@ import { useModelUsage, formatRemainingCount } from "@/lib/hooks/use-model-usage
 import { toast } from "sonner"
 
 // Internal model IDs - not exposed to users
-// M1 y M1 Pro ambos usan Gemini 3 Pro Preview según configuración
+// Cada modelo tiene su ID único correspondiente a Gemini Flash o Pro
 export const M1_SMALL_MODEL = "google/gemini-3-flash-preview"
 export const M1_MODEL = "google/gemini-3-pro-preview"
 export const M1_PRO_MODEL = "google/gemini-3-pro-preview"
@@ -26,16 +26,16 @@ const MODELS = [
     name: "M1",
     description: "Eficiente y rápido",
     icon: IconCpu,
-    iconColor: "text-primary",
-    bgColor: "from-primary/15 to-primary/10"
+    iconColor: "text-violet-500",
+    bgColor: "from-violet-500/15 to-violet-600/10"
   },
   {
     id: M1_PRO_MODEL,
     name: "M1 Pro",
     description: "Razonamiento avanzado",
     icon: IconBrain,
-    iconColor: "text-violet-500",
-    bgColor: "from-violet-500/15 to-violet-600/10"
+    iconColor: "text-primary",
+    bgColor: "from-primary/15 to-primary/10"
   },
 ]
 
@@ -43,9 +43,9 @@ export const ModelSelectorToggle = () => {
   const { chatSettings, setChatSettings, profile } = useContext(ALIContext)
   const { canUseModel, getRemainingForModel, getUsageForModel, isLoading: usageLoading } = useModelUsage()
 
-  // Use M1 as default if chatSettings is null
+  // Use M1 (index 1) as default if chatSettings is null - M1 es el modelo por defecto (morado)
   const currentModel = chatSettings?.model || M1_MODEL
-  const selectedModel = MODELS.find(m => m.id === currentModel) || MODELS[0]
+  const selectedModel = MODELS.find(m => m.id === currentModel) || MODELS[1] // Default to M1, not M1 Small
   const [isOpen, setIsOpen] = useState(false)
 
   // Check if user is on student plan
@@ -66,23 +66,20 @@ export const ModelSelectorToggle = () => {
       return
     }
 
-    if (chatSettings) {
-      setChatSettings({
-        ...chatSettings,
-        model: modelId as OpenRouterLLMID
-      })
-    } else {
-      const defaultSettings: ChatSettings = {
-        model: modelId as OpenRouterLLMID,
-        prompt: profile?.default_prompt || "Eres un asistente legal inteligente especializado en derecho colombiano.",
-        temperature: profile?.default_temperature || 0.5,
-        contextLength: profile?.default_context_length || 4096,
-        includeProfileContext: true,
-        includeWorkspaceInstructions: true,
-        embeddingsProvider: "openai"
-      }
-      setChatSettings(defaultSettings)
+    // Siempre actualizar chatSettings, incluso si es null (crear nuevos settings)
+    const newSettings: ChatSettings = chatSettings ? {
+      ...chatSettings,
+      model: modelId as OpenRouterLLMID
+    } : {
+      model: modelId as OpenRouterLLMID,
+      prompt: profile?.default_prompt || "Eres un asistente legal inteligente especializado en derecho colombiano.",
+      temperature: profile?.default_temperature ?? 0.5,
+      contextLength: profile?.default_context_length ?? 4096,
+      includeProfileContext: true,
+      includeWorkspaceInstructions: true,
+      embeddingsProvider: "openai"
     }
+    setChatSettings(newSettings)
     setIsOpen(false)
   }
 

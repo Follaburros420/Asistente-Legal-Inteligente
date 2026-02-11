@@ -239,20 +239,21 @@ export const useChatHandler = () => {
       const newAbortController = new AbortController()
       setAbortController(newAbortController)
 
-      // Crear chatSettings por defecto si es null
+      // Crear chatSettings por defecto si es null - Usar M1 (Gemini 3 Pro) por defecto
       const effectiveChatSettings = chatSettings || {
         model: "google/gemini-3-pro-preview" as LLMID,
-        prompt: "Eres un asistente legal inteligente especializado en derecho colombiano.",
-        temperature: 0.3,
-        contextLength: 4096,
+        prompt: profile?.default_prompt || "Eres un asistente legal inteligente especializado en derecho colombiano.",
+        temperature: profile?.default_temperature ?? 0.3,
+        contextLength: profile?.default_context_length ?? 4096,
         includeProfileContext: true,
         includeWorkspaceInstructions: true,
         embeddingsProvider: "openai" as "openai" | "local"
       }
 
-      // Si chatSettings era null, actualizarlo en el contexto
+      // Si chatSettings era null, actualizarlo en el contexto inmediatamente
       if (!chatSettings) {
         setChatSettings(effectiveChatSettings)
+        console.log('[ChatHandler] chatSettings inicializado:', effectiveChatSettings.model)
       }
 
       // Buscar el modelo en la lista de modelos disponibles
@@ -270,8 +271,9 @@ export const useChatHandler = () => {
         ...availableOpenRouterModels
       ].find(llm => llm.modelId === effectiveChatSettings.model)
 
-      // Si no se encuentra el modelo, usar Gemini 3 Pro Preview por defecto
+      // Si no se encuentra el modelo, usar Gemini 3 Pro Preview por defecto (M1)
       if (!modelData) {
+        console.log('[ChatHandler] Modelo no encontrado, usando Gemini 3 Pro por defecto')
         modelData = {
           modelId: "google/gemini-3-pro-preview" as LLMID,
           modelName: "Gemini 3 Pro Preview",
@@ -308,8 +310,9 @@ export const useChatHandler = () => {
       ) {
         setToolInUse("retrieval")
 
+        // Usar messageContent (el parámetro de entrada) en lugar de userInput que ya se limpió
         retrievedFileItems = await handleRetrieval(
-          userInput,
+          messageContent,
           newMessageFiles,
           chatFiles,
           effectiveChatSettings.embeddingsProvider,
@@ -328,12 +331,21 @@ export const useChatHandler = () => {
           selectedAssistant
         )
 
+      // Construir payload con el historial de mensajes correcto
+      const messageHistoryForPayload = isRegeneration
+        ? [...chatMessages]
+        : [...chatMessages, tempUserChatMessage]
+
+      console.log('[ChatHandler] Payload construido:', {
+        messageCount: messageHistoryForPayload.length,
+        lastMessageRole: messageHistoryForPayload[messageHistoryForPayload.length - 1]?.message?.role,
+        lastMessageContent: messageHistoryForPayload[messageHistoryForPayload.length - 1]?.message?.content?.substring(0, 50)
+      })
+
       let payload: ChatPayload = {
         chatSettings: effectiveChatSettings,
         workspaceInstructions: selectedWorkspace!.instructions || "",
-        chatMessages: isRegeneration
-          ? [...chatMessages]
-          : [...chatMessages, tempUserChatMessage],
+        chatMessages: messageHistoryForPayload,
         assistant: selectedAssistant || null,
         messageFileItems: retrievedFileItems,
         chatFileItems: chatFileItems
@@ -345,6 +357,14 @@ export const useChatHandler = () => {
       // Detectar si es un modelo que debe usar LangChain
       const modelId = payload.chatSettings.model?.toLowerCase() || ''
       const isResearchModel = modelId.includes('gemini') // Todos los modelos Gemini usan LangChain
+      
+      console.log('[ChatHandler] Enviando mensaje:', {
+        model: modelId,
+        isResearchModel,
+        toolsCount: selectedTools.length,
+        messageLength: messageContent.length,
+        chatHistoryLength: chatMessages.length
+      })
       
       // Usar LangChain Agent para modelos de investigación O si hay tools seleccionadas
       if (isResearchModel || selectedTools.length > 0) {
@@ -442,13 +462,23 @@ export const useChatHandler = () => {
         bibliography
       )
     } catch (error: any) {
-      // Restaurar el input del usuario
+      // Restaurar el input del usuario para que pueda reintentar
       setUserInput(startingInput)
 
-      // Log del error para depuración (sin mostrar al usuario)
-      console.error("Error al enviar mensaje:", error?.message || error)
+      // Log del error para depuración
+      console.error("[ChatHandler] Error al enviar mensaje:", error?.message || error)
 
-      // No mostrar toast al usuario - solo log en consola
+      // Mostrar error al usuario solo si es un error crítico
+      const errorMessage = error?.message || "Error desconocido"
+      
+      if (errorMessage.includes("API key") || errorMessage.includes("autenticación")) {
+        toast.error("Error de autenticación con el servicio de IA")
+      } else if (errorMessage.includes("rate limit") || errorMessage.includes("límite")) {
+        toast.error("Has alcanzado el límite de consultas. Intenta más tarde.")
+      } else if (errorMessage.includes("network") || errorMessage.includes("conexión")) {
+        toast.error("Error de conexión. Verifica tu internet e intenta de nuevo.")
+      }
+      // Otros errores se manejan silenciosamente para no interrumpir la UX
     } finally {
       // Siempre resetear el estado al final
       setIsGenerating(false)

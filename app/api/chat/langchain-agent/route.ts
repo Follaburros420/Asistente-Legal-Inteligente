@@ -305,6 +305,23 @@ export async function POST(request: NextRequest) {
     // Extraer el último mensaje del usuario
     const userMessages = messages.filter(m => m.role === 'user')
     const lastUserMessage = userMessages[userMessages.length - 1]?.content || ''
+    
+    console.log('[LangChain Agent] Mensajes recibidos:', {
+      totalMessages: messages.length,
+      userMessagesCount: userMessages.length,
+      lastMessageRole: messages[messages.length - 1]?.role,
+      lastUserMessageLength: lastUserMessage.length,
+      lastUserMessagePreview: lastUserMessage.substring(0, 100)
+    })
+    
+    // Validar que hay un mensaje del usuario
+    if (!lastUserMessage || lastUserMessage.trim() === '') {
+      console.error('[LangChain Agent] No se recibió mensaje del usuario')
+      return NextResponse.json(
+        { error: "No se recibió mensaje del usuario" },
+        { status: 400 }
+      )
+    }
 
     // Detección de draft: heurística + clasificación LLM
     const heuristicResult = detectDraftIntent(lastUserMessage)
