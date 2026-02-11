@@ -3,13 +3,11 @@ import { ALIContext } from "@/context/context"
 import { Tables } from "@/supabase/types"
 import { FC, useContext, useMemo, useState } from "react"
 import { Message } from "../messages/message"
-import { TypingIndicator } from "./modern/TypingIndicator"
-import { AnimatePresence } from "framer-motion"
 
 interface ChatMessagesProps { }
 
 export const ChatMessages: FC<ChatMessagesProps> = ({ }) => {
-  const { chatMessages, chatFileItems, isGenerating, firstTokenReceived } = useContext(ALIContext)
+  const { chatMessages, chatFileItems } = useContext(ALIContext)
 
   const { handleSendEdit } = useChatHandler()
 
@@ -44,11 +42,6 @@ export const ChatMessages: FC<ChatMessagesProps> = ({ }) => {
             )
           })
       }, [chatMessages, chatFileItems, editingMessage, handleSendEdit])}
-
-      {/* Typing Indicator cuando está generando - Se muestra siempre que está generando */}
-      <AnimatePresence>
-        {isGenerating && !firstTokenReceived && <TypingIndicator />}
-      </AnimatePresence>
     </>
   )
 }

@@ -104,7 +104,6 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
 
     if (!selectedWorkspace) {
       console.error("No hay workspace seleccionado, no se puede enviar mensaje")
-      // No mostrar error al usuario
       return
     }
 
@@ -113,23 +112,27 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
     setIsSending(true)
     setInputValue("")
 
-    // Esperar a que la animación del orbe se complete, luego crear chat y enviar mensaje
+    // Guardar mensaje pendiente en sessionStorage para que ChatUI lo lea al montar
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pendingWelcomeMessage', message)
+    }
+
+    // Esperar brevemente para la animación del orbe, luego navegar
     setTimeout(async () => {
       try {
-        // Crear el nuevo chat y navegar
         await handleNewChat()
-
-        // Enviar el mensaje después de que la navegación esté lista
-        setTimeout(() => {
-          handleSendMessage(message, [], false)
-        }, 150)
+        // El mensaje será enviado automáticamente por ChatUI al detectar pendingWelcomeMessage
       } catch (e) {
         console.error("Error al enviar mensaje:", e)
         setIsSending(false)
         setSentMessage("")
-        setInputValue(message) // Restaurar el mensaje
+        setInputValue(message)
+        // Limpiar sessionStorage si falla
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pendingWelcomeMessage')
+        }
       }
-    }, 900)
+    }, 600)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -292,7 +295,7 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
               : "ALI - Asistente Legal Inteligente"
             }
           </h1>
-          
+
           {/* Subtítulo */}
           {!isLegalWritingMode && (
             <p className="text-center text-muted-foreground mb-8 text-sm md:text-base">
