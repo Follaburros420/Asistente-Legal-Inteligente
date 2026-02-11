@@ -124,6 +124,29 @@
       deleteSuccess: "Documento eliminado correctamente",
       deleteError: "Error al eliminar el documento"
     },
+    jobs: {
+      title: "Jobs",
+      active: "activos",
+      failed: "fallidos",
+      total: "total",
+      refreshing: "actualizando...",
+      canceled: "Job cancelado",
+      retryQueued: "Reintento encolado",
+      cancelAction: "Cancelar job",
+      retryAction: "Reintentar job",
+      cancelError: "No se pudo cancelar el job",
+      retryError: "No se pudo reintentar el job",
+      loadError: "Error cargando jobs",
+      statuses: {
+        queued: "Job en cola",
+        running: "Job ejecutando",
+        retrying: "Job reintentando",
+        succeeded: "Job completado",
+        failed: "Job con error",
+        canceled: "Job cancelado",
+        timeout: "Job timeout"
+      }
+    },
     table: {
       document: "Documento",
       type: "Tipo",

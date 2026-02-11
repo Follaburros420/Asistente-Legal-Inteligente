@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ragBackendService } from '@/lib/services/rag-backend'
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 /**
  * API Route: GET /api/rag/health
  * Verificar estado del backend RAG

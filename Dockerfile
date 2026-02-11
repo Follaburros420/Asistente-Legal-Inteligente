@@ -15,9 +15,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Exclude problematic directories
-RUN rm -rf "Landing-Design" "Chatbot Design" "esfera 3d" || true
-
 # Accept build arguments for NEXT_PUBLIC_* variables
 # These MUST be passed during docker build for them to be available during Next.js build
 ARG NEXT_PUBLIC_SUPABASE_URL=""

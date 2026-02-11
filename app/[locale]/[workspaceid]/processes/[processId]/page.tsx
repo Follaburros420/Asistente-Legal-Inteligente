@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, Edit, Upload, Loader2, Network, Sparkles, Clock, FileText, Maximize2, GripVertical, X, Shrink } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -73,7 +73,6 @@ export default function ProcessDetailPage() {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  const [triggeredDocs, setTriggeredDocs] = useState<Set<string>>(new Set())
   const [isPolling, setIsPolling] = useState(false)
 
   useEffect(() => {
@@ -103,30 +102,6 @@ export default function ProcessDetailPage() {
 
     return () => clearInterval(interval)
   }, [process?.indexing_status, documents, isPolling])
-
-  // Trigger ingestion for pending documents
-  useEffect(() => {
-    const pendingDocs = documents.filter(d => d.status === 'pending' && !triggeredDocs.has(d.id))
-
-    if (pendingDocs.length > 0) {
-      const newTriggered = new Set(triggeredDocs)
-      pendingDocs.forEach(doc => {
-        newTriggered.add(doc.id)
-        triggerIngestion(doc.id)
-      })
-      setTriggeredDocs(newTriggered)
-      setTimeout(() => loadProcess(true), 1000)
-    }
-  }, [documents, triggeredDocs])
-
-  const triggerIngestion = async (docId: string) => {
-    try {
-      console.log(`Triggering ingestion for doc: ${docId}`)
-      await fetch(`/api/processes/${processId}/documents/${docId}/ingest`, { method: 'POST' })
-    } catch (error) {
-      console.error(`Error triggering ingestion for ${docId}:`, error)
-    }
-  }
 
   const loadProcess = async (silent = false) => {
     try {

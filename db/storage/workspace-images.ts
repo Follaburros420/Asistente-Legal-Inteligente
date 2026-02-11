@@ -1,56 +1,33 @@
-import { supabase } from "@/lib/supabase/robust-client"
 import { Tables } from "@/supabase/types"
+import {
+  getObjectProxyUrl,
+  uploadObjectFromClient
+} from "@/lib/storage/client-object-storage"
 
 export const uploadWorkspaceImage = async (
   workspace: Tables<"workspaces">,
   image: File
 ) => {
-  const bucket = "workspace_images"
-
   const imageSizeLimit = 6000000 // 6MB
 
   if (image.size > imageSizeLimit) {
     throw new Error(`Image must be less than ${imageSizeLimit / 1000000}MB`)
   }
 
-  const currentPath = workspace.image_path
-  let filePath = `${workspace.user_id}/${workspace.id}/${Date.now()}`
+  const currentPath = workspace.image_path || ""
+  const filePath = `${workspace.user_id}/${workspace.id}/${Date.now()}`
 
-  if (currentPath.length > 0) {
-    const { error: deleteError } = await supabase.storage
-      .from(bucket)
-      .remove([currentPath])
+  const result = await uploadObjectFromClient({
+    bucket: "workspace_images",
+    path: filePath,
+    oldPath: currentPath.length > 0 ? currentPath : undefined,
+    workspaceId: workspace.id,
+    file: image
+  })
 
-    if (deleteError) {
-      throw new Error("Error deleting old image")
-    }
-  }
-
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(filePath, image, {
-      upsert: true
-    })
-
-  if (error) {
-    throw new Error("Error uploading image")
-  }
-
-  return filePath
+  return result.path
 }
 
 export const getWorkspaceImageFromStorage = async (filePath: string) => {
-  try {
-    const { data, error } = await supabase.storage
-      .from("workspace_images")
-      .createSignedUrl(filePath, 60 * 60 * 24) // 24hrs
-
-    if (error) {
-      throw new Error("Error downloading workspace image")
-    }
-
-    return data.signedUrl
-  } catch (error) {
-    console.error(error)
-  }
+  return getObjectProxyUrl("workspace_images", filePath)
 }

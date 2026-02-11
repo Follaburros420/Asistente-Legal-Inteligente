@@ -1,29 +1,29 @@
-// STUB FILE - Temporarily created to prevent build errors
-// TODO: This redirects to process-files
-export * from "./process-files"
+import { TablesInsert } from "@/supabase/types"
+import {
+  createProcessFile,
+  deleteProcessFile,
+  getProcessFilesByProcessId
+} from "./process-files"
+
+type CollectionFileInput = TablesInsert<"process_files">
 
 export const getCollectionFilesByCollectionId = async (collectionId: string) => {
-  const { getProcessFilesByProcessId } = await import("./process-files")
   const result = await getProcessFilesByProcessId(collectionId)
   return { files: result.files || [] }
 }
 
-export const createCollectionFile = async (data: any) => {
-  const { createProcessFile } = await import("./process-files")
-  return await createProcessFile(data)
+export const createCollectionFile = async (data: CollectionFileInput) => {
+  return createProcessFile(data)
 }
 
-export const createCollectionFiles = async (dataArray: any[]) => {
-  const { createProcessFile } = await import("./process-files")
-  const results = []
-  for (const data of dataArray) {
-    results.push(await createProcessFile(data))
-  }
-  return results
+export const createCollectionFiles = async (dataArray: CollectionFileInput[]) => {
+  if (dataArray.length === 0) return []
+  return Promise.all(dataArray.map(data => createProcessFile(data)))
 }
 
-export const deleteCollectionFile = async (collectionId: string, fileId: string) => {
-  const { deleteProcessFile } = await import("./process-files")
-  return await deleteProcessFile(collectionId, fileId)
+export const deleteCollectionFile = async (
+  collectionId: string,
+  fileId: string
+) => {
+  return deleteProcessFile(collectionId, fileId)
 }
-

@@ -8,6 +8,19 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { Database } from "@/supabase/types"
 import { assertProcessAccess } from "@/lib/server/access/processes"
 import { ForbiddenError, NotFoundError } from "@/lib/server/errors"
+import {
+  enqueueProcessDocumentIngestionJob,
+  scheduleQueuedIngestionJob
+} from "@/lib/server/jobs/process-ingestion-jobs"
+import {
+  deleteObjectFromBucket,
+  uploadObject
+} from "@/lib/server/storage/object-storage"
+import { assertUserCanUploadBytes } from "@/lib/billing/storage-quota"
+import {
+  markObjectInventoryDeleted,
+  upsertObjectInventoryRecord
+} from "@/lib/server/storage/object-inventory"
 
 export async function POST(
   request: Request,
@@ -33,8 +46,9 @@ export async function POST(
       env.supabaseServiceRole()
     )
 
+    let access
     try {
-      await assertProcessAccess(supabaseAdmin, processId, user.id)
+      access = await assertProcessAccess(supabaseAdmin, processId, user.id)
     } catch (error: any) {
       if (error instanceof NotFoundError) {
         return NextResponse.json({ error: "Proceso no encontrado" }, { status: 404 })
@@ -59,6 +73,7 @@ export async function POST(
     }
 
     const uploadedDocuments: any[] = []
+    const queuedJobs: any[] = []
     const allowedTypes = new Set([
       "application/pdf",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -80,16 +95,29 @@ export async function POST(
       const fileId = crypto.randomUUID()
       const filePath = `${user.id}/${Buffer.from(fileId).toString("base64")}`
 
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from("files")
-        .upload(filePath, file, { upsert: true })
+      try {
+        await assertUserCanUploadBytes(user.id, file.size)
+      } catch (quotaError: any) {
+        return NextResponse.json(
+          { error: quotaError?.message || "Límite de almacenamiento alcanzado" },
+          { status: 402 }
+        )
+      }
 
-      if (uploadError) {
-        console.error("❌ Error uploading file to storage:", uploadError)
-        // Try to create bucket if it doesn't exist
-        if (uploadError.message?.includes("bucket") || uploadError.message?.includes("not found")) {
-          console.log("⚠️ Storage bucket 'files' may not exist. Please create it in Supabase.")
-        }
+      try {
+        await uploadObject({
+          bucket: "files",
+          key: filePath,
+          file,
+          contentType: file.type || "application/octet-stream",
+          metadata: {
+            user_id: user.id,
+            process_id: processId,
+            source: "process_upload"
+          }
+        })
+      } catch (uploadError) {
+        console.error("Error uploading file to storage:", uploadError)
         continue
       }
 
@@ -111,10 +139,36 @@ export async function POST(
         .single()
 
       if (docError || !createdDocument) {
+        await deleteObjectFromBucket(filePath, "files").catch(() => undefined)
+        await markObjectInventoryDeleted("files", filePath).catch(() => undefined)
         continue
       }
 
+      await upsertObjectInventoryRecord({
+        ownerUserId: user.id,
+        workspaceId: access.process.workspace_id || null,
+        bucket: "files",
+        objectPath: filePath,
+        sizeBytes: file.size,
+        contentType: file.type || "application/octet-stream",
+        sourceTable: "process_documents",
+        sourceId: createdDocument.id,
+        metadata: {
+          process_id: processId,
+          source: "process_upload"
+        }
+      })
+
       uploadedDocuments.push(createdDocument)
+
+      const job = await enqueueProcessDocumentIngestionJob({
+        processId,
+        documentId: createdDocument.id,
+        ownerUserId: user.id,
+        workspaceId: access.process.workspace_id,
+        metadata: (createdDocument.metadata as Record<string, any>) || {}
+      })
+      queuedJobs.push(job)
     }
 
     if (uploadedDocuments.length === 0) {
@@ -130,10 +184,20 @@ export async function POST(
       .eq("id", processId)
       .eq("indexing_status", "pending")
 
+    for (const job of queuedJobs) {
+      scheduleQueuedIngestionJob(job.id)
+    }
+
     return NextResponse.json({
       success: true,
       documents: uploadedDocuments,
-      message: `${uploadedDocuments.length} documento(s) subido(s) correctamente`
+      queued: queuedJobs.length,
+      jobs: queuedJobs.map((job) => ({
+        id: job.id,
+        document_id: job.document_id,
+        status: job.status
+      })),
+      message: `${uploadedDocuments.length} documento(s) subido(s) y encolado(s)`
     })
   } catch (error: any) {
     return NextResponse.json(
@@ -146,4 +210,3 @@ export async function POST(
     )
   }
 }
-

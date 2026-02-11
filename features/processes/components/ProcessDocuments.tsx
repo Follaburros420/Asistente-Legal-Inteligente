@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { FC, useState } from "react"
+import { FC, useCallback, useEffect, useMemo, useState } from "react"
 import {
   Upload,
   FileText,
@@ -10,7 +10,9 @@ import {
   Clock,
   AlertTriangle,
   Filter,
-  SortAsc
+  SortAsc,
+  RotateCcw,
+  CircleSlash
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DocumentUploadZone } from "@/components/processes/document-upload-zone"
@@ -30,6 +32,32 @@ interface ProcessDocumentsProps {
   documents: ProcessDocument[]
   onDocumentsChange: () => void
 }
+
+type ProcessIngestionJobStatus =
+  | "queued"
+  | "running"
+  | "retrying"
+  | "succeeded"
+  | "failed"
+  | "canceled"
+  | "timeout"
+
+interface ProcessIngestionJob {
+  id: string
+  document_id: string
+  status: ProcessIngestionJobStatus
+  attempt_count: number
+  max_attempts: number
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+const ACTIVE_JOB_STATUSES: ProcessIngestionJobStatus[] = [
+  "queued",
+  "running",
+  "retrying"
+]
 
 const STATUS_CONFIG = {
   indexed: {
@@ -60,7 +88,6 @@ const STATUS_CONFIG = {
 
 export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
   processId,
-  workspaceId,
   documents,
   onDocumentsChange
 }) => {
@@ -70,6 +97,59 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [docToDelete, setDocToDelete] = useState<ProcessDocument | null>(null)
+  const [jobs, setJobs] = useState<ProcessIngestionJob[]>([])
+  const [jobsLoading, setJobsLoading] = useState(false)
+  const [jobActionBusy, setJobActionBusy] = useState<Record<string, boolean>>({})
+
+  const fetchJobs = useCallback(
+    async (silent = true) => {
+      try {
+        if (!silent) {
+          setJobsLoading(true)
+        }
+
+        const response = await fetch(`/api/processes/${processId}/jobs?limit=100`, {
+          method: "GET"
+        })
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}))
+          throw new Error(error.error || es.documents.jobs.loadError)
+        }
+
+        const payload = await response.json()
+        setJobs(Array.isArray(payload.jobs) ? payload.jobs : [])
+      } catch (error) {
+        console.error("Error fetching process jobs:", error)
+      } finally {
+        if (!silent) {
+          setJobsLoading(false)
+        }
+      }
+    },
+    [processId]
+  )
+
+  useEffect(() => {
+    void fetchJobs(false)
+  }, [fetchJobs])
+
+  useEffect(() => {
+    const hasPendingDocuments = documents.some(
+      (doc) => doc.status === "pending" || doc.status === "processing"
+    )
+    const hasActiveJobs = jobs.some((job) => ACTIVE_JOB_STATUSES.includes(job.status))
+
+    if (!hasPendingDocuments && !hasActiveJobs) {
+      return
+    }
+
+    const interval = setInterval(() => {
+      void fetchJobs(true)
+    }, 4000)
+
+    return () => clearInterval(interval)
+  }, [documents, jobs, fetchJobs])
 
   const handleUpload = async () => {
     if (uploadFiles.length === 0) {
@@ -99,6 +179,7 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
       setUploadFiles([])
       setShowUpload(false)
       onDocumentsChange()
+      await fetchJobs(true)
     } catch (error: any) {
       console.error("Error uploading documents:", error)
       toast.error(error.message || es.documents.messages.uploadError)
@@ -129,12 +210,121 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
 
       toast.success(es.documents.messages.deleteSuccess)
       onDocumentsChange()
+      await fetchJobs(true)
     } catch (error: any) {
       console.error("Error deleting document:", error)
       toast.error(error.message || es.documents.messages.deleteError)
     } finally {
       setDeletingDocId(null)
       setDocToDelete(null)
+    }
+  }
+
+  const latestJobByDocumentId = useMemo(() => {
+    const result = new Map<string, ProcessIngestionJob>()
+    for (const job of jobs) {
+      if (!result.has(job.document_id)) {
+        result.set(job.document_id, job)
+      }
+    }
+    return result
+  }, [jobs])
+
+  const handleCancelJob = async (job: ProcessIngestionJob) => {
+    setJobActionBusy((current) => ({ ...current, [job.id]: true }))
+    try {
+      const response = await fetch(
+        `/api/processes/${processId}/jobs/${job.id}/cancel`,
+        { method: "POST" }
+      )
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || es.documents.jobs.cancelError)
+      }
+
+      toast.success(es.documents.jobs.canceled)
+      await fetchJobs(true)
+      onDocumentsChange()
+    } catch (error: any) {
+      console.error("Error canceling job:", error)
+      toast.error(error.message || es.documents.jobs.cancelError)
+    } finally {
+      setJobActionBusy((current) => ({ ...current, [job.id]: false }))
+    }
+  }
+
+  const handleRetryJob = async (job: ProcessIngestionJob) => {
+    setJobActionBusy((current) => ({ ...current, [job.id]: true }))
+    try {
+      const response = await fetch(
+        `/api/processes/${processId}/jobs/${job.id}/retry`,
+        { method: "POST" }
+      )
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || es.documents.jobs.retryError)
+      }
+
+      toast.success(es.documents.jobs.retryQueued)
+      await fetchJobs(true)
+      onDocumentsChange()
+    } catch (error: any) {
+      console.error("Error retrying job:", error)
+      toast.error(error.message || es.documents.jobs.retryError)
+    } finally {
+      setJobActionBusy((current) => ({ ...current, [job.id]: false }))
+    }
+  }
+
+  const getJobStatusPresentation = (status: ProcessIngestionJobStatus) => {
+    if (status === "queued") {
+      return {
+        label: es.documents.jobs.statuses.queued,
+        className: "text-muted-foreground",
+        bgClassName: "bg-muted/40"
+      }
+    }
+    if (status === "running") {
+      return {
+        label: es.documents.jobs.statuses.running,
+        className: "text-blue-400",
+        bgClassName: "bg-blue-500/10"
+      }
+    }
+    if (status === "retrying") {
+      return {
+        label: es.documents.jobs.statuses.retrying,
+        className: "text-amber-400",
+        bgClassName: "bg-amber-500/10"
+      }
+    }
+    if (status === "succeeded") {
+      return {
+        label: es.documents.jobs.statuses.succeeded,
+        className: "text-emerald-400",
+        bgClassName: "bg-emerald-500/10"
+      }
+    }
+    if (status === "canceled") {
+      return {
+        label: es.documents.jobs.statuses.canceled,
+        className: "text-muted-foreground",
+        bgClassName: "bg-muted/40"
+      }
+    }
+    if (status === "timeout") {
+      return {
+        label: es.documents.jobs.statuses.timeout,
+        className: "text-red-400",
+        bgClassName: "bg-red-500/10"
+      }
+    }
+    return {
+      label: es.documents.jobs.statuses.failed,
+      className: "text-red-400",
+      bgClassName: "bg-red-500/10"
     }
   }
 
@@ -152,6 +342,12 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
     (doc) => doc.status === "processing" || doc.status === "pending"
   ).length
   const indexedCount = documents.filter((doc) => doc.status === "indexed").length
+  const activeJobsCount = jobs.filter((job) =>
+    ACTIVE_JOB_STATUSES.includes(job.status)
+  ).length
+  const failedJobsCount = jobs.filter(
+    (job) => job.status === "failed" || job.status === "timeout"
+  ).length
 
   return (
     <div className="space-y-6">
@@ -189,6 +385,27 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
           </Button>
         </div>
       </div>
+
+      {(jobsLoading || jobs.length > 0) && (
+        <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-medium text-foreground">{es.documents.jobs.title}:</span>
+          <span className="text-muted-foreground">
+            {es.documents.jobs.active} {activeJobsCount}
+          </span>
+          <span className="text-muted-foreground">
+            {es.documents.jobs.failed} {failedJobsCount}
+          </span>
+          <span className="text-muted-foreground">
+            {es.documents.jobs.total} {jobs.length}
+          </span>
+          {jobsLoading && (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {es.documents.jobs.refreshing}
+            </span>
+          )}
+        </div>
+      )}
 
       {showUpload && (
         <div className="border rounded-lg p-4 bg-card">
@@ -259,6 +476,10 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
                   const statusConfig = getStatusConfig(doc.status)
                   const StatusIcon = statusConfig.icon
                   const badges = getDocumentBadges(doc)
+                  const latestJob = latestJobByDocumentId.get(doc.id)
+                  const jobStatus = latestJob
+                    ? getJobStatusPresentation(latestJob.status)
+                    : null
 
                   return (
                     <tr key={doc.id} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
@@ -308,24 +529,80 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
                             {doc.error_message}
                           </p>
                         )}
+                        {latestJob && jobStatus && (
+                          <div className="mt-1.5 space-y-1">
+                            <div
+                              className={cn(
+                                "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium",
+                                jobStatus.bgClassName
+                              )}
+                            >
+                              <span className={jobStatus.className}>{jobStatus.label}</span>
+                              <span className="text-muted-foreground">
+                                ({latestJob.attempt_count}/{latestJob.max_attempts})
+                              </span>
+                            </div>
+                            {latestJob.error_message && (
+                              <p className="text-[11px] text-red-400 max-w-[220px] truncate">
+                                {latestJob.error_message}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="p-3 text-sm text-muted-foreground">
                         {format(new Date(doc.created_at), "d MMM yyyy", { locale: dateLocale })}
                       </td>
                       <td className="p-3">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDeleteDocument(doc)}
-                          disabled={deletingDocId === doc.id}
-                        >
-                          {deletingDocId === doc.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          {latestJob &&
+                            ACTIVE_JOB_STATUSES.includes(latestJob.status) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-amber-500"
+                                onClick={() => handleCancelJob(latestJob)}
+                                disabled={Boolean(jobActionBusy[latestJob.id])}
+                                title={es.documents.jobs.cancelAction}
+                              >
+                                {jobActionBusy[latestJob.id] ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <CircleSlash className="w-4 h-4" />
+                                )}
+                              </Button>
+                            )}
+                          {latestJob &&
+                            ["failed", "timeout", "canceled"].includes(latestJob.status) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-blue-400"
+                                onClick={() => handleRetryJob(latestJob)}
+                                disabled={Boolean(jobActionBusy[latestJob.id])}
+                                title={es.documents.jobs.retryAction}
+                              >
+                                {jobActionBusy[latestJob.id] ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <RotateCcw className="w-4 h-4" />
+                                )}
+                              </Button>
+                            )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDeleteDocument(doc)}
+                            disabled={deletingDocId === doc.id}
+                          >
+                            {deletingDocId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -339,6 +616,10 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
               const statusConfig = getStatusConfig(doc.status)
               const StatusIcon = statusConfig.icon
               const badges = getDocumentBadges(doc)
+              const latestJob = latestJobByDocumentId.get(doc.id)
+              const jobStatus = latestJob
+                ? getJobStatusPresentation(latestJob.status)
+                : null
 
               return (
                 <div key={doc.id} className="border border-border/50 rounded-xl p-4 bg-card">
@@ -396,6 +677,59 @@ export const ProcessDocuments: FC<ProcessDocumentsProps> = ({
                       {format(new Date(doc.created_at), "d MMM yyyy", { locale: dateLocale })}
                     </span>
                   </div>
+
+                  {latestJob && jobStatus && (
+                    <div className="mt-2 space-y-1">
+                      <div
+                        className={cn(
+                          "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium",
+                          jobStatus.bgClassName
+                        )}
+                      >
+                        <span className={jobStatus.className}>{jobStatus.label}</span>
+                        <span className="text-muted-foreground">
+                          ({latestJob.attempt_count}/{latestJob.max_attempts})
+                        </span>
+                      </div>
+                      {latestJob.error_message && (
+                        <p className="text-[11px] text-red-400">{latestJob.error_message}</p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        {ACTIVE_JOB_STATUSES.includes(latestJob.status) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => handleCancelJob(latestJob)}
+                            disabled={Boolean(jobActionBusy[latestJob.id])}
+                          >
+                            {jobActionBusy[latestJob.id] ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : (
+                              <CircleSlash className="w-3 h-3 mr-1" />
+                            )}
+                            {es.documents.jobs.cancelAction}
+                          </Button>
+                        )}
+                        {["failed", "timeout", "canceled"].includes(latestJob.status) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => handleRetryJob(latestJob)}
+                            disabled={Boolean(jobActionBusy[latestJob.id])}
+                          >
+                            {jobActionBusy[latestJob.id] ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-3 h-3 mr-1" />
+                            )}
+                            {es.documents.jobs.retryAction}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {doc.status === "error" && doc.error_message && (
                     <p className="text-xs text-red-400 mt-2">{doc.error_message}</p>

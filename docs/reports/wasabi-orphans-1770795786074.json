@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-02-11T07:43:06.073Z",
+  "mode": "dry-run",
+  "minAgeHours": 24,
+  "limit": null,
+  "totals": {
+    "inventoryActiveKeys": 27,
+    "wasabiObjectsScanned": 69,
+    "orphanCandidates": 0,
+    "orphanCandidatesBytes": 0,
+    "effectiveCandidates": 0
+  },
+  "preview": []
+}

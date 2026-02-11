@@ -19,7 +19,7 @@ export async function GET() {
     }
 
     // Obtener datos de la base de datos
-    const [chatsResult, filesResult, fileItemsResult, messagesResult] = await Promise.all([
+    const [chatsResult, filesResult, fileItemsResult, sessionsResult] = await Promise.all([
       // Contar chats del usuario
       supabase
         .from("chats")
@@ -38,16 +38,24 @@ export async function GET() {
         .select("id, tokens")
         .eq("user_id", user.id),
       
-      // Contar mensajes del usuario
+      // Obtener sesiones del usuario para calcular mensajes legacy
       supabase
-        .from("messages")
-        .select("id", { count: "exact", head: false })
+        .from("sessions")
+        .select("id")
         .eq("user_id", user.id)
     ])
 
     const chatsCount = chatsResult.count || 0
     const filesCount = filesResult.count || 0
-    const messagesCount = messagesResult.count || 0
+    const sessionIds = (sessionsResult.data || []).map((s) => s.id)
+    let messagesCount = 0
+    if (sessionIds.length > 0) {
+      const messagesResult = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .in("session_id", sessionIds)
+      messagesCount = messagesResult.count || 0
+    }
 
     // Calcular storage usado
     const files = filesResult.data || []

@@ -4,8 +4,12 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
+import { blockIfDebugRouteDisabled } from '@/lib/server/debug-route-gate';
 
 export async function GET(req: NextRequest) {
+  const blocked = blockIfDebugRouteDisabled();
+  if (blocked) return blocked;
+
   try {
     const cookieStore = cookies();
     const supabase = createClient(cookieStore);
@@ -41,6 +45,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = blockIfDebugRouteDisabled();
+  if (blocked) return blocked;
+
   try {
     const { email, password } = await req.json();
 

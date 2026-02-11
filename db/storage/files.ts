@@ -1,5 +1,9 @@
-import { supabase } from "@/lib/supabase/robust-client"
 import { toast } from "sonner"
+import {
+  deleteObjectFromClient,
+  getObjectProxyUrl,
+  uploadObjectFromClient
+} from "@/lib/storage/client-object-storage"
 
 export const uploadFile = async (
   file: File,
@@ -21,37 +25,23 @@ export const uploadFile = async (
 
   const filePath = `${payload.user_id}/${Buffer.from(payload.file_id).toString("base64")}`
 
-  const { error } = await supabase.storage
-    .from("files")
-    .upload(filePath, file, {
-      upsert: true
-    })
+  const { path } = await uploadObjectFromClient({
+    bucket: "files",
+    path: filePath,
+    file
+  })
 
-  if (error) {
-    throw new Error("Error uploading file")
-  }
-
-  return filePath
+  return path
 }
 
 export const deleteFileFromStorage = async (filePath: string) => {
-  const { error } = await supabase.storage.from("files").remove([filePath])
-
-  if (error) {
+  try {
+    await deleteObjectFromClient("files", filePath)
+  } catch {
     toast.error("Failed to remove file!")
-    return
   }
 }
 
 export const getFileFromStorage = async (filePath: string) => {
-  const { data, error } = await supabase.storage
-    .from("files")
-    .createSignedUrl(filePath, 60 * 60 * 24) // 24hrs
-
-  if (error) {
-    console.error(`Error uploading file with path: ${filePath}`, error)
-    throw new Error("Error downloading file")
-  }
-
-  return data.signedUrl
+  return getObjectProxyUrl("files", filePath, { download: true })
 }

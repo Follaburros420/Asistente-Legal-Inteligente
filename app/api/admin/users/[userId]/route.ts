@@ -23,14 +23,13 @@ export async function GET(
 
     const { userId } = params
 
-    // Obtener información del usuario
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", userId)
-      .single()
+    // Obtener información del usuario desde auth (fuente de verdad actual)
+    const {
+      data: { user: authUser },
+      error: userError
+    } = await supabase.auth.admin.getUserById(userId)
 
-    if (userError) throw userError
+    if (userError || !authUser) throw userError ?? new Error("User not found")
 
     // Obtener perfil
     const { data: profile } = await supabase
@@ -65,6 +64,20 @@ export async function GET(
       .select("id, name, type, size, created_at")
       .eq("user_id", userId)
       .limit(50)
+
+    const userData = {
+      id: authUser.id,
+      email: authUser.email,
+      role: authUser.role,
+      created_at: authUser.created_at,
+      updated_at: authUser.updated_at,
+      user_metadata: authUser.user_metadata,
+      app_metadata: authUser.app_metadata,
+      is_active:
+        authUser.banned_until === null ||
+        new Date(authUser.banned_until) <= new Date(),
+      banned_until: authUser.banned_until
+    }
 
     return NextResponse.json({
       user: userData,
@@ -101,18 +114,50 @@ export async function PATCH(
 
     const { userId } = params
     const body = await request.json()
+    const updatePayload: Record<string, unknown> = {}
 
-    // Actualizar usuario
-    const { data, error } = await supabase
-      .from("users")
-      .update(body)
-      .eq("id", userId)
-      .select()
-      .single()
+    if (typeof body.email === "string" && body.email.trim().length > 0) {
+      updatePayload.email = body.email.trim()
+    }
+
+    if (typeof body.is_active === "boolean") {
+      updatePayload.ban_duration = body.is_active ? "none" : "876000h" // ~100 años
+    }
+
+    if (typeof body.name === "string" && body.name.trim().length > 0) {
+      const {
+        data: { user: existingUser }
+      } = await supabase.auth.admin.getUserById(userId)
+
+      updatePayload.user_metadata = {
+        ...(existingUser?.user_metadata || {}),
+        name: body.name.trim(),
+        full_name: body.name.trim()
+      }
+    }
+
+    const { data, error } = await supabase.auth.admin.updateUserById(
+      userId,
+      updatePayload
+    )
 
     if (error) throw error
 
-    return NextResponse.json(data)
+    // Permitir actualización opcional de perfil público
+    const profilePatch: Record<string, unknown> = {}
+    if (typeof body.display_name === "string") profilePatch.display_name = body.display_name
+    if (typeof body.username === "string") profilePatch.username = body.username
+    if (typeof body.bio === "string") profilePatch.bio = body.bio
+
+    if (Object.keys(profilePatch).length > 0) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update(profilePatch)
+        .eq("user_id", userId)
+      if (profileError) throw profileError
+    }
+
+    return NextResponse.json(data.user)
   } catch (error) {
     console.error("Error updating user:", error)
     return NextResponse.json(
@@ -140,11 +185,8 @@ export async function DELETE(
 
     const { userId } = params
 
-    // Eliminar usuario (esto también eliminará el usuario de auth por cascada)
-    const { error } = await supabase
-      .from("users")
-      .delete()
-      .eq("id", userId)
+    // Eliminar usuario de auth (fuente de verdad). El resto se limpia por cascada/FKs.
+    const { error } = await supabase.auth.admin.deleteUser(userId)
 
     if (error) throw error
 

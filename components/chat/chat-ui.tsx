@@ -137,6 +137,9 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     const chat = await getChatById(params.chatid as string)
     if (!chat) return
 
+    setSelectedAssistant(null)
+    setSelectedTools([])
+
     if (chat.assistant_id) {
       const assistant = assistants.find(
         assistant => assistant.id === chat.assistant_id

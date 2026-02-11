@@ -1,12 +1,16 @@
 // app/api/debug/env-check/route.ts
 import { getEnvVar } from '@/lib/env/runtime-env';
 import { NextRequest, NextResponse } from 'next/server';
+import { blockIfDebugRouteDisabled } from '@/lib/server/debug-route-gate';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
+  const blocked = blockIfDebugRouteDisabled();
+  if (blocked) return blocked;
+
   try {
     // #region agent log
     const fs = require('fs');

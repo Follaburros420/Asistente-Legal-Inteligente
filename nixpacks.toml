@@ -3,7 +3,6 @@ nixPkgs = ["nodejs_20", "npm-9_x"]
 
 [phases.install]
 cmds = [
-  "rm -rf 'Landing-Design' 'Chatbot Design' 'esfera 3d' || true",
   "npm ci"
 ]
 

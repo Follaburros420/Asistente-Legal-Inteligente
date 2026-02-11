@@ -1,0 +1,27 @@
+{
+  "generatedAt": "2026-02-11T07:40:31.180Z",
+  "targetProvider": "wasabi",
+  "includeMessages": true,
+  "applied": {
+    "upsertMissing": false,
+    "markStale": false,
+    "fixProvider": false,
+    "limit": 200
+  },
+  "totals": {
+    "references": 27,
+    "inventoryActive": 27,
+    "missingInventory": 0,
+    "staleInventory": 0,
+    "ownerMismatches": 0,
+    "workspaceMismatches": 0,
+    "providerMismatches": 0
+  },
+  "previews": {
+    "missingInventory": [],
+    "staleInventory": [],
+    "ownerMismatches": [],
+    "workspaceMismatches": [],
+    "providerMismatches": []
+  }
+}

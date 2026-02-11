@@ -1,0 +1,115 @@
+{
+  "generatedAt": "2026-02-11T07:43:21.916Z",
+  "mode": "dry-run",
+  "minAgeHours": 0,
+  "limit": null,
+  "totals": {
+    "inventoryActiveKeys": 27,
+    "wasabiObjectsScanned": 69,
+    "orphanCandidates": 46,
+    "orphanCandidatesBytes": 18680703,
+    "effectiveCandidates": 46
+  },
+  "preview": [
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/M2I3ZWMzNzQtMTYyOC00NjgzLWExM2EtNjIzZDJlZmRmYWI2",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:08:31.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/M2M5MTQ1OGEtMzBkZC00MjIzLTg1NTUtZjEzMzJmYjQ4MmQy",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:33.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/M2MzMjA0ZDAtNzEyZi00YzBmLTlmNjgtYmJlZWM5MWZlYjM2",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:08:35.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/M2RlZTdjODgtOGQ5ZS00YTRlLWJkMzUtMzhhYjVkY2JhODJh",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:08:37.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/MDFlNGNmYzQtNWM1Mi00ZWRmLTk2MDAtYTA3YTU4ZWJlMDQ3",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:08:39.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/MDc5MGU1MzAtMDc2MS00ZDdjLWEyYzctNjFmNWMxZmU0ZjRm",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:08:38.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/MTllOGZhOWEtYWJiMy00MmIzLTkxZGYtNmJiODVhMzY3NzQ4",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:43.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/MmMzYzQ4M2QtODhkZS00NmU4LWJlZDItYjA4ZTU5MWQ1NDBh",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:41.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/MzkwMmViNGUtODkyZC00NTkwLTgwY2ItMTRlZDllNDFhYTlk",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:08:44.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NDE0MjIwOGEtYmNjMS00Yjk5LTlkMmEtNGQyZmE2OTc5N2I0",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:48.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NDdjZDVmNTMtZjFjNC00ODU1LWI2MTUtNWYwMDA5ZWUxNjJm",
+      "sizeBytes": 303,
+      "lastModified": "2026-02-11T07:08:46.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NGIzNGY0ZTUtNTJhMi00NjEwLTg5ZDEtZWIyZmY5MzA2Yzhj",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:08:49.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NTEyMGI2M2UtMGVhNC00NWNkLWEzNDQtNTg5YTFlZjYxMGE0",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:53.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NTRjZTRlOTAtNGEyNS00NDlmLTgyNDAtMmFiNmNlZWRlMmYz",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:55.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NjFiOTIyZmMtZDhmZC00NWI0LWI0NzMtMTBmOWUwN2EzYWM4",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:51.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NzJhODQzMTItNDI2Ny00ZWNkLTg4NDEtNjBkOTc1NWExNDJi",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:58.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NzM0YWFlMjYtMWM2OC00NTJmLWI4NjMtNDBkNTBmYjU5YTdm",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:09:04.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/Nzg3MDkzZjMtMDg1Mi00M2E2LTlmYTUtMGRjZjRkMjI2ZTdj",
+      "sizeBytes": 60485,
+      "lastModified": "2026-02-11T07:08:57.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/NzlhZjY5ZWEtODFhYi00NzVlLWJhZjUtMTM3MDBlOWE5MDVh",
+      "sizeBytes": 8040266,
+      "lastModified": "2026-02-11T07:09:02.000Z"
+    },
+    {
+      "key": "files/cb7c7ce6-3fa2-45ab-bae7-89bd9a12826b/OGM0ODQzZjMtYmYyMi00MTE5LTk3OGUtODgwMTkzN2I5OWQy",
+      "sizeBytes": 22359,
+      "lastModified": "2026-02-11T07:09:06.000Z"
+    }
+  ]
+}

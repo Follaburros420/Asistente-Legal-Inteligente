@@ -9,6 +9,7 @@ import {
   Database,
   Network,
   FileText,
+  Activity,
   Home
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { title: "Storage", href: "/admin/analytics/storage", icon: Database },
   { title: "Base de Datos", href: "/admin/database", icon: Database },
+  { title: "Ops Ingestion", href: "/admin/operations/ingestion", icon: Activity },
   { title: "Diagramas", href: "/admin/diagrams", icon: Network },
   { title: "Logs", href: "/admin/logs", icon: FileText }
 ]

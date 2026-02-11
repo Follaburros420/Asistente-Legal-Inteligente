@@ -659,6 +659,12 @@ export const handleCreateMessages = async (
   selectedAssistant: Tables<"assistants"> | null,
   bibliography?: BibliographyItem[]
 ) => {
+  const legacyMessagesPersistenceEnabled =
+    getPublicEnvVar("NEXT_PUBLIC_LEGACY_MESSAGES_PERSISTENCE") === "true"
+  const localImagePaths = newMessageImages
+    .map(image => image.path || image.base64 || "")
+    .filter(Boolean)
+
   const finalUserMessage: TablesInsert<"messages"> = {
     chat_id: currentChat.id,
     assistant_id: null,
@@ -667,7 +673,7 @@ export const handleCreateMessages = async (
     model: modelData.modelId,
     role: "user",
     sequence_number: chatMessages.length,
-    image_paths: []
+    image_paths: legacyMessagesPersistenceEnabled ? [] : localImagePaths
   }
 
   const finalAssistantMessage: TablesInsert<"messages"> = {
@@ -705,6 +711,50 @@ export const handleCreateMessages = async (
       finalAssistantMessage
     ])
 
+    if (!legacyMessagesPersistenceEnabled) {
+      setChatImages(prevImages => [
+        ...prevImages,
+        ...newMessageImages.map(obj => {
+          const normalizedPath = obj.path || obj.base64 || ""
+
+          return {
+            ...obj,
+            messageId: createdMessages[0].id,
+            path: normalizedPath
+          }
+        })
+      ])
+
+      const userMessageWithImages = {
+        ...createdMessages[0],
+        image_paths: localImagePaths
+      }
+
+      finalChatMessages = [
+        ...chatMessages,
+        {
+          message: userMessageWithImages,
+          fileItems: []
+        },
+        {
+          message: createdMessages[1],
+          fileItems: retrievedFileItems.map(fileItem => fileItem.id),
+          ...(bibliography ? { bibliography } : {})
+        }
+      ]
+
+      setChatFileItems(prevFileItems => {
+        const newFileItems = retrievedFileItems.filter(
+          fileItem => !prevFileItems.some(prevItem => prevItem.id === fileItem.id)
+        )
+
+        return [...prevFileItems, ...newFileItems]
+      })
+
+      setChatMessages(finalChatMessages)
+      return
+    }
+
     // Upload each image (stored in newMessageImages) for the user message to message_images bucket
     const uploadPromises = newMessageImages
       .filter(obj => obj.file !== null)
@@ -737,7 +787,7 @@ export const handleCreateMessages = async (
       image_paths: paths
     })
 
-    const createdMessageFileItems = await createMessageFileItems(
+    await createMessageFileItems(
       retrievedFileItems.map(fileItem => {
         return {
           user_id: profile.user_id,

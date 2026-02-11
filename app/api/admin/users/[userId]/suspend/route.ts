@@ -23,26 +23,31 @@ export async function POST(
 
     const { userId } = params
 
-    // Obtener el estado actual del usuario
-    const { data: currentUser, error: fetchError } = await supabase
-      .from("users")
-      .select("is_active")
-      .eq("id", userId)
-      .single()
+    // Obtener estado actual desde auth
+    const {
+      data: { user: currentUser },
+      error: fetchError
+    } = await supabase.auth.admin.getUserById(userId)
 
-    if (fetchError) throw fetchError
+    if (fetchError || !currentUser) throw fetchError ?? new Error("User not found")
 
-    // Cambiar el estado
-    const { data, error } = await supabase
-      .from("users")
-      .update({ is_active: !currentUser.is_active })
-      .eq("id", userId)
-      .select()
-      .single()
+    const isActiveNow =
+      currentUser.banned_until === null ||
+      new Date(currentUser.banned_until) <= new Date()
+
+    // Cambiar el estado en auth
+    const { data, error } = await supabase.auth.admin.updateUserById(userId, {
+      ban_duration: isActiveNow ? "876000h" : "none"
+    })
 
     if (error) throw error
 
-    return NextResponse.json(data)
+    return NextResponse.json({
+      id: data.user.id,
+      email: data.user.email,
+      is_active: !isActiveNow,
+      banned_until: data.user.banned_until
+    })
   } catch (error) {
     console.error("Error suspending/activating user:", error)
     return NextResponse.json(

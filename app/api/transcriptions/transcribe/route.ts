@@ -9,6 +9,7 @@ import OpenAI from "openai"
 import { FileItemChunk } from "@/types"
 import { encode } from "gpt-tokenizer"
 import { assertWorkspaceAccess } from "@/lib/server/workspaces/access"
+import { downloadObjectFromBucket } from "@/lib/server/storage/object-storage"
 
 export const maxDuration = 300 // 5 minutos para transcripción
 
@@ -78,14 +79,8 @@ export async function POST(request: Request) {
       throw new Error(`Failed to update transcription status: ${statusError.message}`)
     }
 
-    // Obtener audio de Supabase Storage
-    const { data: audioFile, error: fileError } = await supabaseAdmin.storage
-      .from("files")
-      .download(audio_path)
-
-    if (fileError) {
-      throw new Error(`Failed to retrieve audio: ${fileError.message}`)
-    }
+    // Obtener audio desde object storage (Supabase/Wasabi)
+    const audioFile = await downloadObjectFromBucket(audio_path, "files")
 
     // Convertir a Buffer para Whisper
     const audioBuffer = Buffer.from(await audioFile.arrayBuffer())

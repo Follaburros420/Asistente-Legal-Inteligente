@@ -70,19 +70,6 @@ export default function NewProcessPage() {
         throw new Error(error.error || "Error al subir documentos")
       }
 
-      // Start ingestion
-      const ingestResponse = await fetch(`/api/processes/${process.id}/ingest`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({})
-      })
-
-      if (!ingestResponse.ok) {
-        console.warn("Ingestión iniciada pero puede estar procesando en segundo plano")
-      }
-
       toast.success("Proceso creado exitosamente. Los documentos se están indexando...")
       
       // Redirect to processes list page to ensure sidebar refreshes

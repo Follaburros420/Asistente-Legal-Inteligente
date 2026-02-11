@@ -7,6 +7,15 @@ import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { canUseTranscription } from "@/lib/billing/plan-access"
 import { assertWorkspaceAccess } from "@/lib/server/workspaces/access"
+import {
+  deleteObjectFromBucket,
+  uploadObject
+} from "@/lib/server/storage/object-storage"
+import { assertUserCanUploadBytes } from "@/lib/billing/storage-quota"
+import {
+  markObjectInventoryDeleted,
+  upsertObjectInventoryRecord
+} from "@/lib/server/storage/object-inventory"
 
 export const maxDuration = 300 // 5 minutos para upload de archivos grandes
 
@@ -80,20 +89,34 @@ export async function POST(request: Request) {
       )
     }
 
-    // Subir archivo a Supabase Storage usando el cliente admin
+    // Subir archivo a object storage (Supabase/Wasabi segun configuracion)
     const fileName = `${profile.user_id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
     const filePath = fileName
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("files")
-      .upload(filePath, file, {
-        upsert: true,
-        contentType: file.type
-      })
+    try {
+      await assertUserCanUploadBytes(profile.user_id, file.size)
+    } catch (quotaError: any) {
+      return NextResponse.json(
+        { error: quotaError?.message || "Límite de almacenamiento alcanzado" },
+        { status: 402 }
+      )
+    }
 
-    if (uploadError) {
+    try {
+      await uploadObject({
+        bucket: "files",
+        key: filePath,
+        file,
+        contentType: file.type || "application/octet-stream",
+        metadata: {
+          user_id: profile.user_id,
+          workspace_id: workspace_id || "",
+          source: "transcription_upload"
+        }
+      })
+    } catch (uploadError: any) {
       console.error("Error uploading file to storage:", uploadError)
-      throw new Error(`Failed to upload file: ${uploadError.message}`)
+      throw new Error(`Failed to upload file: ${uploadError?.message || "unknown"}`)
     }
 
     // Crear registro de transcripción usando el cliente admin
@@ -114,8 +137,24 @@ export async function POST(request: Request) {
 
     if (transcriptionError || !transcription) {
       console.error("Error creating transcription:", transcriptionError)
+      await deleteObjectFromBucket(filePath, "files").catch(() => undefined)
+      await markObjectInventoryDeleted("files", filePath).catch(() => undefined)
       throw new Error(`Failed to create transcription: ${transcriptionError?.message || "Unknown error"}`)
     }
+
+    await upsertObjectInventoryRecord({
+      ownerUserId: profile.user_id,
+      workspaceId: workspace_id,
+      bucket: "files",
+      objectPath: filePath,
+      sizeBytes: file.size,
+      contentType: file.type || "application/octet-stream",
+      sourceTable: "transcriptions",
+      sourceId: transcription.id,
+      metadata: {
+        source: "transcription_upload"
+      }
+    })
 
     // NOTA: En producción deberías usar un job queue (ej: Bull, pg-boss)
     // Por ahora, el frontend llamará a /api/transcriptions/transcribe después de subir

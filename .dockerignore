@@ -6,4 +6,21 @@ yarn-debug.log
 yarn-error.log
 .env
 .env.*
+docs
+test
+__tests__
+.claude
+.cursor
+.vscode
+.playwright-mcp
+worker
+supabase/migrations
+ARCHITECTURE_SNAPSHOT.md
+AUDIT.md
+AUDITORIA-COMPLETA-ENV-VARS.md
+PLAN_DE_ACCION_REFACTORIZACION.md
+PLAN_S3_WASABI.md
+REFRACTOR_GUARDRAILS.md
+RISKS.md
+SOLUCION-ERROR-VARIABLES-ENTORNO.md
 

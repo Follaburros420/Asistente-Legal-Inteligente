@@ -1,7 +1,11 @@
 // app/api/debug/wompi-test/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { blockIfDebugRouteDisabled } from '@/lib/server/debug-route-gate';
 
 export async function GET(req: NextRequest) {
+  const blocked = blockIfDebugRouteDisabled();
+  if (blocked) return blocked;
+
   try {
     // Test Wompi API connection
     const wompiTestUrl = `${process.env.NEXT_PUBLIC_WOMPI_BASE_URL || 'https://sandbox.wompi.co'}/v1/merchants/${process.env.NEXT_PUBLIC_WOMPI_PUBLIC_KEY}`;

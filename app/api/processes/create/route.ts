@@ -5,10 +5,22 @@ import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
 import { canCreateProcess } from "@/lib/billing/plan-access"
 import { incrementProcessCount } from "@/db/usage-tracking"
-import { ragBackendService } from "@/lib/services/rag-backend"
 import { Database } from "@/supabase/types"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { env } from "@/lib/env/runtime-env"
+import {
+  enqueueProcessDocumentIngestionJob,
+  scheduleQueuedIngestionJob
+} from "@/lib/server/jobs/process-ingestion-jobs"
+import {
+  deleteObjectFromBucket,
+  uploadObject
+} from "@/lib/server/storage/object-storage"
+import { assertUserCanUploadBytes } from "@/lib/billing/storage-quota"
+import {
+  markObjectInventoryDeleted,
+  upsertObjectInventoryRecord
+} from "@/lib/server/storage/object-inventory"
 
 export async function POST(request: Request) {
   try {
@@ -186,23 +198,43 @@ export async function POST(request: Request) {
         env.supabaseUrl(),
         env.supabaseServiceRole()
       )
+      const queuedJobs: any[] = []
 
       for (const file of files) {
         try {
           console.log(`Processing file: ${file.name}`)
 
-          // 1. Upload to Supabase Storage
-          // Safer generic way:
+          // 1. Upload to object storage (Supabase/Wasabi segun configuracion)
           const fileId = crypto.randomUUID()
           const storagePath = `${user.id}/${fileId}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+          if (!workspace.id) {
+            console.error(`❌ Workspace undefined while uploading ${file.name}`)
+            continue
+          }
 
-          const { error: uploadError } = await workspace.id // Accessing workspace to ensure it exists
-            ? await supabaseAdmin.storage
-              .from("files")
-              .upload(storagePath, file, { upsert: true })
-            : { error: new Error("Workspace undefined") }
+          try {
+            await assertUserCanUploadBytes(user.id, file.size)
+          } catch (quotaError: any) {
+            return NextResponse.json(
+              { error: quotaError?.message || "Límite de almacenamiento alcanzado" },
+              { status: 402 }
+            )
+          }
 
-          if (uploadError) {
+          try {
+            await uploadObject({
+              bucket: "files",
+              key: storagePath,
+              file,
+              contentType: file.type || "application/octet-stream",
+              metadata: {
+                user_id: user.id,
+                workspace_id: workspace.id,
+                process_id: newProcess.data.id,
+                source: "create_process_upload"
+              }
+            })
+          } catch (uploadError) {
             console.error(`❌ Error uploading file ${file.name} to storage:`, uploadError)
             continue
           }
@@ -226,9 +258,35 @@ export async function POST(request: Request) {
             .single()
 
           if (docError || !doc) {
-            console.error(`❌ Error creating document record for ${file.name}:`, docError)
+            console.error(`Error creating document record for ${file.name}:`, docError)
+            await deleteObjectFromBucket(storagePath, "files").catch(() => undefined)
+            await markObjectInventoryDeleted("files", storagePath).catch(() => undefined)
             continue
           }
+
+          await upsertObjectInventoryRecord({
+            ownerUserId: user.id,
+            workspaceId: workspace.id || null,
+            bucket: "files",
+            objectPath: storagePath,
+            sizeBytes: file.size,
+            contentType: file.type || "application/octet-stream",
+            sourceTable: "process_documents",
+            sourceId: doc.id,
+            metadata: {
+              process_id: newProcess.data.id,
+              source: "create_process_upload"
+            }
+          })
+
+          const job = await enqueueProcessDocumentIngestionJob({
+            processId: newProcess.data.id,
+            documentId: doc.id,
+            ownerUserId: user.id,
+            workspaceId: workspace.id,
+            metadata: (doc.metadata as Record<string, any>) || {}
+          })
+          queuedJobs.push(job)
 
           console.log(`✅ File ${file.name} uploaded and registered (pending ingestion)`)
 
@@ -236,13 +294,13 @@ export async function POST(request: Request) {
           console.error(`❌ Error processing file ${file.name}:`, fileError)
         }
       }
+
+      for (const job of queuedJobs) {
+        scheduleQueuedIngestionJob(job.id)
+      }
     }
 
-    // Return process created response
-    // We do this after file processing so the client gets the final state, 
-    // although for large files this might be slow. 
-    // Ideally we should process async, but Vercel limits background execution.
-    // For now, this is acceptable for few small files.
+    // Return process created response. Ingestion itself is now handled by jobs.
 
     return NextResponse.json({
       success: true,

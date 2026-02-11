@@ -2,12 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkspaceById } from '@/db/workspaces';
 import { getSupabaseServer } from '@/lib/supabase/server-client';
+import { blockIfDebugRouteDisabled } from '@/lib/server/debug-route-gate';
 
 // Force dynamic rendering to prevent build-time execution
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
+  const blocked = blockIfDebugRouteDisabled();
+  if (blocked) return blocked;
+
   const supabase = getSupabaseServer();
   try {
     const url = new URL(req.url);

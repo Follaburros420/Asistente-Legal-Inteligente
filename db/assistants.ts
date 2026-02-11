@@ -1,64 +1,188 @@
-// STUB FILE - Temporarily created to prevent build errors
-// TODO: Remove this file once frontend is updated
 import { supabase } from "@/lib/supabase/robust-client"
+import { TablesInsert, TablesUpdate } from "@/supabase/types"
+
+export const getAssistantById = async (assistantId: string) => {
+  const { data: assistant, error } = await supabase
+    .from("assistants")
+    .select("*")
+    .eq("id", assistantId)
+    .single()
+
+  if (!assistant) {
+    throw new Error(error?.message || "Assistant not found")
+  }
+
+  return assistant
+}
 
 export const getAssistantWorkspacesByWorkspaceId = async (workspaceId: string) => {
-  return { assistants: [] }
-}
+  const { data: workspace, error } = await supabase
+    .from("workspaces")
+    .select(
+      `
+      id,
+      name,
+      assistants (*)
+    `
+    )
+    .eq("id", workspaceId)
+    .single()
 
-export const updateAssistant = async (id: string, data: any) => {
-  return {}
-}
+  if (!workspace) {
+    throw new Error(error?.message || "Workspace not found")
+  }
 
-export const createAssistant = async (data: any, workspaceId: string) => {
-  return {}
-}
-
-export const getAssistantById = async (id: string) => {
-  return {}
-}
-
-export const deleteAssistant = async (id: string) => {
-  return true
+  return workspace
 }
 
 export const getAssistantWorkspacesByAssistantId = async (assistantId: string) => {
-  return []
+  const { data: assistant, error } = await supabase
+    .from("assistants")
+    .select(
+      `
+      id,
+      name,
+      workspaces (*)
+    `
+    )
+    .eq("id", assistantId)
+    .single()
+
+  if (!assistant) {
+    throw new Error(error?.message || "Assistant not found")
+  }
+
+  return assistant
 }
 
-export const deleteAssistantWorkspace = async (workspaceId: string, assistantId: string) => {
-  return
+export const createAssistant = async (
+  assistant: TablesInsert<"assistants">,
+  workspaceId: string
+) => {
+  const { data: createdAssistant, error } = await supabase
+    .from("assistants")
+    .insert([assistant])
+    .select("*")
+    .single()
+
+  if (error || !createdAssistant) {
+    throw new Error(error?.message || "Failed to create assistant")
+  }
+
+  await createAssistantWorkspace({
+    user_id: createdAssistant.user_id,
+    assistant_id: createdAssistant.id,
+    workspace_id: workspaceId
+  })
+
+  return createdAssistant
 }
 
-export const createAssistantWorkspaces = async (items: any[], workspaceId: string) => {
-  return []
+export const createAssistants = async (
+  assistants: TablesInsert<"assistants">[],
+  workspaceId: string
+) => {
+  if (assistants.length === 0) return []
+
+  const { data: createdAssistants, error } = await supabase
+    .from("assistants")
+    .insert(assistants)
+    .select("*")
+
+  if (error || !createdAssistants) {
+    throw new Error(error?.message || "Failed to create assistants")
+  }
+
+  await createAssistantWorkspaces(
+    createdAssistants.map(assistant => ({
+      user_id: assistant.user_id,
+      assistant_id: assistant.id,
+      workspace_id: workspaceId
+    }))
+  )
+
+  return createdAssistants
 }
 
-export const getAssistantFilesByAssistantId = async (assistantId: string) => {
-  return { files: [] }
+export const createAssistantWorkspace = async (item: {
+  user_id: string
+  assistant_id: string
+  workspace_id: string
+}) => {
+  const { data: createdAssistantWorkspace, error } = await supabase
+    .from("assistant_workspaces")
+    .insert([item])
+    .select("*")
+    .single()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return createdAssistantWorkspace
 }
 
-export const createAssistantFiles = async (dataArray: any[]) => {
-  return []
+export const createAssistantWorkspaces = async (
+  items: TablesInsert<"assistant_workspaces">[]
+) => {
+  if (items.length === 0) return []
+
+  const { data: createdAssistantWorkspaces, error } = await supabase
+    .from("assistant_workspaces")
+    .insert(items)
+    .select("*")
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return createdAssistantWorkspaces
 }
 
-export const deleteAssistantFile = async (workspaceId: string, assistantId: string, fileId: string) => {
-  return
+export const updateAssistant = async (
+  assistantId: string,
+  assistant: TablesUpdate<"assistants">
+) => {
+  const { data: updatedAssistant, error } = await supabase
+    .from("assistants")
+    .update(assistant)
+    .eq("id", assistantId)
+    .select("*")
+    .single()
+
+  if (error || !updatedAssistant) {
+    throw new Error(error?.message || "Failed to update assistant")
+  }
+
+  return updatedAssistant
 }
 
-export const createAssistantCollection = async (workspaceId: string, assistantId: string, collectionId: string) => {
-  return {}
+export const deleteAssistant = async (assistantId: string) => {
+  const { error } = await supabase
+    .from("assistants")
+    .delete()
+    .eq("id", assistantId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return true
 }
 
-export const deleteAssistantCollection = async (workspaceId: string, assistantId: string, collectionId: string) => {
-  return
-}
+export const deleteAssistantWorkspace = async (
+  assistantId: string,
+  workspaceId: string
+) => {
+  const { error } = await supabase
+    .from("assistant_workspaces")
+    .delete()
+    .eq("assistant_id", assistantId)
+    .eq("workspace_id", workspaceId)
 
-export const createAssistantTool = async (workspaceId: string, assistantId: string, toolId: string) => {
-  return {}
-}
+  if (error) {
+    throw new Error(error.message)
+  }
 
-export const deleteAssistantTool = async (workspaceId: string, assistantId: string, toolId: string) => {
-  return
+  return true
 }
-

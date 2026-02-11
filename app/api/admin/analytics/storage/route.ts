@@ -1,104 +1,157 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { cookies } from "next/headers"
-import { isAdmin } from "@/lib/admin/check-admin"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { env } from "@/lib/env/runtime-env"
+import { Database } from "@/supabase/types"
+import { requireAdminApiAccess } from "@/lib/admin/require-admin-api"
+
+interface UserStorageAggregate {
+  filesBytes: number
+  otherBytes: number
+  filesCount: number
+  otherCount: number
+}
+
+const TARGET_BUCKETS = new Set([
+  "files",
+  "message_images",
+  "profile_images",
+  "workspace_images",
+  "assistant_images"
+])
+
+function getSupabaseAdmin() {
+  return createSupabaseClient<Database>(env.supabaseUrl(), env.supabaseServiceRole())
+}
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user || !isAdmin(user.email)) {
-      return NextResponse.json(
-        { error: "No autorizado" },
-        { status: 403 }
-      )
+    const adminAuth = await requireAdminApiAccess()
+    if (!adminAuth.authorized) {
+      return NextResponse.json({ error: adminAuth.error }, { status: adminAuth.status })
     }
 
-    // Obtener todos los archivos con su tamaño
-    const { data: files, error: filesError } = await supabase
-      .from("files")
-      .select("id, user_id, name, size, tokens, created_at")
+    const supabaseAdmin = getSupabaseAdmin()
 
-    if (filesError) {
-      console.error("Error fetching files:", filesError)
+    const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000
+    })
+    if (usersError) {
       return NextResponse.json(
-        { error: "Error al obtener archivos", details: filesError.message },
+        { error: "Error al obtener usuarios de auth", details: usersError.message },
         { status: 500 }
       )
     }
 
-    // Obtener file_items (que almacena el contenido real)
-    const { data: fileItems, error: fileItemsError } = await supabase
-      .from("file_items")
-      .select("id, file_id, user_id, tokens")
+    const users = usersData?.users || []
 
-    // Obtener documentos
-    const { data: documents } = await supabase
-      .from("documents")
-      .select("id, user_id, title")
+    const { data: profiles, error: profilesError } = await supabaseAdmin
+      .from("profiles")
+      .select("user_id,display_name,username")
+    if (profilesError) {
+      return NextResponse.json(
+        { error: "Error al obtener perfiles", details: profilesError.message },
+        { status: 500 }
+      )
+    }
 
-    // Obtener usuarios
-    const { data: { users } } = await supabase.auth.admin.listUsers()
+    const { data: inventoryRows, error: inventoryError } = await supabaseAdmin
+      .from("object_storage_inventory")
+      .select("owner_user_id,bucket,size_bytes")
+      .eq("status", "active")
+    if (inventoryError) {
+      return NextResponse.json(
+        {
+          error: "Error al obtener inventario de storage",
+          details: inventoryError.message
+        },
+        { status: 500 }
+      )
+    }
 
-    // Calcular storage por usuario
-    const storageByUser = await Promise.all(users?.map(async (authUser) => {
-      const userFiles = files?.filter(f => f.user_id === authUser.id) || []
-      const userFileItems = fileItems?.filter(fi => fi.user_id === authUser.id) || []
-      const userDocuments = documents?.filter(d => d.user_id === authUser.id) || []
+    const byUserStorage = new Map<string, UserStorageAggregate>()
 
-      // Calcular tamaño total de archivos
-      const totalFileSize = userFiles.reduce((acc, f) => acc + (f.size || 0), 0)
-      
-      // Estimar tamaño de file_items basado en tokens (aproximación: 4 caracteres = 1 token)
-      const estimatedFileItemsSize = userFileItems.reduce((acc, fi) => acc + (fi.tokens * 4), 0)
+    for (const row of inventoryRows || []) {
+      const userId = String((row as any).owner_user_id || "")
+      const bucket = String((row as any).bucket || "")
+      if (!userId || !TARGET_BUCKETS.has(bucket)) continue
 
-      // Estimar tamaño aproximado por tipo de contenido
-      const storageBreakdown = {
-        files: totalFileSize,
-        file_items: estimatedFileItemsSize,
-        documents: userDocuments.length * 1500, // Estimación de 1.5KB por documento
-        embeddings: userFileItems.length * 1536 * 4, // Estimación para embeddings (1536 dimensiones * 4 bytes por float)
-        total: totalFileSize + estimatedFileItemsSize + (userDocuments.length * 1500) + (userFileItems.length * 1536 * 4)
+      const size = Number.parseInt(String((row as any).size_bytes || "0"), 10)
+      const safeSize = Number.isFinite(size) && size > 0 ? size : 0
+
+      if (!byUserStorage.has(userId)) {
+        byUserStorage.set(userId, {
+          filesBytes: 0,
+          otherBytes: 0,
+          filesCount: 0,
+          otherCount: 0
+        })
       }
 
-      // Obtener perfil del usuario
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("display_name, username")
-        .eq("user_id", authUser.id)
-        .single()
+      const aggregate = byUserStorage.get(userId)!
+      if (bucket === "files") {
+        aggregate.filesBytes += safeSize
+        aggregate.filesCount += 1
+      } else {
+        aggregate.otherBytes += safeSize
+        aggregate.otherCount += 1
+      }
+    }
+
+    const byUser = users.map((authUser) => {
+      const profile = (profiles || []).find((p) => p.user_id === authUser.id)
+      const aggregate = byUserStorage.get(authUser.id) || {
+        filesBytes: 0,
+        otherBytes: 0,
+        filesCount: 0,
+        otherCount: 0
+      }
+
+      const total = aggregate.filesBytes + aggregate.otherBytes
 
       return {
         user_id: authUser.id,
         email: authUser.email,
-        name: authUser.user_metadata?.full_name || profile?.display_name || authUser.email?.split("@")[0] || "",
-        storage: storageBreakdown,
-        fileCount: userFiles.length,
-        fileItemCount: userFileItems.length,
-        documentCount: userDocuments.length,
+        name:
+          authUser.user_metadata?.full_name ||
+          profile?.display_name ||
+          profile?.username ||
+          authUser.email?.split("@")[0] ||
+          "",
+        storage: {
+          files: aggregate.filesBytes,
+          file_items: aggregate.otherBytes,
+          documents: 0,
+          embeddings: 0,
+          total
+        },
+        fileCount: aggregate.filesCount + aggregate.otherCount,
+        fileItemCount: aggregate.otherCount,
+        documentCount: 0,
         created_at: authUser.created_at
       }
-    }) || [])
+    })
+
+    const totalStorage = byUser.reduce((acc, user) => acc + user.storage.total, 0)
+    const totalUsers = byUser.length
 
     return NextResponse.json({
       success: true,
-      totalUsers: storageByUser.length,
-      totalStorage: storageByUser.reduce((acc, u) => acc + u.storage.total, 0),
-      averageStorage: storageByUser.length > 0 
-        ? storageByUser.reduce((acc, u) => acc + u.storage.total, 0) / storageByUser.length 
-        : 0,
-      byUser: storageByUser.sort((a, b) => b.storage.total - a.storage.total)
+      totalUsers,
+      totalStorage,
+      averageStorage: totalUsers > 0 ? totalStorage / totalUsers : 0,
+      byUser: byUser.sort((a, b) => b.storage.total - a.storage.total)
     })
   } catch (error) {
     console.error("Error fetching storage analytics:", error)
     return NextResponse.json(
-      { error: "Error al obtener métricas de storage", details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: "Error al obtener metricas de storage",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 }
     )
   }
 }
-

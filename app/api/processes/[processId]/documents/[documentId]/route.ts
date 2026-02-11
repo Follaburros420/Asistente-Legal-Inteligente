@@ -3,9 +3,8 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
-import { env } from "@/lib/env/runtime-env"
-import { Database } from "@/supabase/types"
+import { deleteObjectFromBucket } from "@/lib/server/storage/object-storage"
+import { markObjectInventoryDeleted } from "@/lib/server/storage/object-inventory"
 
 // DELETE /api/processes/[processId]/documents/[documentId] - Delete a document from a process
 export async function DELETE(
@@ -76,13 +75,8 @@ export async function DELETE(
         // Delete the file from storage if it exists
         if (existingDoc.storage_path) {
             try {
-                const supabaseAdmin = createSupabaseClient<Database>(
-                    env.supabaseUrl(),
-                    env.supabaseServiceRole()
-                )
-                await supabaseAdmin.storage
-                    .from("files") // Correct bucket name
-                    .remove([existingDoc.storage_path])
+                await deleteObjectFromBucket(existingDoc.storage_path, "files")
+                await markObjectInventoryDeleted("files", existingDoc.storage_path)
             } catch (storageError) {
                 console.error("Error deleting file from storage:", storageError)
                 // Continue even if storage deletion fails

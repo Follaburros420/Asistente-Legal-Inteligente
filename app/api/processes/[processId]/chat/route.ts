@@ -6,11 +6,11 @@ import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
 import { Database } from "@/supabase/types"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
-import { createMessage } from "@/db/messages"
 import { assertWorkspaceAccess } from "@/lib/server/workspaces/access"
 import { ragBackendService } from "@/lib/services/rag-backend"
 import { StreamingTextResponse } from "ai"
 import { checkRateLimit, formatRateLimitHeaders, chatRateLimit } from "@/lib/rate-limit"
+import { reenqueueProcessForRecovery } from "@/lib/server/jobs/process-ingestion-jobs"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -18,12 +18,23 @@ export const maxDuration = 60
 interface RequestBody {
   message?: string // Campo directo (para compatibilidad)
   messages?: Array<{ role: string; content: string }> // Array de mensajes (formato useChat)
-  chatSettings?: {
-    model?: string
-    temperature?: number
-  }
-  match_count?: number // Configurable match count (default 10)
-  chatId?: string // Optional chat ID for message history
+}
+
+function shouldTriggerRecovery(error: any): boolean {
+  const status = Number(error?.status || error?.response?.status || 0)
+  const message = String(error?.message || "").toLowerCase()
+  return (
+    status === 404 ||
+    status === 409 ||
+    status === 422 ||
+    message.includes("vector") ||
+    message.includes("graph") ||
+    message.includes("index") ||
+    message.includes("qdrant") ||
+    message.includes("neo4j") ||
+    message.includes("no documents") ||
+    message.includes("not found")
+  )
 }
 
 export async function POST(
@@ -66,7 +77,7 @@ export async function POST(
 
     const { processId } = params
     const body: RequestBody = await request.json()
-    const { message, messages: bodyMessages, chatSettings, match_count = 10, chatId } = body
+    const { message, messages: bodyMessages } = body
 
     // Extraer el mensaje: puede venir como campo directo o como último mensaje del array
     let userMessage: string | undefined = message
@@ -140,25 +151,8 @@ export async function POST(
     // Use RAG Backend for chat
     console.log(`🔍 [RAG Backend] Enviando mensaje al backend RAG...`)
 
-    // Save user message to database
-    if (chatId) {
-      try {
-        await createMessage({
-          chat_id: chatId,
-          user_id: user.id,
-          content: userMessage,
-          role: "user",
-          metadata: {
-            process_id: processId
-          },
-          image_paths: [],
-          model: chatSettings?.model || "gpt-4o-mini",
-          sequence_number: 0 // We'll let the DB handle sequence if possible, or 0 if not
-        })
-      } catch (error) {
-        console.error("Error saving user message:", error)
-      }
-    }
+    // NOTE: legacy chat message persistence is intentionally skipped here.
+    // Process chat relies on external RAG streaming and should not depend on legacy tables.
 
     try {
       // Stream response from RAG backend
@@ -227,6 +221,25 @@ export async function POST(
 
     } catch (ragError: any) {
       console.error("❌ Error en RAG Backend:", ragError)
+
+      if (shouldTriggerRecovery(ragError)) {
+        const recoveryJobs = await reenqueueProcessForRecovery({
+          processId,
+          ownerUserId: processRecord.user_id,
+          workspaceId: processRecord.workspace_id,
+          reason: "chat_missing_vectors_or_graph"
+        }).catch(() => [])
+
+        return NextResponse.json(
+          {
+            error: "No se encontraron índices listos para consulta. Se relanzó la ingesta.",
+            recoveryTriggered: recoveryJobs.length > 0,
+            queuedJobs: recoveryJobs.length
+          },
+          { status: 409 }
+        )
+      }
+
       return NextResponse.json(
         {
           error: "Error al comunicarse con el asistente",

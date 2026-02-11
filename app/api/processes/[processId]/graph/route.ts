@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
 import { ragBackendService } from "@/lib/services/rag-backend"
+import { reenqueueProcessForRecovery } from "@/lib/server/jobs/process-ingestion-jobs"
 
 interface GraphNode {
     id: string
@@ -28,6 +29,22 @@ interface GraphResponse {
         edgeCount: number
         appliedFilters: Record<string, string>
     }
+}
+
+function shouldTriggerRecovery(error: any): boolean {
+    const status = Number(error?.status || error?.response?.status || 0)
+    const message = String(error?.message || "").toLowerCase()
+    return (
+        status === 404 ||
+        status === 409 ||
+        status === 422 ||
+        message.includes("vector") ||
+        message.includes("graph") ||
+        message.includes("index") ||
+        message.includes("qdrant") ||
+        message.includes("neo4j") ||
+        message.includes("not found")
+    )
 }
 
 // GET /api/processes/[processId]/graph - Get knowledge graph for a process
@@ -90,22 +107,70 @@ export async function GET(
             )
         }
 
-        // Call RAG backend service (handles SSL automatically)
-        const graphData = await ragBackendService.getGraph(
-            process.workspace_id || "",
-            processId,
-            status,
-            limit,
-            maxDepth
-        )
+        let graphData: any
+        try {
+            graphData = await ragBackendService.getGraph(
+                process.workspace_id || "",
+                processId,
+                status,
+                limit,
+                maxDepth
+            )
+        } catch (error: any) {
+            if (shouldTriggerRecovery(error)) {
+                const recoveryJobs = await reenqueueProcessForRecovery({
+                    processId,
+                    ownerUserId: process.user_id,
+                    workspaceId: process.workspace_id,
+                    reason: "graph_request_missing_vectors_or_graph"
+                }).catch(() => [])
+
+                return NextResponse.json(
+                    {
+                        error: "El grafo no estaba disponible. Se relanzó la ingesta.",
+                        recoveryTriggered: recoveryJobs.length > 0,
+                        queuedJobs: recoveryJobs.length
+                    },
+                    { status: 409 }
+                )
+            }
+            throw error
+        }
+
+        const nodeCount = graphData.nodes?.length || 0
+        const edgeCount = graphData.edges?.length || 0
+        let recoveryTriggered = false
+        let queuedJobs = 0
+
+        if (nodeCount === 0 && edgeCount === 0) {
+            const { count: docCount } = await supabase
+                .from("process_documents")
+                .select("id", { count: "exact", head: true })
+                .eq("process_id", processId)
+                .in("status", ["indexed", "pending", "error"])
+
+            if ((docCount || 0) > 0) {
+                const recoveryJobs = await reenqueueProcessForRecovery({
+                    processId,
+                    ownerUserId: process.user_id,
+                    workspaceId: process.workspace_id,
+                    reason: "graph_empty_response_recovery"
+                }).catch(() => [])
+
+                recoveryTriggered = recoveryJobs.length > 0
+                queuedJobs = recoveryJobs.length
+            }
+        }
 
         // Add meta information
         const response: GraphResponse = {
             nodes: graphData.nodes || [],
             edges: graphData.edges || [],
             meta: {
-                nodeCount: graphData.nodes?.length || 0,
-                edgeCount: graphData.edges?.length || 0,
+                nodeCount,
+                edgeCount,
+                recoveryTriggered: recoveryTriggered ? "true" : "false",
+                queuedJobs: queuedJobs.toString(),
                 appliedFilters: {
                     status,
                     limit: limit.toString(),

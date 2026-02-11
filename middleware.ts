@@ -50,12 +50,17 @@ const SUBSCRIPTION_REQUIRED_ROUTES = ['/chat'];
 
 // Rutas de autenticación que NO deben pasar por i18n
 const AUTH_ROUTES = ['/onboarding', '/login', '/setup', '/invite', '/auth/verify-email', '/auth/callback']
+function getValidLocales(): string[] {
+  const locales = (i18nConfig as any)?.locales
+  return Array.isArray(locales) ? locales : []
+}
 
 // Verificar si billing está habilitado
 const isBillingEnabled = () => getEnvVar('NEXT_PUBLIC_BILLING_ENABLED') === 'true';
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
+  const normalizedPathname = stripLocalePrefix(pathname)
 
   // Rate limiting for API routes
   if (pathname.startsWith('/api/')) {
@@ -147,7 +152,7 @@ export async function middleware(request: NextRequest) {
   
   // Rutas públicas - verificar ANTES del i18n router para evitar redirecciones innecesarias
   // Estas rutas son accesibles tanto para usuarios autenticados como no autenticados
-  const publicSegments = ['login', 'invite', 'auth/verify-email', 'auth/callback', 'onboarding', 'setup', 'debug-auth', 'test-signup', 'precios', 'landing', 'billing/success']
+  const publicSegments = ['login', 'invite', 'auth/verify-email', 'auth/callback', 'onboarding', 'setup', 'precios', 'landing', 'billing/success']
   const isPublicRoute = publicSegments.some(seg => {
     // Coincide con /seg, /seg/, /locale/seg, o cualquier variante
     return pathname === `/${seg}` || 
@@ -199,9 +204,10 @@ export async function middleware(request: NextRequest) {
     }
 
     // Protección de rutas de admin
-    if (request.nextUrl.pathname.startsWith('/admin')) {
+    if (isAdminRoutePath(pathname)) {
       if (!isAdmin(user.email)) {
-        return NextResponse.redirect(new URL('/', request.url))
+        const localePrefix = getLocalePrefixFromPath(pathname)
+        return NextResponse.redirect(new URL(localePrefix || "/", request.url))
       }
       return response
     }
@@ -216,8 +222,8 @@ export async function middleware(request: NextRequest) {
 
     // Verificar suscripción activa SOLO para rutas protegidas
     const protectedRoutes = ['/chat', '/settings']
-    const isProtectedRoute = protectedRoutes.some(route => 
-      request.nextUrl.pathname.includes(route)
+    const isProtectedRoute = protectedRoutes.some((route) =>
+      normalizedPathname.includes(route)
     )
 
     if (isProtectedRoute) {
@@ -234,9 +240,9 @@ export async function middleware(request: NextRequest) {
         
         if (!subscriptionStatus.hasAccess) {
           // No tiene suscripción activa - redirigir según la ruta
-          const requiresSubscription = SUBSCRIPTION_REQUIRED_ROUTES.some(route =>
-            request.nextUrl.pathname.includes(route)
-          )
+           const requiresSubscription = SUBSCRIPTION_REQUIRED_ROUTES.some((route) =>
+             normalizedPathname.includes(route)
+           )
 
           if (requiresSubscription) {
             // Allow chat access for users who are members of the workspace (collaboration)
@@ -389,6 +395,33 @@ function extractWorkspaceIdFromPath(pathname: string): string | null {
   }
 
   return null
+}
+
+function getLocalePrefixFromPath(pathname: string): string {
+  const validLocales = getValidLocales()
+  const segments = pathname.split("/").filter(Boolean)
+  const firstSegment = segments[0]
+  if (firstSegment && validLocales.includes(firstSegment)) {
+    return `/${firstSegment}`
+  }
+  return ""
+}
+
+function stripLocalePrefix(pathname: string): string {
+  const validLocales = getValidLocales()
+  const segments = pathname.split("/").filter(Boolean)
+  if (segments.length === 0) {
+    return "/"
+  }
+  if (validLocales.includes(segments[0])) {
+    const rest = segments.slice(1)
+    return rest.length > 0 ? `/${rest.join("/")}` : "/"
+  }
+  return pathname
+}
+
+function isAdminRoutePath(pathname: string): boolean {
+  return stripLocalePrefix(pathname).startsWith("/admin")
 }
 
 export const config = {

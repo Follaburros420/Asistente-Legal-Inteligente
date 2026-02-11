@@ -60,9 +60,13 @@ export async function GET() {
       .from("files")
       .select("id, user_id, name, size, tokens")
 
+    const { data: sessions } = await supabase
+      .from("sessions")
+      .select("id, user_id")
+
     const { data: messages } = await supabase
       .from("messages")
-      .select("id, user_id")
+      .select("id, session_id")
 
     // Obtener file_items para calcular storage real
     const { data: fileItems } = await supabase
@@ -71,8 +75,17 @@ export async function GET() {
 
     // Obtener documentos
     const { data: documents } = await supabase
-      .from("documents")
+      .from("process_documents")
       .select("id, user_id")
+
+    const sessionIdsByUser = new Map<string, Set<string>>()
+    for (const session of sessions || []) {
+      if (!session.user_id) continue
+      if (!sessionIdsByUser.has(session.user_id)) {
+        sessionIdsByUser.set(session.user_id, new Set<string>())
+      }
+      sessionIdsByUser.get(session.user_id)!.add(session.id)
+    }
 
     // Combinar datos de auth.users con profiles
     const adminUsers: AdminUser[] = (users || []).map(authUser => {
@@ -82,7 +95,8 @@ export async function GET() {
       const userFiles = files?.filter(f => f.user_id === authUser.id)
       const userFileItems = fileItems?.filter(fi => fi.user_id === authUser.id) || []
       const userDocuments = documents?.filter(d => d.user_id === authUser.id) || []
-      const userMessages = messages?.filter(m => m.user_id === authUser.id).length || 0
+      const sessionIds = sessionIdsByUser.get(authUser.id) || new Set<string>()
+      const userMessages = messages?.filter(m => sessionIds.has(m.session_id)).length || 0
       
       // Calcular storage más preciso
       const filesSize = userFiles?.reduce((acc, f) => acc + (f.size || 0), 0) || 0

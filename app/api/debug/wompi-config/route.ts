@@ -1,8 +1,12 @@
 // app/api/debug/wompi-config/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { wompiConfig, validateWompiConfig } from '@/lib/wompi/config';
+import { blockIfDebugRouteDisabled } from '@/lib/server/debug-route-gate';
 
 export async function GET(req: NextRequest) {
+  const blocked = blockIfDebugRouteDisabled();
+  if (blocked) return blocked;
+
   try {
     const validation = validateWompiConfig();
     
