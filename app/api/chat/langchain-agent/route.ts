@@ -34,6 +34,11 @@ import { incrementTokenUsage } from '@/db/usage-tracking'
 import { detectDraftIntent } from "@/lib/draft-detection"
 import { classifyDocumentIntent } from "@/lib/classifiers/document-classifier"
 import { validateDraftContent } from "@/lib/utils/draft-utils"
+import {
+  getLastUserMessage,
+  normalizeIncomingMessages
+} from "@/lib/chat/normalize-messages"
+import type { NormalizedChatMessage } from "@/lib/chat/normalize-messages"
 
 export const runtime = "nodejs"
 export const maxDuration = 180 // 3 minutos para investigación completa
@@ -43,14 +48,11 @@ export const maxDuration = 180 // 3 minutos para investigación completa
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface RequestBody {
-  chatSettings: {
+  chatSettings?: {
     model: string
     temperature?: number
   }
-  messages: Array<{
-    role: "system" | "user" | "assistant"
-    content: string
-  }>
+  messages?: unknown
   chatId?: string
   userId?: string
 }
@@ -183,7 +185,7 @@ class StreamingCallbackHandler extends BaseCallbackHandler {
 /**
  * Convierte mensajes del formato del chat al formato de LangChain
  */
-function convertMessages(messages: RequestBody['messages']): BaseMessage[] {
+function convertMessages(messages: NormalizedChatMessage[]): BaseMessage[] {
   return messages
     .filter(m => m.role !== 'system') // El system prompt lo maneja el agente
     .map(msg => {
@@ -235,7 +237,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json() as RequestBody
-    const { chatSettings, messages, chatId, userId } = body
+    const chatSettings = body.chatSettings ?? {
+      model: 'google/gemini-3-pro-preview',
+      temperature: 0.3
+    }
+    const messages = normalizeIncomingMessages(body.messages)
+    const { chatId, userId } = body
 
     // ═══════════════════════════════════════════════════════════════════════
     // BILLING CHECK: Verify user can continue chatting
@@ -304,7 +311,7 @@ export async function POST(request: NextRequest) {
 
     // Extraer el último mensaje del usuario
     const userMessages = messages.filter(m => m.role === 'user')
-    const lastUserMessage = userMessages[userMessages.length - 1]?.content || ''
+    const lastUserMessage = getLastUserMessage(messages)
     
     console.log('[LangChain Agent] Mensajes recibidos:', {
       totalMessages: messages.length,

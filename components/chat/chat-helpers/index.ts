@@ -6,8 +6,7 @@ import { createMessageFileItems } from "@/db/message-file-items"
 import { createMessages, updateMessage } from "@/db/messages"
 import { uploadMessageImage } from "@/db/storage/message-images"
 import {
-  buildFinalMessages,
-  adaptMessagesForGoogleGemini
+  buildFinalMessages
 } from "@/lib/build-prompt"
 import { consumeReadableStream } from "@/lib/consume-stream"
 import { Tables, TablesInsert } from "@/supabase/types"
@@ -212,30 +211,21 @@ export const handleHostedChat = async (
       ? "azure"
       : modelData.provider
 
-  let draftMessages = await buildFinalMessages(payload, profile, chatImages)
-
-  let formattedMessages : any[] = []
-  if (provider === "google") {
-    formattedMessages = await adaptMessagesForGoogleGemini(payload, draftMessages)
-  } else {
-    formattedMessages = draftMessages
-  }
+  const formattedMessages = await buildFinalMessages(payload, profile, chatImages)
 
   // Verificar si está en modo de redacción legal
   const chatMode = typeof window !== 'undefined' ? localStorage.getItem('chatMode') : null
   
   // Determinar endpoint según modelo y modo
-  let apiEndpoint = provider === "custom" ? "/api/chat/custom" : "/api/chat/legal-agent"
-  
-  // Detectar modelos que usan LangChain Agent (tool calling nativo)
-  const modelId = payload.chatSettings.model?.toLowerCase() || ''
-  // Solo modelos Gemini usan LangChain Agent (tool calling nativo)
-  const isLangChainModel = modelId.includes('gemini')
-  
+  const resolvedModelId = payload.chatSettings.model?.toLowerCase() || ""
+  const isGeminiModel = resolvedModelId.includes("gemini")
+
+  let apiEndpoint = "/api/chat/langchain-agent"
+
   if (chatMode === 'legal-writing') {
     apiEndpoint = "/api/chat/legal-writing"
-  } else if (isLangChainModel) {
-    apiEndpoint = "/api/chat/langchain-agent"
+  } else if (provider === "custom" && !isGeminiModel) {
+    apiEndpoint = "/api/chat/custom"
   }
 
   const requestBody = {
@@ -353,29 +343,25 @@ export const processResponse = async (
     }
   }
 
-  if (isPlainText) {
-    // Si es texto plano, leer toda la respuesta de una vez
+  if (isPlainText && !response.body) {
     const text = await response.text()
     fullText = text
-    
-    // Actualizar el mensaje del asistente
+
     setChatMessages(prev =>
       prev.map(chatMessage => {
         if (chatMessage.message.id === lastChatMessage.message.id) {
-          const updatedChatMessage: ChatMessage = {
+          return {
+            ...chatMessage,
             message: {
               ...chatMessage.message,
               content: fullText
-            },
-            fileItems: chatMessage.fileItems,
-            bibliography: chatMessage.bibliography
+            }
           }
-          return updatedChatMessage
         }
         return chatMessage
       })
     )
-    
+
     return fullText
   }
 
@@ -385,6 +371,7 @@ export const processResponse = async (
     // Detectar si es streaming con eventos JSON (nuevo formato)
     const isEventStream = contentType.includes('text/event-stream')
     let thinkingContent = ''
+    let eventBuffer = ''
     
     await consumeReadableStream(
       response.body,
@@ -392,12 +379,14 @@ export const processResponse = async (
         try {
           const chunkStr = typeof chunk === 'string' ? chunk : String(chunk)
           
-          // Procesar eventos JSON (formato: {"type": "...", ...}\n)
-          if (isEventStream || chunkStr.startsWith('{')) {
-            // Dividir por líneas y procesar cada evento JSON
-            const lines = chunkStr.split('\n').filter(line => line.trim())
-            
+          // Procesar eventos JSON solo cuando el endpoint responde event-stream.
+          if (isEventStream) {
+            eventBuffer += chunkStr
+            const lines = eventBuffer.split('\n')
+            eventBuffer = lines.pop() || ''
+
             for (const line of lines) {
+              if (!line.trim()) continue
               try {
                 const event = JSON.parse(line)
                 

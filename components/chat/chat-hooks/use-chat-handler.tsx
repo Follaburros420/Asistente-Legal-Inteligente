@@ -250,12 +250,6 @@ export const useChatHandler = () => {
         embeddingsProvider: "openai" as "openai" | "local"
       }
 
-      // Si chatSettings era null, actualizarlo en el contexto inmediatamente
-      if (!chatSettings) {
-        setChatSettings(effectiveChatSettings)
-        console.log('[ChatHandler] chatSettings inicializado:', effectiveChatSettings.model)
-      }
-
       // Buscar el modelo en la lista de modelos disponibles
       let modelData = [
         ...models.map(model => ({
@@ -284,10 +278,20 @@ export const useChatHandler = () => {
         }
       }
 
+      const resolvedChatSettings = {
+        ...effectiveChatSettings,
+        model: modelData.modelId as LLMID
+      }
+
+      if (chatSettings?.model !== resolvedChatSettings.model) {
+        setChatSettings(resolvedChatSettings)
+        console.log('[ChatHandler] chatSettings resuelto:', resolvedChatSettings.model)
+      }
+
       // Validar configuración (sin mostrar errores al usuario)
       try {
         validateChatSettings(
-          effectiveChatSettings,
+          resolvedChatSettings,
           modelData,
           profile,
           selectedWorkspace,
@@ -315,7 +319,7 @@ export const useChatHandler = () => {
           messageContent,
           newMessageFiles,
           chatFiles,
-          effectiveChatSettings.embeddingsProvider,
+          resolvedChatSettings.embeddingsProvider,
           sourceCount
         )
       }
@@ -324,7 +328,7 @@ export const useChatHandler = () => {
         createTempMessages(
           messageContent,
           chatMessages,
-          effectiveChatSettings,
+          resolvedChatSettings,
           b64Images,
           isRegeneration,
           setChatMessages,
@@ -343,7 +347,7 @@ export const useChatHandler = () => {
       })
 
       let payload: ChatPayload = {
-        chatSettings: effectiveChatSettings,
+        chatSettings: resolvedChatSettings,
         workspaceInstructions: selectedWorkspace!.instructions || "",
         chatMessages: messageHistoryForPayload,
         assistant: selectedAssistant || null,
@@ -392,7 +396,7 @@ export const useChatHandler = () => {
           generatedText = await handleLocalChat(
             payload,
             profile!,
-            effectiveChatSettings,
+            resolvedChatSettings,
             tempAssistantChatMessage,
             isRegeneration,
             newAbortController,
@@ -421,7 +425,7 @@ export const useChatHandler = () => {
 
       if (!currentChat) {
         currentChat = await handleCreateChat(
-          effectiveChatSettings,
+          resolvedChatSettings,
           profile!,
           selectedWorkspace!,
           messageContent,

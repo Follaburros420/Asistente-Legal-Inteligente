@@ -20,12 +20,16 @@ import {
   GUARANTEED_FALLBACKS
 } from "@/lib/langchain/config/models"
 import { checkSerperConfig } from "@/lib/tools/search/serper-legal-search"
-import { 
+import {
   buildSystemMessage, 
   analyzeQuery, 
   requiresSearch,
   getQueryMetadata 
 } from "@/lib/prompts/legal-core"
+import {
+  getLastUserMessage,
+  normalizeIncomingMessages
+} from "@/lib/chat/normalize-messages"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -35,14 +39,11 @@ export const maxDuration = 120
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface RequestBody {
-  chatSettings: {
+  chatSettings?: {
     model: string
     temperature?: number
   }
-  messages: Array<{
-    role: "system" | "user" | "assistant"
-    content: string
-  }>
+  messages?: unknown
   chatId?: string
   userId?: string
 }
@@ -86,11 +87,6 @@ Esquema JSON requerido:
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCIONES AUXILIARES
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function extractLastUserMessage(messages: Array<{ role: string; content: string }>): string {
-  const userMessages = messages.filter(m => m.role === 'user')
-  return userMessages[userMessages.length - 1]?.content || ""
-}
 
 function requiresLegalSearch(query: string): boolean {
   const legalKeywords = [
@@ -284,7 +280,12 @@ export async function POST(request: NextRequest) {
   console.log(`${'═'.repeat(80)}`)
 
   try {
-    const { chatSettings, messages, chatId, userId } = await request.json() as RequestBody
+    const body = await request.json() as RequestBody
+    const chatSettings = body.chatSettings ?? {
+      model: DEFAULT_MODEL,
+      temperature: 0.3
+    }
+    const normalizedMessages = normalizeIncomingMessages(body.messages)
 
     // Validar API Keys
     const openrouterApiKey = process.env.OPENROUTER_API_KEY
@@ -307,7 +308,14 @@ export async function POST(request: NextRequest) {
     })
 
     // Extraer consulta del usuario
-    const userQuery = extractLastUserMessage(messages)
+    const userQuery = getLastUserMessage(normalizedMessages)
+    if (!userQuery) {
+      return NextResponse.json(
+        { error: "No se recibió consulta del usuario" },
+        { status: 400 }
+      )
+    }
+
     const isLegalQuery = requiresLegalSearch(userQuery)
 
     // Detección de modo borrador
@@ -366,7 +374,9 @@ export async function POST(request: NextRequest) {
     // NO añadimos instrucciones visibles al usuario en su mensaje
     const conversationMessages = [
       systemMessage,
-      ...messages.slice(0, -1),
+      ...normalizedMessages
+        .filter(message => message.role !== "system")
+        .slice(0, -1),
       { role: "user" as const, content: userQuery }
     ]
 
