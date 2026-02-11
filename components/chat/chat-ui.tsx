@@ -42,7 +42,7 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     setSelectedTools
   } = useContext(ALIContext)
 
-  const { handleNewChat, handleFocusChatInput, handleSendMessage } = useChatHandler()
+  const { handleNewChat, handleFocusChatInput } = useChatHandler()
 
   const {
     messagesStartRef,
@@ -67,18 +67,6 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
       fetchData().then(() => {
         handleFocusChatInput()
         setLoading(false)
-
-        // Check for pending message from welcome screen
-        if (typeof window !== 'undefined') {
-          const pendingMessage = sessionStorage.getItem('pendingWelcomeMessage')
-          if (pendingMessage) {
-            sessionStorage.removeItem('pendingWelcomeMessage')
-            // Send the message after a brief delay to ensure chat is fully loaded
-            setTimeout(() => {
-              handleSendMessage(pendingMessage, [], false)
-            }, 300)
-          }
-        }
       })
     } else {
       setLoading(false)

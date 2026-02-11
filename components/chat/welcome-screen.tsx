@@ -107,32 +107,16 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
       return
     }
 
-    // Guardar el mensaje y mostrar animación
+    // Mostrar animación y limpiar input
     setSentMessage(message)
     setIsSending(true)
     setInputValue("")
 
-    // Guardar mensaje pendiente en sessionStorage para que ChatUI lo lea al montar
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('pendingWelcomeMessage', message)
-    }
-
-    // Esperar brevemente para la animación del orbe, luego navegar
-    setTimeout(async () => {
-      try {
-        await handleNewChat()
-        // El mensaje será enviado automáticamente por ChatUI al detectar pendingWelcomeMessage
-      } catch (e) {
-        console.error("Error al enviar mensaje:", e)
-        setIsSending(false)
-        setSentMessage("")
-        setInputValue(message)
-        // Limpiar sessionStorage si falla
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('pendingWelcomeMessage')
-        }
-      }
-    }, 600)
+    // Breve espera para la animación del orbe, luego enviar el mensaje directamente
+    // handleSendMessage se encarga de crear el chat cuando selectedChat es null
+    setTimeout(() => {
+      handleSendMessage(message, [], false)
+    }, 400)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
