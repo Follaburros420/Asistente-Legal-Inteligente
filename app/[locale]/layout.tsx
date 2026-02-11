@@ -68,7 +68,7 @@ export const metadata: Metadata = {
     description: APP_DESCRIPTION,
     images: [
       {
-        url: "/ali-og-image.png",
+        url: "/ALI compartir.png",
         width: 1200,
         height: 630,
         alt: "ALI - Inteligencia artificial con todas las de la ley"
@@ -82,7 +82,7 @@ export const metadata: Metadata = {
       template: APP_TITLE_TEMPLATE
     },
     description: APP_DESCRIPTION,
-    images: ["/ali-og-image.png"]
+    images: ["/ALI compartir.png"]
   }
 }
 
