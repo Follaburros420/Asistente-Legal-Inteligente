@@ -326,14 +326,13 @@ export async function POST(request: NextRequest) {
     const effectiveChatId = chatId || `temp-${Date.now()}`
     const agent = await getOrCreateAgent(effectiveChatId, modelId, temperature)
 
-    // Inyectar System Prompt si es un documento
-    // Nota: El agente de LangChain maneja su propio system prompt, 
-    // pero podemos prefijar la instrucción en el input o historial si es necesario.
-    // En este caso, modificaremos dinámicamente el comportamiento si detectamos draft.
+    // Construir input según tipo de consulta
     let inputMessage = lastUserMessage
+    
+    // Si es documento, añadir instrucciones especializadas
     if (isDraft) {
-      const { DOCUMENT_SYSTEM_PROMPT } = await import("@/lib/prompts/document-system-prompt")
-      inputMessage = `${DOCUMENT_SYSTEM_PROMPT}\n\nUSUARIO: ${lastUserMessage}`
+      const { SPECIALIZED_PROMPTS } = await import("@/lib/prompts/legal-core")
+      inputMessage = `${SPECIALIZED_PROMPTS.documentDraft}\n\nSOLICITUD DEL USUARIO: ${lastUserMessage}`
     }
 
     // Convertir historial (excluyendo el último mensaje del usuario)

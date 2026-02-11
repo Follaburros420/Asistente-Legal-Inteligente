@@ -22,10 +22,10 @@ interface Suggestion {
 }
 
 const DEFAULT_PLACEHOLDERS = [
-  "¿Cuáles son los requisitos para una demanda?",
-  "Redacta una tutela por violación al debido proceso",
-  "Busca jurisprudencia sobre contratos laborales",
-  "Analiza este documento legal"
+  "¿Qué dice el artículo 25 de la Constitución?",
+  "Requisitos para una tutela",
+  "Consulta sobre liquidación laboral",
+  "¿Qué es la prescripción adquisitiva?"
 ]
 
 const LEGAL_WRITING_PLACEHOLDERS = [
@@ -289,9 +289,16 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
           <h1 className="text-center text-2xl md:text-3xl lg:text-4xl mb-6 text-foreground font-light">
             {isLegalWritingMode
               ? "¿Qué documento necesitas redactar?"
-              : "¿En qué puedo ayudarte hoy?"
+              : "ALI - Asistente Legal Inteligente"
             }
           </h1>
+          
+          {/* Subtítulo */}
+          {!isLegalWritingMode && (
+            <p className="text-center text-muted-foreground mb-8 text-sm md:text-base">
+              Especializado en derecho colombiano
+            </p>
+          )}
 
           {/* Sugerencias para modo legal-writing */}
           {isLegalWritingMode && (

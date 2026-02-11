@@ -20,7 +20,12 @@ import {
   GUARANTEED_FALLBACKS
 } from "@/lib/langchain/config/models"
 import { checkSerperConfig } from "@/lib/tools/search/serper-legal-search"
-import { LEGAL_AGENT_SYSTEM_PROMPT } from "@/lib/langchain/config/prompts"
+import { 
+  buildSystemMessage, 
+  analyzeQuery, 
+  requiresSearch,
+  getQueryMetadata 
+} from "@/lib/prompts/legal-core"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -332,27 +337,37 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 Consulta legal: ${isLegalQuery}`)
     console.log(`📄 Modo borrador: ${isDraft}`)
 
-    // Construir mensajes
-    let systemContent = LEGAL_AGENT_SYSTEM_PROMPT
-    if (isDraft) {
-      systemContent += DRAFT_MODE_INSTRUCTIONS
-    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SISTEMA DE PROMPTS CORE v3.0 - Análisis y construcción adaptativa
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    // Analizar consulta para determinar complejidad y requisitos
+    const queryAnalysis = analyzeQuery(userQuery)
+    const queryMetadata = getQueryMetadata(userQuery)
+    
+    console.log(`🎯 Categoría: ${queryAnalysis.category}`)
+    console.log(`📊 Complejidad: ${queryAnalysis.complexity}`)
+    console.log(`🔍 Requiere búsqueda: ${queryAnalysis.requiresSearch}`)
+
+    // Construir system message óptimo para esta consulta específica
+    const systemContent = buildSystemMessage({
+      query: userQuery,
+      isDocumentDraft: isDraft,
+      isJurisprudenceSearch: queryAnalysis.category === 'jurisprudence',
+      isCaseAnalysis: queryAnalysis.category === 'case_analysis'
+    })
 
     const systemMessage = {
       role: "system" as const,
       content: systemContent
     }
 
-    // Agregar instrucción para forzar búsqueda en consultas legales
-    let userMessageContent = userQuery
-    if (!isDraft && isLegalQuery) {
-      userMessageContent += `\n\n[INSTRUCCIÓN: Esta es una consulta legal. SI es necesario verificar normas o jurisprudencia, usa search_legal_official.]`
-    }
-
+    // Construir mensajes de conversación
+    // NO añadimos instrucciones visibles al usuario en su mensaje
     const conversationMessages = [
       systemMessage,
       ...messages.slice(0, -1),
-      { role: "user" as const, content: userMessageContent }
+      { role: "user" as const, content: userQuery }
     ]
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -373,7 +388,7 @@ export async function POST(request: NextRequest) {
         model: modelName,
         messages: currentMessages,
         tools: shouldForceJSON ? undefined : LEGAL_TOOLS_DEFINITIONS,
-        tool_choice: shouldForceJSON ? undefined : (iteration === 0 && isLegalQuery ? "auto" : "auto"),
+        tool_choice: shouldForceJSON ? undefined : (iteration === 0 && queryAnalysis.requiresSearch ? "auto" : "auto"),
         temperature: chatSettings.temperature || 0.3,
         max_tokens: isDraft ? 4000 : 4000,
         ...(shouldForceJSON ? { response_format: { type: "json_object" } } : {})
@@ -543,7 +558,12 @@ export async function GET() {
   return NextResponse.json({
     status: "ok",
     endpoint: "Legal Agent",
-    version: "2.1",
+    version: "3.0",
+    promptSystem: {
+      version: "3.0",
+      type: "core-unified",
+      features: ["zero-internal-exposure", "adaptive-complexity", "verified-sources-only"]
+    },
     models: {
       primary: "google/gemini-3-pro-preview",
       fallbacks: ["google/gemini-1.5-pro-latest", "google/gemini-1.5-flash"]

@@ -24,7 +24,7 @@ import {
   DEFAULT_MODEL,
   SIMPLE_TASK_MODEL
 } from "../config/models"
-import { LEGAL_AGENT_SYSTEM_PROMPT } from "../config/prompts"
+import { SYSTEM_PROMPT as LEGAL_AGENT_SYSTEM_PROMPT } from "@/lib/prompts/legal-core"
 import { 
   searchLegalColombia, 
   searchJurisprudencia, 
