@@ -31,12 +31,21 @@ export default async function Login({
     ? `/${locale}/register?redirect=${encodeURIComponent(redirectPath)}`
     : `/${locale}/register`
   const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
+  let supabase = null as ReturnType<typeof createClient> | null
+  let user: { id: string; email?: string | null; app_metadata?: Record<string, unknown> } | null = null
+  let authError: unknown = null
 
-  // Use getUser() for secure authentication
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  try {
+    supabase = createClient(cookieStore)
+    const authResult = await supabase.auth.getUser()
+    user = authResult.data.user as any
+    authError = authResult.error
+  } catch (error) {
+    authError = error
+    console.error("[login/page] Supabase auth check failed:", error)
+  }
 
-  if (!authError && user) {
+  if (!authError && user && supabase) {
     // If user is coming from an invite link, let them proceed to accept it even without subscription/home workspace
     if (redirectPath.startsWith("/invite/")) {
       return redirect(redirectPath)

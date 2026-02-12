@@ -1,6 +1,9 @@
 import { getEnvVar } from "@/lib/env/runtime-env"
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
+
+let warnedInvalidSupabaseMiddlewareConfig = false
 
 export const createClient = (request: NextRequest) => {
   // Create an unmodified response
@@ -10,18 +13,28 @@ export const createClient = (request: NextRequest) => {
     }
   })
 
-  const url = getEnvVar('NEXT_PUBLIC_SUPABASE_URL')
+  const rawUrl = getEnvVar('NEXT_PUBLIC_SUPABASE_URL')
   const anonKey = getEnvVar('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  const normalized = validateAndNormalizeSupabaseUrl(rawUrl)
 
   // During build, return a minimal response if env vars are not available
-  if (!url || !anonKey) {
+  if (!rawUrl || !anonKey || !normalized.ok) {
+    if (!warnedInvalidSupabaseMiddlewareConfig) {
+      warnedInvalidSupabaseMiddlewareConfig = true
+      console.error("[middleware] Supabase config invalida:", {
+        hasUrl: !!rawUrl,
+        hasAnonKey: !!anonKey,
+        urlValidation: normalized.ok ? "ok" : normalized.reason
+      })
+    }
+
     return {
       supabase: null as any,
       response
     }
   }
 
-  const supabase = createServerClient(url, anonKey, {
+  const supabase = createServerClient(normalized.url, anonKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll()

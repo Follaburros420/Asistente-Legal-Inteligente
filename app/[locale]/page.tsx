@@ -50,15 +50,25 @@ export default async function HomePage({ params }: PageProps) {
   }
 
   const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
-  
-  // Use getUser() for secure authentication
-  const { data: { user }, error } = await supabase.auth.getUser()
+  let user: { id: string; email?: string | null } | null = null
+  let authError: unknown = null
+
+  try {
+    const supabase = createClient(cookieStore)
+    const result = await supabase.auth.getUser()
+    user = result.data.user as any
+    authError = result.error
+  } catch (error) {
+    authError = error
+    console.error("[home/page] Supabase auth check failed:", error)
+  }
 
   // Si no hay usuario autenticado, mostrar landing
-  if (error || !user) {
+  if (authError || !user) {
     redirect(`/${locale}/landing`)
   }
+
+  const supabase = createClient(cookieStore)
 
   // Usuario autenticado - verificar workspace
   const { data: homeWorkspace } = await supabase
