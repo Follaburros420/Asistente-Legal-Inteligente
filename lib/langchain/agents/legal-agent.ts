@@ -299,7 +299,7 @@ export class LegalAgent {
       verbose: this.config.verbose,
       returnIntermediateSteps: true,
       handleParsingErrors: true,
-      earlyStoppingMethod: "generate",
+      earlyStoppingMethod: "force",
     })
   }
 
@@ -629,7 +629,7 @@ export async function createSmartLegalAgent(): Promise<LegalAgent> {
  */
 export async function createComplexLegalAgent(): Promise<LegalAgent> {
   return LegalAgent.create({
-    modelId: 'moonshotai/kimi-k2-thinking',
+    modelId: 'moonshotai/kimi-k2.5',
     temperature: 0.2,
     maxIterations: 10,
     verbose: process.env.NODE_ENV === 'development'

@@ -8,7 +8,6 @@ import { toast } from "sonner"
 import { M1_MODEL_ID, M1_PRO_MODEL_ID, M1_SMALL_MODEL_ID, normalizeMModel } from "@/lib/models/m1-models"
 
 // Internal model IDs - not exposed to users
-// M1 y M1 Pro ambos usan Gemini 3 Pro Preview según configuración
 export const M1_SMALL_MODEL = M1_SMALL_MODEL_ID
 export const M1_MODEL = M1_MODEL_ID
 export const M1_PRO_MODEL = M1_PRO_MODEL_ID

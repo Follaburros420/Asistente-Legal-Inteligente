@@ -1,6 +1,6 @@
 export const M1_SMALL_MODEL_ID = "openai/gpt-oss-120b"
 export const M1_MODEL_ID = "deepseek/deepseek-v3.2"
-export const M1_PRO_MODEL_ID = "moonshotai/kimi-k2-thinking"
+export const M1_PRO_MODEL_ID = "moonshotai/kimi-k2.5"
 
 export const ALLOWED_M_MODELS = [
   M1_SMALL_MODEL_ID,
@@ -16,6 +16,7 @@ const LEGACY_MODEL_ALIASES: Record<string, AllowedMModel> = {
   "google/gemini-1.5-pro-latest": M1_MODEL_ID,
   "google/gemini-1.5-flash": M1_SMALL_MODEL_ID,
   "alibaba/tongyi-deepresearch-30b-a3b": M1_MODEL_ID,
+  "moonshotai/kimi-k2-thinking": M1_PRO_MODEL_ID,
   "openai/gpt-oss-120b:free": M1_SMALL_MODEL_ID,
   "openai/gpt-oss-120b:exacto": M1_SMALL_MODEL_ID,
   "deepseek/deepseek-v3.2-exp": M1_MODEL_ID,

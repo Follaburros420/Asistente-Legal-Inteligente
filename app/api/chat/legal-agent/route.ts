@@ -2,7 +2,7 @@
  * Endpoint del Agente Legal con Tool Calling
  *
  * Usa:
- * - Gemini 3 Pro Preview (vía OpenRouter) como modelo principal
+ * - Solo modelos M vía OpenRouter
  * - Serper como única herramienta de búsqueda web
  */
 
@@ -21,6 +21,8 @@ import {
 import { checkSerperConfig } from "@/lib/tools/search/serper-legal-search"
 import { LEGAL_AGENT_SYSTEM_PROMPT } from "@/lib/langchain/config/prompts"
 import {
+  ALLOWED_M_MODELS,
+  isKnownMModelInput,
   M1_MODEL_ID,
   M1_PRO_MODEL_ID,
   M1_SMALL_MODEL_ID,
@@ -311,6 +313,18 @@ export async function POST(request: NextRequest) {
   try {
     const { chatSettings, messages, chatId, userId } = await request.json() as RequestBody
 
+    const requestedModel = chatSettings?.model
+    if (requestedModel && !isKnownMModelInput(requestedModel)) {
+      return NextResponse.json(
+        {
+          error: "Modelo no permitido para este asistente",
+          code: "MODEL_NOT_ALLOWED",
+          allowedModels: ALLOWED_M_MODELS
+        },
+        { status: 400 }
+      )
+    }
+
     // Validar API Keys
     const openrouterApiKey = process.env.OPENROUTER_API_KEY
     if (!openrouterApiKey) {
@@ -354,7 +368,7 @@ export async function POST(request: NextRequest) {
     const { model: modelName, usedFallback, originalModel } = await selectModelWithFallback(
       client,
       userQuery,
-      chatSettings.model
+      requestedModel
     )
 
     const queryPreview = userQuery

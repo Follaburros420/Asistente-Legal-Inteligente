@@ -4,13 +4,13 @@
  * Este endpoint usa LangChain para implementar un agente con tool calling nativo.
  *
  * Características:
- * - Soporta modelos Google Gemini vía OpenRouter
+ * - Soporta solo modelos M vía OpenRouter
  * - Tool calling nativo (el modelo decide cuándo usar herramientas)
  * - Streaming REAL de respuestas y razonamiento
  * - Manejo de historial de conversación
  *
  * Modelos recomendados:
- * - moonshotai/kimi-k2-thinking: Razonamiento avanzado (M1 Pro)
+ * - moonshotai/kimi-k2.5: Razonamiento avanzado (M1 Pro)
  * - deepseek/deepseek-v3.2: Balance general (M1)
  * - openai/gpt-oss-120b: Rapido y eficiente (M1 Small)
  *
@@ -124,7 +124,10 @@ function normalizeStatusTopic(value: unknown): string {
   if (typeof value !== "string") return ""
   return value
     .replace(/\s+/g, " ")
-    .replace(/\b(serper|api|tool|herramienta)\b/gi, "")
+    .replace(/\b(serper|api|tool|herramienta|llamada)\b/gi, "")
+    .replace(/site:[^\s]+/gi, "")
+    .replace(/\b(and|or)\b/gi, " ")
+    .replace(/[{}[\]"`]+/g, "")
     .trim()
     .slice(0, 90)
 }
@@ -216,9 +219,17 @@ function sanitizeFinalOutput(text: string): string {
     .map(line => line.trim())
     .filter(Boolean)
     .filter(line => !/^\**\s*(think|análisis interno|razonamiento interno)\s*[:\s]/i.test(line))
+    .filter(line => !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(line))
     .filter(
       line =>
-        !/^\**\s*(ok|listo|respuesta|respuesta final|procedo|nota mental|fin del pensamiento)\s*[:.]?\s*\**$/i.test(
+        !/^(?:\[.*?\]\s*)?(?:tool|tool calls|query optimizada|serper|input|iteración|modelo|fuentes|respuesta completada)\s*[:\-]/i.test(
+          line
+        )
+    )
+    .filter(line => !/^(?:═|─){5,}$/.test(line))
+    .filter(
+      line =>
+        !/^\**\s*(ok|listo|respuesta|respuesta final|procedo|nota mental|fin del pensamiento|fin|adelante)\s*[:.]?\s*\**$/i.test(
           line
         )
     )
@@ -230,10 +241,13 @@ function sanitizeFinalOutput(text: string): string {
     )
 
   const deduped: string[] = []
+  const seenKeys = new Set<string>()
   for (const line of lines) {
-    if (deduped[deduped.length - 1] !== line) {
-      deduped.push(line)
-    }
+    const key = line.toLowerCase().replace(/[^a-z0-9áéíóúñü]+/gi, " ").trim()
+    if (!key) continue
+    if (seenKeys.has(key) && key.length < 80) continue
+    seenKeys.add(key)
+    deduped.push(line)
   }
 
   return deduped.join("\n").replace(/\n{3,}/g, "\n\n").trim()
@@ -529,6 +543,7 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         let isClosed = false
+        let heartbeat: NodeJS.Timeout | null = null
 
         // Helper para emitir eventos de forma segura
         const emit = (event: object) => {
@@ -542,6 +557,10 @@ export async function POST(request: NextRequest) {
 
         const safeClose = () => {
           if (isClosed) return
+          if (heartbeat) {
+            clearInterval(heartbeat)
+            heartbeat = null
+          }
           isClosed = true
           try {
             controller.close()
@@ -558,6 +577,29 @@ export async function POST(request: NextRequest) {
             progress: 5,
             message: "Preparando contexto legal"
           })
+          emit({
+            type: "status",
+            phase: "investigating",
+            progress: 15,
+            message: "Analizando el alcance de la consulta"
+          })
+
+          const heartbeatMessages = [
+            "Investigando normas y precedentes relevantes",
+            "Contrastando fuentes oficiales y vigentes",
+            "Verificando consistencia jurídica de los hallazgos"
+          ]
+          let heartbeatIndex = 0
+          heartbeat = setInterval(() => {
+            if (isClosed) return
+            emit({
+              type: "status",
+              phase: "investigating",
+              progress: Math.min(70, 20 + heartbeatIndex * 8),
+              message: heartbeatMessages[Math.min(heartbeatIndex, heartbeatMessages.length - 1)]
+            })
+            heartbeatIndex = Math.min(heartbeatIndex + 1, heartbeatMessages.length - 1)
+          }, 2500)
 
           const callbackHandler = new StreamingCallbackHandler(emit)
 
@@ -582,25 +624,9 @@ export async function POST(request: NextRequest) {
             })
           }
 
-          // Emitir pasos intermedios como razonamiento
-          if (result.intermediateSteps && result.intermediateSteps.length > 0) {
-            for (const step of result.intermediateSteps) {
-              if (step.action?.tool) {
-                const toolName = String(step.action.tool)
-                emit({
-                  type: "tool_start",
-                  label: TOOL_LABELS[toolName] || "Investigando fuentes legales",
-                  progress: 60
-                })
-              }
-              if (step.observation) {
-                emit({
-                  type: "tool_end",
-                  message: "Fuentes contrastadas",
-                  progress: 70
-                })
-              }
-            }
+          if (heartbeat) {
+            clearInterval(heartbeat)
+            heartbeat = null
           }
 
           // Emitir fin del razonamiento
@@ -647,7 +673,7 @@ export async function POST(request: NextRequest) {
             }
           } else {
             // Limpieza de formato normal
-            cleanOutput = sanitizeFinalOutput(
+            const sanitizedOutput = sanitizeFinalOutput(
               cleanOutput
               .replace(/\*{0,2}Fuentes consultadas\*{0,2}\s*\n+/gi, '')
               .replace(/\d+\s*referencias?\s*\n+/gi, '')
@@ -657,6 +683,7 @@ export async function POST(request: NextRequest) {
               .replace(/\n{3,}/g, '\n\n')
               .trim()
             )
+            cleanOutput = sanitizedOutput || cleanOutput.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
           }
 
           // Emitir respuesta token por token (streaming real)
@@ -723,7 +750,6 @@ export async function POST(request: NextRequest) {
             metadata: {
               model: modelId,
               processingTime: processingTime + 's',
-              toolsUsed: result.toolsUsed || [],
               sourcesCount: mergedSources.length
             }
           })
@@ -731,6 +757,10 @@ export async function POST(request: NextRequest) {
           safeClose()
 
         } catch (error: any) {
+          if (heartbeat) {
+            clearInterval(heartbeat)
+            heartbeat = null
+          }
 
           // Mensaje específico para error de max iterations
           let errorMessage = 'Hubo un error procesando tu consulta. Por favor, intenta de nuevo.'
@@ -756,7 +786,9 @@ export async function POST(request: NextRequest) {
         'Transfer-Encoding': 'chunked',
         'X-Model-Used': modelId,
         'X-Streaming': 'true',
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
       }
     })
 

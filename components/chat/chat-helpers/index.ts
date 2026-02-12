@@ -526,7 +526,7 @@ export const processResponse = async (
           break
 
         case 'thinking_done':
-          setToolInUse("none")
+          pushProgressLine("Redactando respuesta final")
           break
 
         case 'tool_start':
