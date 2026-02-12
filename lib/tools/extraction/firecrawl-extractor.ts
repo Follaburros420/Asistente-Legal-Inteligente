@@ -3,12 +3,11 @@
  * Extracción avanzada de contenido web con soporte para PDFs y JavaScript
  */
 
-import FirecrawlApp from '@mendable/firecrawl-js'
+const FIRECRAWL_API_BASE_URL =
+  process.env.FIRECRAWL_API_BASE_URL?.replace(/\/+$/, "") || "https://api.firecrawl.dev"
 
-// Inicializar Firecrawl con API key
-const getFirecrawlClient = () => {
-  const apiKey = process.env.FIRECRAWL_API_KEY || 'fc-eb5dbfa5b2384e8eb5fac8218b4c66fa'
-  return new FirecrawlApp({ apiKey })
+function getFirecrawlApiKey(): string | null {
+  return process.env.FIRECRAWL_API_KEY || null
 }
 
 /**
@@ -25,9 +24,16 @@ export async function extractWithFirecrawl(url: string): Promise<{
   try {
     console.log(`🔥 Firecrawl: Extrayendo contenido de ${url}`)
 
-    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY || 'fc-eb5dbfa5b2384e8eb5fac8218b4c66fa'
+    const firecrawlApiKey = getFirecrawlApiKey()
+    if (!firecrawlApiKey) {
+      return {
+        success: false,
+        content: "",
+        error: "FIRECRAWL_API_KEY no está configurada"
+      }
+    }
     
-    const response = await fetch("http://104.155.176.60:3002/v2/scrape", {
+    const response = await fetch(`${FIRECRAWL_API_BASE_URL}/v2/scrape`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -180,9 +186,16 @@ export async function searchWithFirecrawl(query: string, numResults: number = 5)
   try {
     console.log(`🔍 Firecrawl v2 Search: "${query}"`)
 
-    const firecrawlApiKey = process.env.FIRECRAWL_API_KEY || 'fc-eb5dbfa5b2384e8eb5fac8218b4c66fa'
+    const firecrawlApiKey = getFirecrawlApiKey()
+    if (!firecrawlApiKey) {
+      return {
+        success: false,
+        results: [],
+        error: "FIRECRAWL_API_KEY no está configurada"
+      }
+    }
     
-    const response = await fetch("http://104.155.176.60:3002/v2/search", {
+    const response = await fetch(`${FIRECRAWL_API_BASE_URL}/v2/search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

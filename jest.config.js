@@ -42,7 +42,7 @@ module.exports = {
   
   // Transformación de archivos
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
     '^.+\\.(js|jsx)$': 'babel-jest'
   },
   
@@ -95,12 +95,6 @@ module.exports = {
   errorOnDeprecated: true,
   
   // Configuración de globals
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json'
-    }
-  },
-  
   // Configuración de transformación de archivos estáticos
   transformIgnorePatterns: [
     '/node_modules/(?!(some-es6-module)/)'

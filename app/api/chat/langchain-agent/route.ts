@@ -29,7 +29,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages"
 import { LegalAgent, RESEARCH_MODELS } from "@/lib/langchain"
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base"
-import { getSupabaseServer } from '@/lib/supabase/server-client'
+import {
+  extractLastUserMessage,
+  extractMessageText as extractPayloadText,
+  parseAgentChatRequest,
+  type AgentChatRequest
+} from "@/lib/server/chat-payload"
+import { createRequestContext, withRequestIdHeaders } from "@/lib/server/request-context"
+import { clampTextForModel, toWindowedTextHistory, type WindowedTextMessage } from "@/lib/server/chat-history-window"
+import { TimeoutError, withTimeout } from "@/lib/server/async-timeout"
+import { requireChatAuthAndRateLimit } from "@/lib/server/chat-auth-guard"
 import { canContinueChat, canUseModel, incrementModelUsage } from '@/lib/billing/plan-access'
 import { incrementTokenUsage } from '@/db/usage-tracking'
 import { detectDraftIntent } from "@/lib/draft-detection"
@@ -46,22 +55,27 @@ import {
 export const runtime = "nodejs"
 export const maxDuration = 180 // 3 minutos para investigación completa
 
+const MAX_HISTORY_MESSAGES = 14
+const MAX_HISTORY_TOTAL_CHARS = 12_000
+const MAX_HISTORY_MESSAGE_CHARS = 1_800
+const MAX_USER_QUERY_CHARS = 6_000
+const AGENT_INVOKE_TIMEOUT_MS = 75_000
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // INTERFACES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface RequestBody {
-  chatSettings: {
-    model: string
-    temperature?: number
-  }
-  messages: Array<{
-    role: string
-    content?: unknown
-    parts?: unknown
-  }>
-  chatId?: string
-  userId?: string
+type RequestBody = AgentChatRequest
+
+function jsonWithRequestId(
+  requestId: string,
+  payload: Record<string, unknown>,
+  status: number
+) {
+  return NextResponse.json(payload, {
+    status,
+    headers: withRequestIdHeaders(undefined, requestId)
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -316,44 +330,11 @@ class StreamingCallbackHandler extends BaseCallbackHandler {
 // FUNCIONES AUXILIARES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Convierte mensajes del formato del chat al formato de LangChain
- */
-function extractMessageText(message: RequestBody["messages"][number]): string {
-  if (typeof message.content === "string") {
-    return message.content
-  }
-
-  if (Array.isArray(message.content)) {
-    return message.content
-      .map((part: any) =>
-        typeof part === "string"
-          ? part
-          : typeof part?.text === "string"
-            ? part.text
-            : ""
-      )
-      .filter(Boolean)
-      .join("\n")
-      .trim()
-  }
-
-  if (Array.isArray(message.parts)) {
-    return message.parts
-      .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
-      .filter(Boolean)
-      .join("\n")
-      .trim()
-  }
-
-  return ""
-}
-
-function convertMessages(messages: RequestBody['messages']): BaseMessage[] {
+function convertMessages(messages: WindowedTextMessage[]): BaseMessage[] {
   return messages
     .filter(m => m.role !== 'system') // El system prompt lo maneja el agente
     .map(msg => {
-      const text = extractMessageText(msg)
+      const text = msg.content
       if (msg.role === 'user') {
         return new HumanMessage(text)
       } else {
@@ -369,9 +350,10 @@ async function getOrCreateAgent(
   chatId: string,
   modelId: string,
   temperature: number,
-  maxIterations: number
+  maxIterations: number,
+  userScope: string
 ): Promise<LegalAgent> {
-  const cacheKey = `${chatId}-${modelId}-${maxIterations}`
+  const cacheKey = `${userScope}:${chatId}-${modelId}-${maxIterations}`
 
   const cached = agentCache.get(cacheKey)
   if (cached) {
@@ -446,6 +428,7 @@ function buildSearchDisciplineInstruction(userQuery: string): string {
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+  const context = createRequestContext(request, "api/chat/langchain-agent")
 
   // Iniciar cleanup si no está corriendo
   if (!cleanupInterval) {
@@ -453,49 +436,54 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json() as RequestBody
-    const { chatSettings, messages, chatId, userId } = body
+    const rawBody = await request.json().catch(() => null)
+    const parsed = parseAgentChatRequest(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Payload invalido: chatSettings.model y messages son requeridos" },
+        {
+          status: 400,
+          headers: withRequestIdHeaders(undefined, context.requestId)
+        }
+      )
+    }
+    const { chatSettings, messages, chatId } = parsed.data
+    const guard = await requireChatAuthAndRateLimit()
+    if (!guard.ok) {
+      guard.response.headers.set("X-Request-Id", context.requestId)
+      return guard.response
+    }
+    const effectiveUserId = guard.userId
+
+    const requestedModel = chatSettings.model
+    if (requestedModel && !isKnownMModelInput(requestedModel)) {
+      return jsonWithRequestId(
+        context.requestId,
+        {
+          error: "Modelo no permitido para este asistente",
+          code: "MODEL_NOT_ALLOWED",
+          allowedModels: ALLOWED_M_MODELS
+        },
+        400
+      )
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // BILLING CHECK: Verify user can continue chatting
     // ═══════════════════════════════════════════════════════════════════════
-    let effectiveUserId = userId
-
-    // If no userId provided, try to get from auth header
-    if (!effectiveUserId) {
-      const authHeader = request.headers.get('Authorization')
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1]
-        const supabase = getSupabaseServer()
-        const { data: { user } } = await supabase.auth.getUser(token)
-        effectiveUserId = user?.id
-      }
-    }
-
     // Check if billing is enabled and user has access
-    if (process.env.NEXT_PUBLIC_BILLING_ENABLED === 'true' && effectiveUserId) {
+    if (process.env.NEXT_PUBLIC_BILLING_ENABLED === 'true') {
       const canChat = await canContinueChat(effectiveUserId)
 
       if (!canChat.allowed) {
-        return NextResponse.json(
+        return jsonWithRequestId(
+          context.requestId,
           {
             error: canChat.reason || "Has alcanzado el límite de tu plan",
             code: "USAGE_LIMIT_EXCEEDED",
             needsUpgrade: true
           },
-          { status: 402 } // Payment Required
-        )
-      }
-
-      const requestedModel = chatSettings.model
-      if (requestedModel && !isKnownMModelInput(requestedModel)) {
-        return NextResponse.json(
-          {
-            error: "Modelo no permitido para este asistente",
-            code: "MODEL_NOT_ALLOWED",
-            allowedModels: ALLOWED_M_MODELS
-          },
-          { status: 400 }
+          402 // Payment Required
         )
       }
 
@@ -504,7 +492,8 @@ export async function POST(request: NextRequest) {
       const modelCheck = await canUseModel(effectiveUserId, modelId)
 
       if (!modelCheck.allowed) {
-        return NextResponse.json(
+        return jsonWithRequestId(
+          context.requestId,
           {
             error: modelCheck.reason || "Has alcanzado el límite de uso de este modelo",
             code: "MODEL_LIMIT_EXCEEDED",
@@ -512,7 +501,7 @@ export async function POST(request: NextRequest) {
             suggestModel: M1_SMALL_MODEL_ID,
             usage: modelCheck.usage
           },
-          { status: 402 } // Payment Required
+          402 // Payment Required
         )
       }
     }
@@ -520,21 +509,10 @@ export async function POST(request: NextRequest) {
     // Validar API Key
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) {
-      return NextResponse.json(
+      return jsonWithRequestId(
+        context.requestId,
         { error: "OPENROUTER_API_KEY no configurada" },
-        { status: 500 }
-      )
-    }
-
-    const requestedModel = chatSettings.model
-    if (requestedModel && !isKnownMModelInput(requestedModel)) {
-      return NextResponse.json(
-        {
-          error: "Modelo no permitido para este asistente",
-          code: "MODEL_NOT_ALLOWED",
-          allowedModels: ALLOWED_M_MODELS
-        },
-        { status: 400 }
+        500
       )
     }
 
@@ -542,18 +520,20 @@ export async function POST(request: NextRequest) {
     const modelId = normalizeMModel(requestedModel || M1_MODEL_ID)
     const temperature = chatSettings.temperature ?? 0.3
 
-    // Extraer el último mensaje del usuario
-    const userMessages = messages.filter(m => m.role === 'user')
-    let lastUserMessage = extractMessageText(userMessages[userMessages.length - 1])
-
+    // Extraer el ultimo mensaje del usuario y limitar su tamano
+    const lastUserMessage = clampTextForModel(
+      extractLastUserMessage(messages),
+      MAX_USER_QUERY_CHARS
+    )
     if (!lastUserMessage) {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const candidate = extractMessageText(messages[i])
-        if (candidate.trim().length > 0) {
-          lastUserMessage = candidate
-          break
-        }
-      }
+      return jsonWithRequestId(
+        context.requestId,
+        {
+          error: "No se encontro texto valido en el mensaje del usuario",
+          code: "EMPTY_USER_QUERY"
+        },
+        400
+      )
     }
 
     // Detección de draft: heurística + clasificación LLM
@@ -575,7 +555,7 @@ export async function POST(request: NextRequest) {
 
     // Obtener o crear agente
     const effectiveChatId = chatId || `temp-${Date.now()}`
-    const agent = await getOrCreateAgent(effectiveChatId, modelId, temperature, maxIterations)
+    const agent = await getOrCreateAgent(effectiveChatId, modelId, temperature, maxIterations, effectiveUserId)
 
     // Inyectar System Prompt si es un documento
     // Nota: El agente de LangChain maneja su propio system prompt, 
@@ -589,8 +569,13 @@ export async function POST(request: NextRequest) {
       inputMessage = `${lastUserMessage}${buildSearchDisciplineInstruction(lastUserMessage)}`
     }
 
-    // Convertir historial (excluyendo el último mensaje del usuario)
-    const chatHistory = convertMessages(messages.slice(0, -1))
+    // Convertir historial en ventana acotada (excluyendo el ultimo mensaje del usuario)
+    const chatHistoryWindow = toWindowedTextHistory(messages.slice(0, -1), {
+      maxMessages: MAX_HISTORY_MESSAGES,
+      maxTotalChars: MAX_HISTORY_TOTAL_CHARS,
+      maxMessageChars: MAX_HISTORY_MESSAGE_CHARS
+    })
+    const chatHistory = convertMessages(chatHistoryWindow)
 
     // Crear stream de respuesta con eventos JSON
     const encoder = new TextEncoder()
@@ -659,14 +644,18 @@ export async function POST(request: NextRequest) {
           const callbackHandler = new StreamingCallbackHandler(emit)
 
           // Ejecutar el agente
-          const result = await agent.invoke(
-            {
-              input: inputMessage,
-              chatHistory
-            },
-            {
-              callbacks: [callbackHandler]
-            }
+          const result = await withTimeout(
+            agent.invoke(
+              {
+                input: inputMessage,
+                chatHistory
+              },
+              {
+                callbacks: [callbackHandler]
+              }
+            ),
+            AGENT_INVOKE_TIMEOUT_MS,
+            "Timeout ejecutando el agente legal"
           )
 
           // Emitir información sobre herramientas usadas
@@ -734,7 +723,6 @@ export async function POST(request: NextRequest) {
               .replace(/\d+\s*referencias?\s*\n+/gi, '')
               .replace(/\n+---\n*\*{0,2}Fuentes?\s*(consultadas|legales?)?\*{0,2}:?\s*\n*$/gi, '')
               .replace(/\n+\*{0,2}Fuentes?\s*(consultadas|legales?)?\*{0,2}:?\s*\n*$/gi, '')
-              .replace(/\n*\*{0,2}(Advertencia|Nota importante|Importante|Disclaimer):?\*{0,2}[^]*?(consultar?|abogado|profesional|asesor)[^]*?\.?\n*/gi, '\n')
               .replace(/\n{3,}/g, '\n\n')
               .trim()
             )
@@ -747,9 +735,6 @@ export async function POST(request: NextRequest) {
           for (let i = 0; i < words.length; i++) {
             const word = words[i] + (i < words.length - 1 ? ' ' : '')
             emit({ type: 'token', content: word })
-
-            // Pequeña pausa para efecto de streaming visual
-            await new Promise(resolve => setTimeout(resolve, 10))
           }
 
           // Emitir fuentes si existen
@@ -769,7 +754,7 @@ export async function POST(request: NextRequest) {
             const outputTokens = Math.ceil(cleanOutput.length / 4)
             // Input tokens: sum of all message characters
             const inputTokens = Math.ceil(
-              messages.reduce((acc, m) => acc + extractMessageText(m).length, 0) / 4
+              messages.reduce((acc, m) => acc + extractPayloadText(m).length, 0) / 4
             )
 
             try {
@@ -821,7 +806,11 @@ export async function POST(request: NextRequest) {
           // Mensaje específico para error de max iterations
           let errorMessage = 'Hubo un error procesando tu consulta. Por favor, intenta de nuevo.'
 
-          if (error.message?.includes('max iterations') || error.message?.includes('Agent stopped')) {
+          if (error instanceof TimeoutError || error?.name === "TimeoutError") {
+            errorMessage = 'La consulta tomo demasiado tiempo. Intenta con una pregunta mas acotada.'
+            emit({ type: 'token', content: errorMessage })
+            emit({ type: 'done', metadata: { partial: true, timeout: true } })
+          } else if (error.message?.includes('max iterations') || error.message?.includes('Agent stopped')) {
             errorMessage = 'La consulta requiere más investigación de la que puedo completar en este momento. ' +
               'Te recomiendo dividir tu pregunta en consultas más específicas.'
             // Emitir como respuesta parcial, no como error
@@ -837,7 +826,8 @@ export async function POST(request: NextRequest) {
     })
 
     return new Response(stream, {
-      headers: {
+      headers: withRequestIdHeaders(
+        {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Transfer-Encoding': 'chunked',
         'X-Model-Used': modelId,
@@ -845,16 +835,32 @@ export async function POST(request: NextRequest) {
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no'
-      }
+        },
+        context.requestId
+      )
     })
 
   } catch (error: any) {
+    if (error instanceof TimeoutError || error?.name === "TimeoutError") {
+      return jsonWithRequestId(
+        context.requestId,
+        {
+          error: "El agente legal excedio el tiempo maximo de ejecucion",
+          code: "AGENT_TIMEOUT"
+        },
+        504
+      )
+    }
+
     return NextResponse.json(
       {
         error: error.message || "Error procesando la consulta",
         details: process.env.NODE_ENV === 'development' ? error.toString() : undefined
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: withRequestIdHeaders(undefined, context.requestId)
+      }
     )
   }
 }
@@ -863,7 +869,8 @@ export async function POST(request: NextRequest) {
 // ENDPOINT GET - INFORMACIÓN DEL SERVICIO
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const context = createRequestContext(request, "api/chat/langchain-agent")
   const hasOpenRouter = Boolean(process.env.OPENROUTER_API_KEY)
   const hasSerper = Boolean(process.env.SERPER_API_KEY)
 
@@ -893,6 +900,8 @@ export async function GET() {
     cacheStats: {
       activeAgents: agentCache.size
     }
+  }, {
+    headers: withRequestIdHeaders(undefined, context.requestId)
   })
 }
 

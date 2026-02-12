@@ -2,14 +2,18 @@
 // import { generateLocalEmbedding } from "@/lib/generate-local-embedding"
 import { generateOpenRouterEmbedding } from "@/lib/generate-openrouter-embedding"
 import { checkApiKey, getServerProfile } from "@/lib/server/server-chat-helpers"
-import { Database } from "@/supabase/types"
 import OpenAI from "openai"
 import { assertFilesAccess } from "@/lib/server/access/files"
 import { ForbiddenError, NotFoundError } from "@/lib/server/errors"
 
 // Force dynamic rendering to prevent build-time execution
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
+type EmbeddingsProvider = "openai" | "local" | "openrouter"
+
+const DEFAULT_SOURCE_COUNT = 4
+const MAX_SOURCE_COUNT = 12
 
 // Dynamic import function for local embeddings (only loaded when needed)
 async function getLocalEmbedding(text: string) {
@@ -17,51 +21,99 @@ async function getLocalEmbedding(text: string) {
   return generateLocalEmbedding(text)
 }
 
+function isEmbeddingsProvider(value: unknown): value is EmbeddingsProvider {
+  return value === "openai" || value === "local" || value === "openrouter"
+}
+
+function getStatusFromError(error: unknown, fallback?: number): number {
+  if (error instanceof NotFoundError) return 404
+  if (error instanceof ForbiddenError) return 403
+  if (fallback) return fallback
+
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.includes("User not found") || message.includes("Profile not found")) {
+    return 401
+  }
+
+  return 500
+}
+
 export async function POST(request: Request) {
-  const json = await request.json()
-  let { userInput, fileIds, embeddingsProvider, sourceCount } = json as {
-    userInput: string
-    fileIds: string[]
-    embeddingsProvider: "openai" | "local" | "openrouter"
-    sourceCount: number
-  }
-
-  // Detectar si hay API key de OpenAI disponible
-  const hasOpenAI = profile.openai_api_key || process.env.OPENAI_API_KEY
-  
-  // Si no hay OpenAI pero sí OpenRouter, usar OpenRouter
-  if (!hasOpenAI && (profile.openrouter_api_key || process.env.OPENROUTER_API_KEY)) {
-    embeddingsProvider = "openrouter"
-    console.log("🔍 Usando OpenRouter para retrieval (OpenAI no disponible)")
-  } else if (embeddingsProvider === "openrouter" || embeddingsProvider === "local") {
-    // FORZAR OpenAI Embeddings para retrieval
-    embeddingsProvider = "openai"
-    console.log("🔍 Cambiando a 'openai' para retrieval (más confiable)")
-  }
-
-  const uniqueFileIds = [...new Set(fileIds)]
-
   try {
-    const { getSupabaseServer } = await import("@/lib/supabase/server-client");
-    const supabaseAdmin = getSupabaseServer();
+    const json = await request.json().catch(() => null)
+    if (!json || typeof json !== "object") {
+      return new Response(JSON.stringify({ message: "Payload invalido" }), {
+        status: 400
+      })
+    }
+
+    let { userInput, fileIds, embeddingsProvider, sourceCount } = json as {
+      userInput?: unknown
+      fileIds?: unknown
+      embeddingsProvider?: unknown
+      sourceCount?: unknown
+    }
+
+    if (typeof userInput !== "string" || userInput.trim().length === 0) {
+      return new Response(JSON.stringify({ message: "userInput es requerido" }), {
+        status: 400
+      })
+    }
+
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return new Response(JSON.stringify({ message: "fileIds es requerido" }), {
+        status: 400
+      })
+    }
+
+    const uniqueFileIds = [...new Set(fileIds.filter((id): id is string => typeof id === "string"))]
+    if (uniqueFileIds.length === 0) {
+      return new Response(JSON.stringify({ message: "fileIds debe contener ids validos" }), {
+        status: 400
+      })
+    }
+
+    const normalizedSourceCount =
+      typeof sourceCount === "number" && Number.isFinite(sourceCount)
+        ? Math.min(Math.max(Math.trunc(sourceCount), 1), MAX_SOURCE_COUNT)
+        : DEFAULT_SOURCE_COUNT
+
+    let selectedProvider: EmbeddingsProvider = isEmbeddingsProvider(embeddingsProvider)
+      ? embeddingsProvider
+      : "openai"
 
     const profile = await getServerProfile()
 
+    // Detectar disponibilidad de providers
+    const hasOpenAI = Boolean(profile.openai_api_key || process.env.OPENAI_API_KEY)
+    const hasOpenRouter = Boolean(profile.openrouter_api_key || process.env.OPENROUTER_API_KEY)
+
+    // Si no hay OpenAI pero si OpenRouter, usar OpenRouter
+    if (!hasOpenAI && hasOpenRouter) {
+      selectedProvider = "openrouter"
+      console.log("Using OpenRouter for retrieval (OpenAI unavailable)")
+    } else if (hasOpenAI && (selectedProvider === "openrouter" || selectedProvider === "local")) {
+      // Forzar OpenAI para retrieval cuando esta disponible
+      selectedProvider = "openai"
+      console.log("Switching retrieval provider to OpenAI for consistency")
+    }
+
+    const { getSupabaseServer } = await import("@/lib/supabase/server-client")
+    const supabaseAdmin = getSupabaseServer()
+
     await assertFilesAccess(supabaseAdmin, uniqueFileIds, profile.user_id)
 
-    if (embeddingsProvider === "openai") {
+    if (selectedProvider === "openai") {
       if (profile.use_azure_openai) {
         checkApiKey(profile.azure_openai_api_key, "Azure OpenAI")
       } else {
         checkApiKey(profile.openai_api_key, "OpenAI")
       }
-    } else if (embeddingsProvider === "openrouter") {
+    } else if (selectedProvider === "openrouter") {
       try {
         checkApiKey(profile.openrouter_api_key, "OpenRouter")
       } catch (error: any) {
-        error.message =
-          error.message +
-          ", make sure it is configured or else use local embeddings"
+        error.message = `${error.message}, make sure it is configured or else use local embeddings`
         throw error
       }
     }
@@ -83,7 +135,7 @@ export async function POST(request: Request) {
       })
     }
 
-    if (embeddingsProvider === "openai") {
+    if (selectedProvider === "openai") {
       const response = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: userInput
@@ -91,58 +143,58 @@ export async function POST(request: Request) {
 
       const openaiEmbedding = response.data.map(item => item.embedding)[0]
 
-      const { data: openaiFileItems, error: openaiError } =
-        await supabaseAdmin.rpc("match_file_items_openai", {
+      const { data: openaiFileItems, error: openaiError } = await supabaseAdmin.rpc(
+        "match_file_items_openai",
+        {
           query_embedding: openaiEmbedding as any,
-          match_count: sourceCount,
+          match_count: normalizedSourceCount,
           file_ids: uniqueFileIds
-        })
+        }
+      )
 
       if (openaiError) {
         throw openaiError
       }
 
       chunks = openaiFileItems
-    } else if (embeddingsProvider === "openrouter") {
+    } else if (selectedProvider === "openrouter") {
       try {
         const openrouterKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY
-        console.log('🔍 Generando embedding de búsqueda con OpenRouter...')
 
         const openrouterEmbedding = await generateOpenRouterEmbedding(
           userInput,
           openrouterKey!,
-          'text-embedding-3-small'
+          "text-embedding-3-small"
         )
 
-        console.log('✅ Embedding generado, buscando en base de datos...')
-
-        const { data: openrouterFileItems, error: openrouterError } =
-          await supabaseAdmin.rpc("match_file_items_openai", {
+        const { data: openrouterFileItems, error: openrouterError } = await supabaseAdmin.rpc(
+          "match_file_items_openai",
+          {
             query_embedding: openrouterEmbedding as any,
-            match_count: sourceCount,
+            match_count: normalizedSourceCount,
             file_ids: uniqueFileIds
-          })
+          }
+        )
 
         if (openrouterError) {
-          console.error('❌ Error en búsqueda de Supabase:', openrouterError)
           throw openrouterError
         }
 
-        console.log(`✅ Encontrados ${openrouterFileItems?.length || 0} chunks relevantes`)
         chunks = openrouterFileItems
       } catch (error) {
-        console.error('❌ OpenRouter retrieval error:', error)
-        throw new Error('Failed to retrieve with OpenRouter embeddings')
+        throw new Error("Failed to retrieve with OpenRouter embeddings")
       }
-    } else if (embeddingsProvider === "local") {
+    } else if (selectedProvider === "local") {
       const localEmbedding = await getLocalEmbedding(userInput)
 
-      const { data: localFileItems, error: localFileItemsError } =
-        await supabaseAdmin.rpc("match_file_items_local", {
+      const { data: localFileItems, error: localFileItemsError } = await supabaseAdmin.rpc(
+        "match_file_items_local",
+        {
           query_embedding: localEmbedding as any,
-          match_count: sourceCount,
+          match_count: normalizedSourceCount,
           file_ids: uniqueFileIds
-        })
+        }
+      )
 
       if (localFileItemsError) {
         throw localFileItemsError
@@ -151,19 +203,17 @@ export async function POST(request: Request) {
       chunks = localFileItems
     }
 
-    const mostSimilarChunks = chunks?.sort(
-      (a, b) => b.similarity - a.similarity
-    )
+    const mostSimilarChunks = chunks?.sort((a, b) => b.similarity - a.similarity)
 
     return new Response(JSON.stringify({ results: mostSimilarChunks }), {
       status: 200
     })
   } catch (error: any) {
-    const errorMessage = error.error?.message || error?.message || "An unexpected error occurred"
-    const errorCode =
-      error instanceof NotFoundError ? 404 : error instanceof ForbiddenError ? 403 : error.status || 500
+    const errorMessage = error?.error?.message || error?.message || "An unexpected error occurred"
+    const status = getStatusFromError(error, error?.status)
+
     return new Response(JSON.stringify({ message: errorMessage }), {
-      status: errorCode
+      status
     })
   }
 }

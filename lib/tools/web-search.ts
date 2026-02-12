@@ -32,7 +32,7 @@ const SEARXNG_INSTANCES = [
   'https://searx.fmac.xyz'
 ]
 
-// import { extractWithFirecrawl, searchWithFirecrawl } from './firecrawl-extractor' // ELIMINADO - archivo movido
+import { extractWithFirecrawl } from "./extraction/firecrawl-extractor"
 import { getConstitutionArticle, isConstitutionalArticle } from '../constitucion-sources'
 import { normalizeLegalQuery } from '../prompts/legal-agent'
 const OFFICIAL_DOMAINS = [
@@ -570,8 +570,12 @@ export async function searchWeb(query: string, numResults: number = 10): Promise
       console.log(`[web-search] Query normalizada para búsqueda legal especializada: "${finalQuery}"`)
     }
 
-    const cseApiKey = process.env.GOOGLE_CSE_API_KEY || 'AIzaSyD5y97kpgw32Q5C6ujGKB6JafkD4Cv49TA'
-    const cseCx = process.env.GOOGLE_CSE_CX || '6464df08faf4548b9'
+    const cseApiKey = process.env.GOOGLE_CSE_API_KEY
+    const cseCx = process.env.GOOGLE_CSE_CX
+    if (!cseApiKey || !cseCx) {
+      console.log("[web-search] Google CSE no configurado, usando fallback")
+      return await searchWebFallback(query, numResults)
+    }
     const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${cseApiKey}&cx=${cseCx}&q=${encodeURIComponent(finalQuery)}&num=${Math.min(numResults, 10)}`
 
     console.log(`[web-search] Google CSE: Consultando con query: "${finalQuery}"`)
@@ -768,7 +772,7 @@ export async function extractUrlContent(
   options: { preferFirecrawl?: boolean } = {}
 ): Promise<string> {
   const preferFirecrawl = options.preferFirecrawl ?? false
-  const shouldTryFirecrawl = Boolean(process.env.FIRECRAWL_API_KEY ?? true)
+  const shouldTryFirecrawl = Boolean(process.env.FIRECRAWL_API_KEY)
 
   console.log(`[web-search] Extrayendo contenido de: ${url}`)
 
