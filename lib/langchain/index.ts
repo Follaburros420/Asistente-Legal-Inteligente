@@ -20,7 +20,7 @@
  * import { LegalAgent } from '@/lib/langchain'
  * 
  * const agent = await LegalAgent.create({
- *   modelId: 'alibaba/tongyi-deepresearch-30b-a3b'
+ *   modelId: 'deepseek/deepseek-v3.2'
  * })
  * 
  * const response = await agent.invoke({

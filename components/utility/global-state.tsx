@@ -26,6 +26,7 @@ import {
 } from "@/types"
 import { AssistantImage } from "@/types/images/assistant-image"
 import { VALID_ENV_KEYS } from "@/types/valid-keys"
+import { M1_MODEL_ID } from "@/lib/models/m1-models"
 import { useRouter } from "next/navigation"
 import { FC, useEffect, useState } from "react"
 import { LoadingScreen } from "./loading-screen"
@@ -81,7 +82,7 @@ export const GlobalState: FC<GlobalStateProps> = ({ children }) => {
   const [userInput, setUserInput] = useState<string>("")
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatSettings, setChatSettings] = useState<ChatSettings>({
-    model: "google/gemini-3-pro-preview",
+    model: M1_MODEL_ID,
     prompt: `Eres un Asistente Legal Especializado en Derecho Colombiano de élite, entrenado para proporcionar análisis jurídicos de la más alta calidad.
 
 **INSTRUCCIÓN FUNDAMENTAL**: 

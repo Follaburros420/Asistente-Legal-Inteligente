@@ -2,8 +2,8 @@
  * Agente Legal Principal con LangChain
  * 
  * Implementa un agente con tool calling nativo usando:
- * - Gemini 3 Pro Preview: Para tareas complejas (M1 Pro)
- * - GPT-5 Mini: Para tareas simples (M1)
+ * - M1 Pro: Para tareas complejas
+ * - M1 Small: Para tareas simples
  * - Serper: Única herramienta de búsqueda web
  */
 
@@ -306,7 +306,10 @@ export class LegalAgent {
   /**
    * Ejecuta una consulta al agente
    */
-  async invoke(input: AgentInput): Promise<AgentResponse> {
+  async invoke(
+    input: AgentInput,
+    options?: { callbacks?: any[] }
+  ): Promise<AgentResponse> {
     const startTime = Date.now()
     
     console.log(`\n${'═'.repeat(70)}`)
@@ -347,10 +350,15 @@ export class LegalAgent {
       const history = input.chatHistory || this.chatHistory
 
       // Ejecutar el agente
-      const result = await this.executor.invoke({
-        input: input.input,
-        chat_history: history
-      })
+      const result = await this.executor.invoke(
+        {
+          input: input.input,
+          chat_history: history
+        },
+        {
+          callbacks: options?.callbacks
+        }
+      )
 
       const processingTime = Date.now() - startTime
 
@@ -617,11 +625,11 @@ export async function createSmartLegalAgent(): Promise<LegalAgent> {
 }
 
 /**
- * Crea un agente con Gemini 3 Pro (tareas complejas)
+ * Crea un agente M1 Pro (tareas complejas)
  */
 export async function createComplexLegalAgent(): Promise<LegalAgent> {
   return LegalAgent.create({
-    modelId: 'google/gemini-3-pro-preview',
+    modelId: 'moonshotai/kimi-k2-thinking',
     temperature: 0.2,
     maxIterations: 10,
     verbose: process.env.NODE_ENV === 'development'
@@ -629,11 +637,11 @@ export async function createComplexLegalAgent(): Promise<LegalAgent> {
 }
 
 /**
- * Crea un agente con GPT-5 Mini (tareas simples)
+ * Crea un agente M1 Small (tareas simples)
  */
 export async function createSimpleLegalAgent(): Promise<LegalAgent> {
   return LegalAgent.create({
-    modelId: 'openai/gpt-5-mini',
+    modelId: 'openai/gpt-oss-120b',
     temperature: 0.1,
     maxIterations: 5,
     verbose: process.env.NODE_ENV === 'development'

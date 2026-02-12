@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { LegalWritingAgent } from "@/lib/agents/legal-writing-agent"
+import { ALLOWED_M_MODELS, isKnownMModelInput, M1_MODEL_ID, normalizeMModel } from "@/lib/models/m1-models"
 
 export const maxDuration = 120 // Mayor tiempo para proceso iterativo
 
@@ -16,8 +17,19 @@ export async function POST(request: NextRequest) {
     
     console.log('📝 Legal Writing Endpoint - Body recibido:', JSON.stringify(body, null, 2))
     
+    if (body.chatSettings?.model && !isKnownMModelInput(body.chatSettings.model)) {
+      return NextResponse.json(
+        {
+          error: "Modelo no permitido para este asistente",
+          code: "MODEL_NOT_ALLOWED",
+          allowedModels: ALLOWED_M_MODELS
+        },
+        { status: 400 }
+      )
+    }
+
     const agent = new LegalWritingAgent({
-      model: body.chatSettings.model,
+      model: normalizeMModel(body.chatSettings?.model || M1_MODEL_ID),
       chatId: body.chatId,
       userId: body.userId
     })

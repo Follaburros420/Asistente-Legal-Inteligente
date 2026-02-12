@@ -13,6 +13,7 @@ import { useParams, useRouter } from "next/navigation"
 import { FC, useContext, useRef, useState } from "react"
 import { DeleteChat } from "./delete-chat"
 import { UpdateChat } from "./update-chat"
+import { M1_MODEL_ID, M1_PRO_MODEL_ID, M1_SMALL_MODEL_ID } from "@/lib/models/m1-models"
 
 interface ModernChatItemProps {
   chat: Tables<"chats">
@@ -28,9 +29,9 @@ const itemVariants = {
 }
 
 // Model ID to friendly name mapping
-const M1_SMALL_MODEL = "liquid/lfm-2.2-6b"
-const M1_MODEL = "alibaba/tongyi-deepresearch-30b-a3b"
-const M1_PRO_MODEL = "moonshotai/kimi-k2-thinking"
+const M1_SMALL_MODEL = M1_SMALL_MODEL_ID
+const M1_MODEL = M1_MODEL_ID
+const M1_PRO_MODEL = M1_PRO_MODEL_ID
 
 type ModelVariant = "small" | "standard" | "pro" | "other"
 

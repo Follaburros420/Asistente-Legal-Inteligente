@@ -13,6 +13,7 @@ import { getWorkspaceById } from "@/db/workspaces"
 import { convertBlobToBase64 } from "@/lib/blob-to-b64"
 import { supabase } from "@/lib/supabase/browser-client"
 import { LLMID } from "@/types"
+import { normalizeMModel } from "@/lib/models/m1-models"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { ReactNode, useContext, useEffect, useState } from "react"
 import Loading from "../loading"
@@ -211,9 +212,9 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
       setTranscriptions(transcriptions || [])
 
       setChatSettings({
-        model: (searchParams.get("model") ||
-          workspace?.default_model ||
-          "google/gemini-3-pro-preview") as LLMID,
+        model: normalizeMModel(
+          searchParams.get("model") || workspace?.default_model
+        ) as LLMID,
         prompt:
           workspace?.default_prompt ||
           "Eres un Asistente Legal Especializado en Derecho Colombiano de élite, entrenado para proporcionar análisis jurídicos de la más alta calidad.",

@@ -223,19 +223,11 @@ export const handleHostedChat = async (
   // Verificar si está en modo de redacción legal
   const chatMode = typeof window !== 'undefined' ? localStorage.getItem('chatMode') : null
   
-  // Determinar endpoint según modelo y modo
-  let apiEndpoint = provider === "custom" ? "/api/chat/custom" : "/api/chat/legal-agent"
-  
-  // Detectar modelos que usan LangChain Agent (tool calling nativo)
-  const modelId = payload.chatSettings.model?.toLowerCase() || ''
-
-  // Solo modelos Gemini usan LangChain Agent (tool calling nativo)
-  const isLangChainModel = modelId.includes('gemini')
+  // Determinar endpoint según modo: usar stream con LangChain por defecto
+  let apiEndpoint = provider === "custom" ? "/api/chat/custom" : "/api/chat/langchain-agent"
   
   if (chatMode === 'legal-writing') {
     apiEndpoint = "/api/chat/legal-writing"
-  } else if (isLangChainModel) {
-    apiEndpoint = "/api/chat/langchain-agent"
   }
 
   const requestBody = {
@@ -308,8 +300,141 @@ export const processResponse = async (
   setToolInUse: React.Dispatch<React.SetStateAction<string>>
 ): Promise<ProcessedChatResponse> => {
   let fullText = ""
-  let contentToAdd = ""
   let streamedBibliography: BibliographyItem[] = []
+  const progressLines: string[] = []
+
+  const pushProgressLine = (value: unknown) => {
+    if (typeof value !== "string") return
+    const cleaned = value.replace(/\s+/g, " ").trim()
+    if (!cleaned) return
+    const previous = progressLines[progressLines.length - 1]
+    if (previous !== cleaned) {
+      progressLines.push(cleaned)
+    }
+    setToolInUse(cleaned)
+  }
+
+  const normalizeSources = (rawSources: any[]): BibliographyItem[] => {
+    const normalizedSources = rawSources
+      .filter((s: any) => typeof s?.url === "string" && s.url.startsWith("http"))
+      .map((s: any, idx: number) => ({
+        id: `stream-source-${idx + 1}`,
+        title:
+          typeof s?.title === "string" && s.title.trim().length > 0
+            ? s.title.trim()
+            : "Fuente legal",
+        url: s.url,
+        type:
+          typeof s?.type === "string" && s.type.trim().length > 0
+            ? s.type.trim()
+            : "legal"
+      }))
+
+    return normalizedSources.filter(
+      (item, idx, arr) => arr.findIndex(x => x.url === item.url) === idx
+    )
+  }
+
+  const detectDraftFromText = (text: string) => {
+    let draft: any = null
+
+    const looksLikeDraft =
+      text.trim().startsWith("{") ||
+      text.includes('"type": "draft"') ||
+      text.includes('"type":"draft"')
+
+    if (looksLikeDraft && text.length > 50) {
+      try {
+        const { validateDraftContent } = require("@/lib/utils/draft-utils")
+        const validation = validateDraftContent(text)
+        if (validation.valid && validation.draft) {
+          draft = validation.draft
+        } else {
+          const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/
+          const match = text.match(jsonBlockRegex)
+          if (match) {
+            const revalidation = validateDraftContent(match[1])
+            if (revalidation.valid && revalidation.draft) {
+              draft = revalidation.draft
+            }
+          } else {
+            const jsonStart = text.indexOf("{")
+            if (jsonStart !== -1 && jsonStart < 100) {
+              let braceCount = 0
+              let jsonEnd = jsonStart
+              for (let i = jsonStart; i < text.length; i++) {
+                if (text[i] === "{") braceCount++
+                if (text[i] === "}") braceCount--
+                if (braceCount === 0) {
+                  jsonEnd = i + 1
+                  break
+                }
+              }
+              if (jsonEnd > jsonStart) {
+                const jsonCandidate = text.substring(jsonStart, jsonEnd)
+                const candidateValidation = validateDraftContent(jsonCandidate)
+                if (candidateValidation.valid && candidateValidation.draft) {
+                  draft = candidateValidation.draft
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore invalid draft while streaming
+      }
+    }
+
+    if (!draft && text.length > 200) {
+      const looksLikeDocument =
+        text.includes("ARTICULO") ||
+        text.includes("CONTRATO") ||
+        text.includes("TUTELA") ||
+        text.includes("DEMANDA") ||
+        text.includes("MEMORIAL")
+
+      if (looksLikeDocument) {
+        try {
+          const { tryConvertToDraft } = require("@/lib/utils/draft-converter")
+          const convertedDraft = tryConvertToDraft(text)
+          if (convertedDraft) {
+            draft = convertedDraft
+          }
+        } catch {
+          // ignore draft conversion errors during streaming
+        }
+      }
+    }
+
+    return draft
+  }
+
+  const updateAssistantMessage = () => {
+    const draft = detectDraftFromText(fullText)
+    const thinkingContent = progressLines.join("\n")
+
+    setChatMessages(prev =>
+      prev.map(chatMessage => {
+        if (chatMessage.message.id === lastChatMessage.message.id) {
+          const updatedChatMessage: ChatMessage = {
+            message: {
+              ...chatMessage.message,
+              content: fullText
+            },
+            fileItems: chatMessage.fileItems,
+            thinking: thinkingContent || undefined,
+            bibliography:
+              streamedBibliography.length > 0
+                ? streamedBibliography
+                : chatMessage.bibliography,
+            draft: draft || undefined
+          }
+          return updatedChatMessage
+        }
+        return chatMessage
+      })
+    )
+  }
 
   // Verificar si es respuesta de texto plano (como la del endpoint simple-direct)
   const contentType = response.headers.get('content-type') || ''
@@ -347,6 +472,7 @@ export const processResponse = async (
         })
       )
 
+      setToolInUse("none")
       return {
         text: messageText,
         bibliography
@@ -379,242 +505,139 @@ export const processResponse = async (
         return chatMessage
       })
     )
-    
+    setToolInUse("none")
     return { text: fullText }
   }
 
   // Código para streaming con eventos JSON (langchain-agent) o texto plano
   if (response.body) {
-    
     // Detectar si es streaming con eventos JSON (nuevo formato)
     const isEventStream = contentType.includes('text/event-stream')
-    let thinkingContent = ''
-    
+    let eventBuffer = ''
+
+    const processEvent = (event: any) => {
+      switch (event?.type) {
+        case 'thinking':
+          pushProgressLine(event.content)
+          break
+
+        case 'status':
+          pushProgressLine(event.message || event.label)
+          break
+
+        case 'thinking_done':
+          setToolInUse("none")
+          break
+
+        case 'tool_start':
+          pushProgressLine(event.label || "Investigando fuentes legales")
+          break
+
+        case 'tool_end':
+          pushProgressLine(event.message || "Fuentes contrastadas")
+          break
+
+        case 'token':
+          if (typeof event.content === "string") {
+            fullText += event.content
+            setFirstTokenReceived(true)
+          }
+          break
+
+        case 'sources':
+          if (Array.isArray(event.sources)) {
+            streamedBibliography = normalizeSources(event.sources)
+          }
+          break
+
+        case 'done':
+          setToolInUse("none")
+          break
+
+        case 'error':
+          if (typeof event.message === "string" && event.message.trim().length > 0) {
+            fullText += event.message
+            setFirstTokenReceived(true)
+          }
+          setToolInUse("none")
+          break
+
+        case 'tool_error':
+          pushProgressLine("Continuando validación con otras fuentes")
+          break
+
+        default:
+          break
+      }
+    }
+
     await consumeReadableStream(
       response.body,
       chunk => {
-        try {
-          const chunkStr = typeof chunk === 'string' ? chunk : String(chunk)
-          
-          // Procesar eventos JSON (formato: {"type": "...", ...}\n)
-          if (isEventStream || chunkStr.startsWith('{')) {
-            // Dividir por líneas y procesar cada evento JSON
-            const lines = chunkStr.split('\n').filter(line => line.trim())
-            
-            for (const line of lines) {
+        const chunkStr = typeof chunk === 'string' ? chunk : String(chunk)
+
+        if (isEventStream || chunkStr.trimStart().startsWith('{')) {
+          eventBuffer += chunkStr
+          let newlineIndex = eventBuffer.indexOf('\n')
+
+          while (newlineIndex !== -1) {
+            const rawLine = eventBuffer.slice(0, newlineIndex).trim()
+            eventBuffer = eventBuffer.slice(newlineIndex + 1)
+
+            if (rawLine.length > 0) {
               try {
-                const event = JSON.parse(line)
-                
-                switch (event.type) {
-                  case 'thinking':
-                    thinkingContent += (thinkingContent ? '\n' : '') + event.content
-                    setToolInUse("thinking")
-                    break
-                    
-                  case 'thinking_done':
-                    setToolInUse("none")
-                    break
-                    
-                  case 'tool_start':
-                    thinkingContent += "\nValidando fuentes legales..."
-                    setToolInUse("thinking")
-                    break
-                     
-                  case 'tool_end':
-                    thinkingContent += " Listo."
-                    setToolInUse("none")
-                    break
-                    
-                  case 'token':
-                    // Agregar token a la respuesta - AHORA sí tenemos contenido real
-                    fullText += event.content
-                    setFirstTokenReceived(true)
-                    break
-                    
-                  case 'sources':
-                    if (Array.isArray(event.sources)) {
-                      const normalizedSources = event.sources
-                        .filter((s: any) => typeof s?.url === "string" && s.url.startsWith("http"))
-                        .map((s: any, idx: number) => ({
-                          id: `stream-source-${idx + 1}`,
-                          title:
-                            typeof s?.title === "string" && s.title.trim().length > 0
-                              ? s.title.trim()
-                              : "Fuente legal",
-                          url: s.url,
-                          type:
-                            typeof s?.type === "string" && s.type.trim().length > 0
-                              ? s.type.trim()
-                              : "legal"
-                        }))
-
-                      streamedBibliography = normalizedSources.filter(
-                        (item, idx, arr) => arr.findIndex(x => x.url === item.url) === idx
-                      )
-                    }
-                    break
-                    
-                  case 'done':
-                    break
-                    
-                  case 'error':
-                    fullText += event.message || 'Error desconocido'
-                    setFirstTokenReceived(true)
-                    break
-                    
-                  default:
-                    // Evento desconocido, intentar agregar como texto
-                    if (event.content) {
-                      fullText += event.content
-                      setFirstTokenReceived(true)
-                    }
-                }
-              } catch (parseError) {
-                // No es JSON válido, tratar como texto plano
-                fullText += line
-                setFirstTokenReceived(true)
-              }
-            }
-          } else {
-            // Formato texto plano (legacy)
-            contentToAdd = isHosted
-              ? chunkStr
-              : String(chunkStr)
-                  .trimEnd()
-                  .split("\n")
-                  .reduce(
-                    (acc: string, line: string) => {
-                      try {
-                        return acc + JSON.parse(line).message.content
-                      } catch {
-                        return acc + line
-                      }
-                    },
-                    ""
-                  )
-            fullText += contentToAdd
-            setFirstTokenReceived(true)
-          }
-          
-        } catch (error) {
-          // Error parsing chunk - ignorar
-        }
-
-        // Detectar si el contenido acumulado es un draft válido
-        // Solo intentar parsear si el stream está completo o si hay suficiente contenido
-        let draft: any = null
-        
-        // Verificar si parece ser un JSON draft
-        const looksLikeDraft = fullText.trim().startsWith('{') || 
-                               fullText.includes('"type": "draft"') ||
-                               fullText.includes('"type":"draft"')
-        
-        if (looksLikeDraft && fullText.length > 50) {
-          try {
-            const { validateDraftContent } = require("@/lib/utils/draft-utils")
-            
-            // Primero intentar validar el texto completo
-            const validation = validateDraftContent(fullText)
-            if (validation.valid && validation.draft) {
-              draft = validation.draft
-              console.log("✅ Draft detectado y validado desde contenido completo")
-            } else {
-              // Intentar extraer JSON de markdown code blocks
-              const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/
-              const match = fullText.match(jsonBlockRegex)
-              if (match) {
-                const revalidation = validateDraftContent(match[1])
-                if (revalidation.valid && revalidation.draft) {
-                  draft = revalidation.draft
-                  console.log("✅ Draft detectado y validado desde markdown block")
-                }
-              } else {
-                // Intentar extraer JSON si está al inicio del texto
-                const jsonStart = fullText.indexOf('{')
-                if (jsonStart !== -1 && jsonStart < 100) {
-                  // Buscar el cierre del JSON
-                  let braceCount = 0
-                  let jsonEnd = jsonStart
-                  for (let i = jsonStart; i < fullText.length; i++) {
-                    if (fullText[i] === '{') braceCount++
-                    if (fullText[i] === '}') braceCount--
-                    if (braceCount === 0) {
-                      jsonEnd = i + 1
-                      break
-                    }
-                  }
-                  if (jsonEnd > jsonStart) {
-                    const jsonCandidate = fullText.substring(jsonStart, jsonEnd)
-                    const candidateValidation = validateDraftContent(jsonCandidate)
-                    if (candidateValidation.valid && candidateValidation.draft) {
-                      draft = candidateValidation.draft
-                      console.log("✅ Draft detectado y validado desde JSON extraído")
-                    }
-                  }
+                const event = JSON.parse(rawLine)
+                processEvent(event)
+              } catch {
+                if (!isEventStream) {
+                  fullText += rawLine
+                  setFirstTokenReceived(true)
                 }
               }
             }
-          } catch (e) {
-            console.warn("⚠️ Error validando draft durante streaming:", e)
-            // Ignorar errores de validación durante streaming
+
+            newlineIndex = eventBuffer.indexOf('\n')
           }
-        }
-        
-        // Si no se detectó como JSON pero parece ser un documento legal, intentar convertir
-        if (!draft && fullText.length > 200) {
-          const looksLikeDocument = 
-            fullText.includes("ARTÍCULO") ||
-            fullText.includes("ARTICULO") ||
-            fullText.includes("CONTRATO") ||
-            fullText.includes("TUTELA") ||
-            fullText.includes("DEMANDA") ||
-            fullText.includes("MEMORIAL") ||
-            fullText.includes("ARRENDAMIENTO") ||
-            fullText.includes("LEY APLICABLE")
-          
-          if (looksLikeDocument) {
-            try {
-              const { tryConvertToDraft } = require("@/lib/utils/draft-converter")
-              const convertedDraft = tryConvertToDraft(fullText)
-              if (convertedDraft) {
-                draft = convertedDraft
-                console.log("📄 Draft convertido desde texto plano durante streaming")
-              }
-            } catch (e) {
-              console.warn("⚠️ Error convirtiendo texto a draft:", e)
-            }
-          }
+
+          updateAssistantMessage()
+          return
         }
 
-        // Actualizar mensaje con contenido, razonamiento y draft
-        setChatMessages(prev =>
-          prev.map(chatMessage => {
-            if (chatMessage.message.id === lastChatMessage.message.id) {
-              const updatedChatMessage: ChatMessage = {
-                message: {
-                  ...chatMessage.message,
-                  content: fullText
-                },
-                fileItems: chatMessage.fileItems,
-                // Agregar razonamiento al mensaje si existe
-                thinking: thinkingContent || undefined,
-                bibliography:
-                  streamedBibliography.length > 0
-                    ? streamedBibliography
-                    : chatMessage.bibliography,
-                // Agregar draft si se detectó
-                draft: draft || undefined
-              }
+        const contentToAdd = isHosted
+          ? chunkStr
+          : String(chunkStr)
+              .trimEnd()
+              .split("\n")
+              .reduce((acc: string, line: string) => {
+                try {
+                  return acc + JSON.parse(line).message.content
+                } catch {
+                  return acc + line
+                }
+              }, "")
 
-              return updatedChatMessage
-            }
-
-            return chatMessage
-          })
-        )
+        fullText += contentToAdd
+        setFirstTokenReceived(true)
+        updateAssistantMessage()
       },
       controller.signal
     )
+
+    if (eventBuffer.trim().length > 0) {
+      try {
+        const trailingEvent = JSON.parse(eventBuffer.trim())
+        processEvent(trailingEvent)
+        updateAssistantMessage()
+      } catch {
+        if (!isEventStream) {
+          fullText += eventBuffer
+          setFirstTokenReceived(true)
+          updateAssistantMessage()
+        }
+      }
+    }
+
+    setToolInUse("none")
 
     return {
       text: fullText,

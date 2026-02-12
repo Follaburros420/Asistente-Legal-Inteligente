@@ -10,10 +10,12 @@ export type LLMID =
   | OpenRouterLLMID
 
 export type OpenRouterLLMID =
+  | "openai/gpt-oss-120b"                  // M1 Small
+  | "deepseek/deepseek-v3.2"               // M1
+  | "moonshotai/kimi-k2-thinking"          // M1 Pro
   | "google/gemini-3-pro-preview"            // Gemini 3 Pro Preview (M1 / M1 Pro)
   | "google/gemini-3-flash-preview"          // Gemini 3 Flash Preview (M1 Small)
   | "alibaba/tongyi-deepresearch-30b-a3b"    // Tongyi 30B
-  | "moonshotai/kimi-k2-thinking"            // Kimi k2 Thinking
 
 // OpenAI Models (UPDATED 5/13/24)
 export type OpenAILLMID =

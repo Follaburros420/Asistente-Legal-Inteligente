@@ -19,6 +19,7 @@ import { useScroll } from "./chat-hooks/use-scroll"
 import { ChatInput } from "./chat-input"
 import { ChatMessages } from "./chat-messages"
 import { ChatSecondaryButtons } from "./chat-secondary-buttons"
+import { normalizeMModel } from "@/lib/models/m1-models"
 
 interface ChatUIProps { }
 
@@ -154,17 +155,7 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
 
     setSelectedChat(chat)
 
-    // Modelos válidos - Solo Gemini
-    const validModels = [
-      'google/gemini-3-flash-preview',
-      'google/gemini-3-pro-preview'
-    ]
-
-    // Usar el modelo del chat si es válido, sino usar Gemini 3 Pro por defecto
-    // NOTA: Chats antiguos con modelos obsoletos se migran automáticamente a Gemini 3 Pro
-    const chatModel = validModels.includes(chat.model)
-      ? chat.model
-      : 'google/gemini-3-pro-preview'
+    const chatModel = normalizeMModel(chat.model)
 
     setChatSettings({
       model: chatModel as LLMID,

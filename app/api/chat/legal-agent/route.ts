@@ -16,11 +16,16 @@ import { detectDraftIntent } from "@/lib/draft-detection"
 import { classifyDocumentIntent } from "@/lib/classifiers/document-classifier"
 import { validateDraftContent } from "@/lib/utils/draft-utils"
 import {
-  DEFAULT_MODEL,
   GUARANTEED_FALLBACKS
 } from "@/lib/langchain/config/models"
 import { checkSerperConfig } from "@/lib/tools/search/serper-legal-search"
 import { LEGAL_AGENT_SYSTEM_PROMPT } from "@/lib/langchain/config/prompts"
+import {
+  M1_MODEL_ID,
+  M1_PRO_MODEL_ID,
+  M1_SMALL_MODEL_ID,
+  normalizeMModel
+} from "@/lib/models/m1-models"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -234,23 +239,14 @@ async function selectModelWithFallback(
   requestedModel: string
 ): Promise<{ model: string; usedFallback: boolean; originalModel?: string }> {
 
-  // Determinar modelo objetivo - SIEMPRE usar Gemini
+  // Determinar modelo objetivo - solo modelos M
   let targetModel: string
 
-  // Solo modelos Gemini están disponibles en OpenRouter
-  const validModels = [
-    'google/gemini-3-pro-preview',
-    'google/gemini-3-flash-preview',
-    'google/gemini-1.5-pro-latest',
-    'google/gemini-1.5-flash'
-  ]
-
-  if (requestedModel && requestedModel !== 'auto' && validModels.includes(requestedModel)) {
-    targetModel = requestedModel
+  if (requestedModel && requestedModel !== 'auto') {
+    targetModel = normalizeMModel(requestedModel)
     console.log(`🎯 Modelo solicitado: ${targetModel}`)
   } else {
-    // Siempre usar Gemini 3 Pro Preview como modelo principal
-    targetModel = 'google/gemini-3-pro-preview'
+    targetModel = M1_MODEL_ID
     console.log(`🎯 Modelo por defecto: ${targetModel}`)
   }
 
@@ -270,13 +266,9 @@ async function selectModelWithFallback(
   } catch (error: any) {
     console.warn(`⚠️ Modelo ${targetModel} no disponible:`, error.message || error)
 
-    // Intentar fallbacks - Solo modelos Gemini
-    const geminiFallbacks = [
-      'google/gemini-1.5-pro-latest',
-      'google/gemini-1.5-flash'
-    ]
+    const modelFallbacks = [M1_PRO_MODEL_ID, M1_SMALL_MODEL_ID, M1_MODEL_ID]
 
-    for (const fallbackModel of geminiFallbacks) {
+    for (const fallbackModel of modelFallbacks) {
       if (fallbackModel === targetModel) continue
 
       console.log(`🔄 Intentando fallback: ${fallbackModel}`)
@@ -302,8 +294,7 @@ async function selectModelWithFallback(
     }
   }
 
-  // Último recurso: usar Gemini 1.5 Flash (generalmente disponible)
-  const lastResort = 'google/gemini-1.5-flash'
+  const lastResort = M1_MODEL_ID
   console.log(`⚠️ Usando último recurso: ${lastResort}`)
   return { model: lastResort, usedFallback: true, originalModel: targetModel }
 }
@@ -587,8 +578,8 @@ export async function GET() {
     endpoint: "Legal Agent",
     version: "2.1",
     models: {
-      primary: "google/gemini-3-pro-preview",
-      fallbacks: ["google/gemini-1.5-pro-latest", "google/gemini-1.5-flash"]
+      primary: M1_MODEL_ID,
+      fallbacks: [M1_SMALL_MODEL_ID, M1_PRO_MODEL_ID]
     },
     search: {
       provider: "Serper",
@@ -597,6 +588,6 @@ export async function GET() {
     },
     tools: LEGAL_TOOLS_DEFINITIONS.map(t => t.function.name),
     requiredEnvVars: ["OPENROUTER_API_KEY", "SERPER_API_KEY"],
-    note: "Solo modelos Google Gemini están disponibles vía OpenRouter"
+    note: "Solo modelos M están disponibles vía OpenRouter"
   })
 }

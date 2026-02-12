@@ -104,6 +104,32 @@ export const Message: FC<MessageProps> = ({
   const [showDocumentEditor, setShowDocumentEditor] = useState(false)
   const [documentContent, setDocumentContent] = useState("")
 
+  const thinkingSteps = useMemo(() => {
+    if (!thinking) return []
+    return thinking
+      .split("\n")
+      .map(step => step.trim())
+      .filter(Boolean)
+      .filter((step, index, arr) => arr.findIndex(item => item === step) === index)
+  }, [thinking])
+
+  const currentProgressLabel = useMemo(() => {
+    if (toolInUse && toolInUse !== "none" && toolInUse !== "thinking") {
+      return toolInUse
+    }
+    if (thinkingSteps.length > 0) {
+      return thinkingSteps[thinkingSteps.length - 1]
+    }
+    return "Analizando consulta legal"
+  }, [toolInUse, thinkingSteps])
+
+  const currentProgressPercent = useMemo(() => {
+    if (!isGenerating || message.role !== "assistant" || !isLast) return 0
+    if (firstTokenReceived) return 92
+    const base = 18 + thinkingSteps.length * 18
+    return Math.min(88, Math.max(18, base))
+  }, [firstTokenReceived, isGenerating, isLast, message.role, thinkingSteps.length])
+
   // Procesar contenido para detectar documentos y razonamiento
   const processedContent = useMemo(() => {
     if (message.role === "assistant") {
@@ -349,13 +375,31 @@ export const Message: FC<MessageProps> = ({
   const renderMessageContent = () => {
     // Solo mostrar indicador de carga si es el último mensaje del asistente y está generando
     if (!firstTokenReceived && isGenerating && isLast && message.role === "assistant") {
+      const steps = thinkingSteps.slice(-3)
       return (
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium text-muted-foreground">Pensando</span>
-          <div className="flex space-x-1">
-            <span className="w-1.5 h-1.5 bg-primary/70 rounded-full animate-bounce [animation-delay:-0.3s]" />
-            <span className="w-1.5 h-1.5 bg-primary/70 rounded-full animate-bounce [animation-delay:-0.15s]" />
-            <span className="w-1.5 h-1.5 bg-primary/70 rounded-full animate-bounce" />
+        <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+            <span className="text-sm font-medium text-foreground">{currentProgressLabel}</span>
+          </div>
+
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-primary/60 via-primary to-primary/60 transition-all duration-500"
+              style={{ width: `${currentProgressPercent}%` }}
+            />
+          </div>
+
+          <div className="mt-2 space-y-1">
+            {steps.length > 0 ? (
+              steps.map((step, index) => (
+                <div key={`${step}-${index}`} className="text-xs text-muted-foreground">
+                  {step}
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-muted-foreground">Investigando fuentes confiables...</div>
+            )}
           </div>
         </div>
       )

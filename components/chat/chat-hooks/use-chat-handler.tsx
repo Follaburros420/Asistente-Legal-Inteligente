@@ -10,6 +10,7 @@ import { buildFinalMessages } from "@/lib/build-prompt"
 import { Tables } from "@/supabase/types"
 import { ChatMessage, ChatPayload, LLMID, ModelProvider } from "@/types"
 import { BibliographyItem } from "@/types/chat-message"
+import { isAllowedMModel, M1_MODEL_ID, normalizeMModel } from "@/lib/models/m1-models"
 import { useRouter } from "next/navigation"
 import { useContext, useEffect, useRef } from "react"
 import { LLM_LIST } from "../../../lib/models/llm/llm-list"
@@ -119,7 +120,7 @@ export const useChatHandler = () => {
 
     if (selectedAssistant) {
       setChatSettings({
-        model: selectedAssistant.model as LLMID,
+        model: normalizeMModel(selectedAssistant.model) as LLMID,
         prompt: selectedAssistant.prompt,
         temperature: selectedAssistant.temperature,
         contextLength: selectedAssistant.context_length,
@@ -163,7 +164,7 @@ export const useChatHandler = () => {
       if (allFiles.length > 0) setShowFilesDisplay(true)
     } else if (selectedPreset) {
       setChatSettings({
-        model: selectedPreset.model as LLMID,
+        model: normalizeMModel(selectedPreset.model) as LLMID,
         prompt: selectedPreset.prompt,
         temperature: selectedPreset.temperature,
         contextLength: selectedPreset.context_length,
@@ -240,8 +241,8 @@ export const useChatHandler = () => {
       setAbortController(newAbortController)
 
       // Crear chatSettings por defecto si es null
-      const effectiveChatSettings = chatSettings || {
-        model: "google/gemini-3-pro-preview" as LLMID,
+      const baseSettings = chatSettings || {
+        model: M1_MODEL_ID as LLMID,
         prompt: "Eres un asistente legal inteligente especializado en derecho colombiano.",
         temperature: 0.3,
         contextLength: 4096,
@@ -250,8 +251,13 @@ export const useChatHandler = () => {
         embeddingsProvider: "openai" as "openai" | "local"
       }
 
-      // Si chatSettings era null, actualizarlo en el contexto
-      if (!chatSettings) {
+      const effectiveChatSettings = {
+        ...baseSettings,
+        model: normalizeMModel(baseSettings.model) as LLMID
+      }
+
+      // Asegurar que el estado use siempre un modelo permitido
+      if (!chatSettings || chatSettings.model !== effectiveChatSettings.model) {
         setChatSettings(effectiveChatSettings)
       }
 
@@ -270,15 +276,15 @@ export const useChatHandler = () => {
         ...availableOpenRouterModels
       ].find(llm => llm.modelId === effectiveChatSettings.model)
 
-      // Si no se encuentra el modelo, usar Gemini 3 Pro Preview por defecto
+      // Si no se encuentra el modelo, usar M1 por defecto
       if (!modelData) {
         modelData = {
-          modelId: "google/gemini-3-pro-preview" as LLMID,
-          modelName: "Gemini 3 Pro Preview",
-          provider: "google" as ModelProvider,
-          hostedId: "google/gemini-3-pro-preview",
-          platformLink: "https://ai.google.dev/",
-          imageInput: true
+          modelId: M1_MODEL_ID as LLMID,
+          modelName: "M1",
+          provider: "openrouter" as ModelProvider,
+          hostedId: M1_MODEL_ID,
+          platformLink: "https://openrouter.ai/",
+          imageInput: false
         }
       }
 
@@ -342,12 +348,11 @@ export const useChatHandler = () => {
       let generatedText = ""
       let bibliography: BibliographyItem[] | undefined
 
-      // Detectar si es un modelo que debe usar LangChain
-      const modelId = payload.chatSettings.model?.toLowerCase() || ''
-      const isResearchModel = modelId.includes('gemini') // Todos los modelos Gemini usan LangChain
+      // Detectar si es un modelo M gestionado por LangChain
+      const isManagedMModel = isAllowedMModel(payload.chatSettings.model)
       
       // Usar LangChain Agent para modelos de investigación O si hay tools seleccionadas
-      if (isResearchModel || selectedTools.length > 0) {
+      if (isManagedMModel || selectedTools.length > 0) {
         setToolInUse("thinking")
         
         // Usar handleHostedChat que procesa streaming y detecta el modelo automáticamente

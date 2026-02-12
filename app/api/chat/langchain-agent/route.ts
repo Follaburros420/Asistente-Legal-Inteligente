@@ -10,8 +10,9 @@
  * - Manejo de historial de conversación
  *
  * Modelos recomendados:
- * - google/gemini-3-pro-preview: Razonamiento avanzado (M1 Pro)
- * - google/gemini-3-flash-preview: Rápido y eficiente (M1 Small)
+ * - moonshotai/kimi-k2-thinking: Razonamiento avanzado (M1 Pro)
+ * - deepseek/deepseek-v3.2: Balance general (M1)
+ * - openai/gpt-oss-120b: Rapido y eficiente (M1 Small)
  *
  * Formato de streaming (JSON Lines):
  * - {"type": "thinking", "content": "..."} - Proceso de razonamiento
@@ -26,14 +27,21 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from "next/server"
 import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages"
-import { LegalAgent, getModelConfig, RESEARCH_MODELS } from "@/lib/langchain"
+import { LegalAgent, RESEARCH_MODELS } from "@/lib/langchain"
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base"
 import { getSupabaseServer } from '@/lib/supabase/server-client'
-import { canContinueChat, getUserPlanStatus, canUseModel, incrementModelUsage } from '@/lib/billing/plan-access'
+import { canContinueChat, canUseModel, incrementModelUsage } from '@/lib/billing/plan-access'
 import { incrementTokenUsage } from '@/db/usage-tracking'
 import { detectDraftIntent } from "@/lib/draft-detection"
 import { classifyDocumentIntent } from "@/lib/classifiers/document-classifier"
 import { validateDraftContent } from "@/lib/utils/draft-utils"
+import {
+  ALLOWED_M_MODELS,
+  isKnownMModelInput,
+  M1_MODEL_ID,
+  M1_SMALL_MODEL_ID,
+  normalizeMModel
+} from "@/lib/models/m1-models"
 
 export const runtime = "nodejs"
 export const maxDuration = 180 // 3 minutos para investigación completa
@@ -82,93 +90,211 @@ let cleanupInterval: NodeJS.Timeout | null = null
 // STREAMING CALLBACK HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Callback handler que emite eventos de streaming
- */
+type StreamEmitter = (event: Record<string, unknown>) => void
+
+const TOOL_LABELS: Record<string, string> = {
+  search_legal_official: "Investigando normas oficiales",
+  search_jurisprudencia: "Contrastando jurisprudencia aplicable",
+  buscar_articulo_ley: "Verificando texto literal de articulos",
+  serper_web_search: "Contrastando fuentes complementarias"
+}
+
+const TRUSTED_SOURCE_DOMAINS = [
+  ".gov.co",
+  "corteconstitucional.gov.co",
+  "consejodeestado.gov.co",
+  "cortesuprema.gov.co",
+  "suin-juriscol.gov.co",
+  "secretariasenado.gov.co",
+  "funcionpublica.gov.co",
+  "ramajudicial.gov.co",
+  "imprenta.gov.co",
+  "superfinanciera.gov.co"
+]
+
+function safeJsonParse(input: string): Record<string, any> | null {
+  try {
+    return JSON.parse(input)
+  } catch {
+    return null
+  }
+}
+
+function normalizeStatusTopic(value: unknown): string {
+  if (typeof value !== "string") return ""
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/\b(serper|api|tool|herramienta)\b/gi, "")
+    .trim()
+    .slice(0, 90)
+}
+
+function extractToolTopic(rawInput: string): string {
+  const parsed = safeJsonParse(rawInput)
+  if (!parsed) {
+    return normalizeStatusTopic(rawInput)
+  }
+  return (
+    normalizeStatusTopic(parsed.query) ||
+    normalizeStatusTopic(parsed.norma) ||
+    normalizeStatusTopic(parsed.ley) ||
+    normalizeStatusTopic(parsed.articulo) ||
+    normalizeStatusTopic(parsed.tema)
+  )
+}
+
+function buildToolLabel(toolName: string, rawInput: string): string {
+  const base = TOOL_LABELS[toolName] || "Investigando fuentes legales"
+  const topic = extractToolTopic(rawInput)
+  return topic ? `${base}: ${topic}` : base
+}
+
+function isTrustedLegalSource(url: string): boolean {
+  const normalized = url.toLowerCase()
+  return TRUSTED_SOURCE_DOMAINS.some(domain => normalized.includes(domain))
+}
+
+function normalizeSourceName(url: string): string {
+  const normalized = url.toLowerCase()
+  if (normalized.includes("secretariasenado.gov.co")) return "Secretaria del Senado"
+  if (normalized.includes("suin-juriscol.gov.co")) return "SUIN-Juriscol"
+  if (normalized.includes("corteconstitucional.gov.co")) return "Corte Constitucional"
+  if (normalized.includes("consejodeestado.gov.co")) return "Consejo de Estado"
+  if (normalized.includes("cortesuprema.gov.co")) return "Corte Suprema de Justicia"
+  if (normalized.includes("superfinanciera.gov.co")) return "Superintendencia Financiera"
+  if (normalized.includes("funcionpublica.gov.co")) return "Funcion Publica"
+  if (normalized.includes(".gov.co")) return "Fuente oficial"
+  return "Fuente legal"
+}
+
+function normalizeSources(
+  rawSources: Array<{ title?: string; url?: string }>
+): Array<{ title: string; url: string; type: string }> {
+  const cleaned = rawSources
+    .filter(source => typeof source?.url === "string" && source.url.startsWith("http"))
+    .map(source => {
+      const url = (source.url || "").trim()
+      const trusted = isTrustedLegalSource(url)
+      const fallbackTitle = trusted ? normalizeSourceName(url) : "Fuente complementaria"
+      const title = source.title?.trim() || fallbackTitle
+      return {
+        title,
+        url,
+        type: trusted ? "oficial" : "complementaria"
+      }
+    })
+
+  const deduped = cleaned.filter(
+    (item, index, arr) => arr.findIndex(other => other.url === item.url) === index
+  )
+
+  const prioritized = deduped.sort((a, b) => {
+    if (a.type === b.type) return 0
+    return a.type === "oficial" ? -1 : 1
+  })
+
+  const official = prioritized.filter(item => item.type === "oficial")
+  return (official.length > 0 ? official : prioritized).slice(0, 10)
+}
+
+function extractSourcesFromText(output: string): Array<{ title: string; url: string }> {
+  const matches = output.match(/https?:\/\/[^\s)\]>"']+/g) || []
+  const urls = matches
+    .map(url => url.replace(/[.,\])}]+$/, ""))
+    .filter((url, index, arr) => arr.indexOf(url) === index)
+
+  return urls.map(url => ({
+    title: normalizeSourceName(url),
+    url
+  }))
+}
+
+function sanitizeFinalOutput(text: string): string {
+  const withoutThinkBlocks = text.replace(/<think>[\s\S]*?<\/think>/gi, "")
+  const lines = withoutThinkBlocks
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !/^\**\s*(think|análisis interno|razonamiento interno)\s*[:\s]/i.test(line))
+    .filter(
+      line =>
+        !/^\**\s*(ok|listo|respuesta|respuesta final|procedo|nota mental|fin del pensamiento)\s*[:.]?\s*\**$/i.test(
+          line
+        )
+    )
+    .filter(
+      line =>
+        !/^\**\s*(voy a|procedo a|generando respuesta|respuesta generada|última verificación|último chequeo)\b/i.test(
+          line
+        )
+    )
+
+  const deduped: string[] = []
+  for (const line of lines) {
+    if (deduped[deduped.length - 1] !== line) {
+      deduped.push(line)
+    }
+  }
+
+  return deduped.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+}
+
 class StreamingCallbackHandler extends BaseCallbackHandler {
-  name = "streaming_handler"
-  private encoder: TextEncoder
-  private controller: ReadableStreamDefaultController<Uint8Array>
+  name = "streaming_status_handler"
+  private emit: StreamEmitter
 
-  constructor(controller: ReadableStreamDefaultController<Uint8Array>) {
+  constructor(emit: StreamEmitter) {
     super()
-    this.encoder = new TextEncoder()
-    this.controller = controller
+    this.emit = emit
   }
 
-  private emit(event: object) {
-    // Si no hay controller, salir
-    if (!this.controller) return
-
-    try {
-      // Verificar estado del controller (aunque la propiedad desiredSize no siempre es fiable en todos los entornos, es estándar)
-      // @ts-ignore
-      if (this.controller.desiredSize === null) return
-
-      const data = JSON.stringify(event) + '\n'
-      this.controller.enqueue(this.encoder.encode(data))
-    } catch (e) {
-      // Silenciar errores de enecolado (sucede si el cliente cierra conexión)
-      // console.error('Stream enqueue error (cliente desconectado):', e)
-    }
-  }
-
-  // Cuando el LLM empieza a generar
-  async handleLLMStart(llm: any, prompts: string[]) {
-    this.emit({ type: 'thinking', content: '🧠 Analizando la consulta...' })
-  }
-
-  // Cuando recibimos tokens del LLM (razonamiento/respuesta)
-  async handleLLMNewToken(token: string) {
-    // Detectar si es parte del razonamiento (thinking) o respuesta final
-    // Los modelos thinking suelen incluir tags especiales
-    if (token.includes('<think>') || token.includes('</think>')) {
-      // No emitir los tags, solo el contenido
-      return
-    }
-
-    this.emit({ type: 'token', content: token })
-  }
-
-  // Cuando el LLM termina
-  async handleLLMEnd(output: any) {
-    // Si hay reasoning/thinking en el output, emitirlo
-    const reasoning = output?.generations?.[0]?.[0]?.message?.additional_kwargs?.reasoning
-    if (reasoning) {
-      this.emit({ type: 'thinking', content: reasoning })
-    }
-  }
-
-  // Cuando se inicia una herramienta
-  async handleToolStart(tool: any, input: string) {
+  async handleLLMStart() {
     this.emit({
-      type: 'tool_start',
-      tool: 'verificacion_legal',
-      input: 'Contraste de fuentes oficiales'
+      type: "status",
+      phase: "analyzing",
+      progress: 10,
+      message: "Analizando tu consulta legal"
     })
   }
 
-  // Cuando termina una herramienta
-  async handleToolEnd(output: string) {
-    this.emit({ type: 'tool_end', output: 'Fuentes contrastadas' })
+  async handleToolStart(tool: { name?: string }, input: string) {
+    const toolName = tool?.name || "search_legal_official"
+    const label = buildToolLabel(toolName, input)
+
+    this.emit({
+      type: "status",
+      phase: "investigating",
+      progress: 40,
+      message: label
+    })
+
+    this.emit({
+      type: "tool_start",
+      label,
+      progress: 45
+    })
   }
 
-  // Cuando hay un error en una herramienta
+  async handleToolEnd() {
+    this.emit({
+      type: "tool_end",
+      message: "Fuentes contrastadas",
+      progress: 70
+    })
+  }
+
   async handleToolError(err: Error) {
-    this.emit({ type: 'tool_error', error: err.message })
-  }
-
-  // Cuando el agente toma una acción
-  async handleAgentAction(action: any) {
     this.emit({
-      type: 'thinking',
-      content: "Verificando fuentes juridicas relevantes..."
+      type: "status",
+      phase: "investigating",
+      progress: 55,
+      message: "Hubo un problema validando una fuente, continuo con otras"
     })
-  }
 
-  // Cuando el agente termina
-  async handleAgentEnd(output: any) {
-    this.emit({ type: 'agent_done' })
+    this.emit({
+      type: "tool_error",
+      error: err.message
+    })
   }
 }
 
@@ -295,8 +421,20 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      const requestedModel = chatSettings.model
+      if (requestedModel && !isKnownMModelInput(requestedModel)) {
+        return NextResponse.json(
+          {
+            error: "Modelo no permitido para este asistente",
+            code: "MODEL_NOT_ALLOWED",
+            allowedModels: ALLOWED_M_MODELS
+          },
+          { status: 400 }
+        )
+      }
+
       // Check model-specific usage limits
-      const modelId = chatSettings.model || 'google/gemini-3-pro-preview'
+      const modelId = normalizeMModel(requestedModel || M1_MODEL_ID)
       const modelCheck = await canUseModel(effectiveUserId, modelId)
 
       if (!modelCheck.allowed) {
@@ -305,7 +443,7 @@ export async function POST(request: NextRequest) {
             error: modelCheck.reason || "Has alcanzado el límite de uso de este modelo",
             code: "MODEL_LIMIT_EXCEEDED",
             needsUpgrade: true,
-            suggestModel: "google/gemini-3-flash-preview", // M1 Small
+            suggestModel: M1_SMALL_MODEL_ID,
             usage: modelCheck.usage
           },
           { status: 402 } // Payment Required
@@ -322,12 +460,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Determinar modelo a usar
-    const modelId = chatSettings.model || 'google/gemini-3-pro-preview'
-    const temperature = chatSettings.temperature ?? 0.3
+    const requestedModel = chatSettings.model
+    if (requestedModel && !isKnownMModelInput(requestedModel)) {
+      return NextResponse.json(
+        {
+          error: "Modelo no permitido para este asistente",
+          code: "MODEL_NOT_ALLOWED",
+          allowedModels: ALLOWED_M_MODELS
+        },
+        { status: 400 }
+      )
+    }
 
-    // Verificar que el modelo soporte tools
-    const modelConfig = getModelConfig(modelId)
+    // Determinar modelo a usar
+    const modelId = normalizeMModel(requestedModel || M1_MODEL_ID)
+    const temperature = chatSettings.temperature ?? 0.3
 
     // Extraer el último mensaje del usuario
     const userMessages = messages.filter(m => m.role === 'user')
@@ -404,20 +551,34 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          // Emitir evento de inicio
-          emit({ type: 'thinking', content: '🧠 Analizando tu consulta legal...' })
+          // Emitir estado inicial
+          emit({
+            type: "status",
+            phase: "preparing",
+            progress: 5,
+            message: "Preparando contexto legal"
+          })
+
+          const callbackHandler = new StreamingCallbackHandler(emit)
 
           // Ejecutar el agente
-          const result = await agent.invoke({
-            input: inputMessage,
-            chatHistory
-          })
+          const result = await agent.invoke(
+            {
+              input: inputMessage,
+              chatHistory
+            },
+            {
+              callbacks: [callbackHandler]
+            }
+          )
 
           // Emitir información sobre herramientas usadas
           if (result.toolsUsed && result.toolsUsed.length > 0) {
             emit({
-              type: 'thinking',
-              content: "Verificando normas y jurisprudencia aplicables..."
+              type: "status",
+              phase: "investigating",
+              progress: 75,
+              message: "Sintetizando hallazgos y validando consistencia"
             })
           }
 
@@ -425,20 +586,33 @@ export async function POST(request: NextRequest) {
           if (result.intermediateSteps && result.intermediateSteps.length > 0) {
             for (const step of result.intermediateSteps) {
               if (step.action?.tool) {
+                const toolName = String(step.action.tool)
                 emit({
-                  type: 'tool_start',
-                  tool: 'verificacion_legal',
-                  input: 'Contraste de fuentes oficiales'
+                  type: "tool_start",
+                  label: TOOL_LABELS[toolName] || "Investigando fuentes legales",
+                  progress: 60
                 })
               }
               if (step.observation) {
-                emit({ type: 'tool_end', output: 'Fuentes contrastadas' })
+                emit({
+                  type: "tool_end",
+                  message: "Fuentes contrastadas",
+                  progress: 70
+                })
               }
             }
           }
 
           // Emitir fin del razonamiento
-          emit({ type: 'thinking_done' })
+          emit({
+            type: "thinking_done"
+          })
+          emit({
+            type: "status",
+            phase: "generating",
+            progress: 85,
+            message: "Redactando respuesta final"
+          })
 
           // Limpiar la respuesta del modelo
           let cleanOutput = result.output
@@ -473,7 +647,8 @@ export async function POST(request: NextRequest) {
             }
           } else {
             // Limpieza de formato normal
-            cleanOutput = cleanOutput
+            cleanOutput = sanitizeFinalOutput(
+              cleanOutput
               .replace(/\*{0,2}Fuentes consultadas\*{0,2}\s*\n+/gi, '')
               .replace(/\d+\s*referencias?\s*\n+/gi, '')
               .replace(/\n+---\n*\*{0,2}Fuentes?\s*(consultadas|legales?)?\*{0,2}:?\s*\n*$/gi, '')
@@ -481,32 +656,26 @@ export async function POST(request: NextRequest) {
               .replace(/\n*\*{0,2}(Advertencia|Nota importante|Importante|Disclaimer):?\*{0,2}[^]*?(consultar?|abogado|profesional|asesor)[^]*?\.?\n*/gi, '\n')
               .replace(/\n{3,}/g, '\n\n')
               .trim()
+            )
           }
 
           // Emitir respuesta token por token (streaming real)
-          const words = cleanOutput.split(' ')
+          const words = cleanOutput.split(' ').filter(Boolean)
 
           for (let i = 0; i < words.length; i++) {
             const word = words[i] + (i < words.length - 1 ? ' ' : '')
             emit({ type: 'token', content: word })
 
             // Pequeña pausa para efecto de streaming visual
-            await new Promise(resolve => setTimeout(resolve, 15))
+            await new Promise(resolve => setTimeout(resolve, 10))
           }
 
           // Emitir fuentes si existen
-          if (result.sources && result.sources.length > 0) {
-            const validSources = result.sources.filter(s =>
-              s.url && s.url.startsWith('http') && s.url.length > 10
-            )
+          const fallbackSources = extractSourcesFromText(cleanOutput)
+          const mergedSources = normalizeSources([...(result.sources || []), ...fallbackSources])
 
-            const uniqueSources = validSources.filter((s, i, arr) =>
-              arr.findIndex(x => x.url === s.url) === i
-            )
-
-            if (uniqueSources.length > 0) {
-              emit({ type: 'sources', sources: uniqueSources })
-            }
+          if (mergedSources.length > 0) {
+            emit({ type: "sources", sources: mergedSources })
           }
 
           // ═══════════════════════════════════════════════════════════════════
@@ -544,12 +713,18 @@ export async function POST(request: NextRequest) {
           // Emitir evento de finalización
           const processingTime = ((Date.now() - startTime) / 1000).toFixed(1)
           emit({
+            type: "status",
+            phase: "completed",
+            progress: 100,
+            message: "Respuesta lista"
+          })
+          emit({
             type: 'done',
             metadata: {
               model: modelId,
               processingTime: processingTime + 's',
               toolsUsed: result.toolsUsed || [],
-              sourcesCount: result.sources?.length || 0
+              sourcesCount: mergedSources.length
             }
           })
 
@@ -610,7 +785,7 @@ export async function GET() {
     version: "1.0.0",
     features: [
       "Tool calling nativo",
-      "Modelos Google Gemini vía OpenRouter",
+      "Modelos M vía OpenRouter",
       "El modelo decide autónomamente cuándo usar herramientas",
       "Streaming de respuestas",
       "Cache de agentes por sesión"

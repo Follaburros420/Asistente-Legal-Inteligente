@@ -30,7 +30,7 @@ interface PromptBlockPayload {
   }>
 }
 
-const DEFAULT_MODEL = "google/gemini-3-pro-preview"
+const DEFAULT_MODEL = "deepseek/deepseek-v3.2"
 
 const REQUIREMENT_LIBRARY: Record<string, { label: string; reference?: string; items: RequirementItem[] }> = {
   tutela: {

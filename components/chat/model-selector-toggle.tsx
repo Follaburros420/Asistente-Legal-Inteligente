@@ -1,16 +1,17 @@
 import { useContext, useState } from "react"
 import { ALIContext } from "@/context/context"
 import { cn } from "@/lib/utils"
-import { ChatSettings, OpenRouterLLMID } from "@/types"
+import { ChatSettings, LLMID } from "@/types"
 import { IconBrain, IconCpu, IconChevronDown, IconBolt, IconInfinity, IconLock } from "@tabler/icons-react"
 import { useModelUsage, formatRemainingCount } from "@/lib/hooks/use-model-usage"
 import { toast } from "sonner"
+import { M1_MODEL_ID, M1_PRO_MODEL_ID, M1_SMALL_MODEL_ID, normalizeMModel } from "@/lib/models/m1-models"
 
 // Internal model IDs - not exposed to users
 // M1 y M1 Pro ambos usan Gemini 3 Pro Preview según configuración
-export const M1_SMALL_MODEL = "google/gemini-3-flash-preview"
-export const M1_MODEL = "google/gemini-3-pro-preview"
-export const M1_PRO_MODEL = "google/gemini-3-pro-preview"
+export const M1_SMALL_MODEL = M1_SMALL_MODEL_ID
+export const M1_MODEL = M1_MODEL_ID
+export const M1_PRO_MODEL = M1_PRO_MODEL_ID
 
 const MODELS = [
   {
@@ -44,7 +45,7 @@ export const ModelSelectorToggle = () => {
   const { canUseModel, getRemainingForModel, getUsageForModel, isLoading: usageLoading } = useModelUsage()
 
   // Use M1 as default if chatSettings is null
-  const currentModel = chatSettings?.model || M1_MODEL
+  const currentModel = normalizeMModel(chatSettings?.model)
   const selectedModel = MODELS.find(m => m.id === currentModel) || MODELS[0]
   const [isOpen, setIsOpen] = useState(false)
 
@@ -69,11 +70,11 @@ export const ModelSelectorToggle = () => {
     if (chatSettings) {
       setChatSettings({
         ...chatSettings,
-        model: modelId as OpenRouterLLMID
+        model: modelId as LLMID
       })
     } else {
       const defaultSettings: ChatSettings = {
-        model: modelId as OpenRouterLLMID,
+        model: modelId as LLMID,
         prompt: profile?.default_prompt || "Eres un asistente legal inteligente especializado en derecho colombiano.",
         temperature: profile?.default_temperature || 0.5,
         contextLength: profile?.default_context_length || 4096,
