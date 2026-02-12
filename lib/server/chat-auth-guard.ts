@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getServerProfile } from "@/lib/server/server-chat-helpers"
+import { getServerProfile, isServerProfileError } from "@/lib/server/server-chat-helpers"
 import { chatRateLimit, checkRateLimit, formatRateLimitHeaders } from "@/lib/rate-limit"
 
 type GuardSuccess = {
@@ -18,11 +18,47 @@ export type ChatAuthGuardResult = GuardSuccess | GuardFailure
  * Enforces authenticated session and per-user chat rate limiting.
  */
 export async function requireChatAuthAndRateLimit(): Promise<ChatAuthGuardResult> {
-  const profile = await getServerProfile().catch(() => null)
+  let profile: Awaited<ReturnType<typeof getServerProfile>> | null = null
+
+  try {
+    profile = await getServerProfile()
+  } catch (error) {
+    if (isServerProfileError(error)) {
+      if (error.status === 401) {
+        return {
+          ok: false,
+          response: NextResponse.json({ error: "No autorizado", code: error.code }, { status: 401 })
+        }
+      }
+
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error: "Servicio de autenticacion temporalmente no disponible",
+            code: error.code
+          },
+          { status: 503 }
+        )
+      }
+    }
+
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "Error inesperado de autenticacion",
+          code: "AUTH_GUARD_UNEXPECTED_ERROR"
+        },
+        { status: 500 }
+      )
+    }
+  }
+
   if (!profile) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "No autorizado" }, { status: 401 })
+      response: NextResponse.json({ error: "No autorizado", code: "UNAUTHORIZED" }, { status: 401 })
     }
   }
 

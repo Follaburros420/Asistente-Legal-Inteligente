@@ -22,10 +22,93 @@ export type ProfileWithKeys = Tables<"profiles"> & {
   use_azure_openai?: boolean
 }
 
+export type ServerProfileErrorCode =
+  | "UNAUTHORIZED"
+  | "PROFILE_NOT_FOUND"
+  | "SUPABASE_CONFIG_ERROR"
+  | "SUPABASE_AUTH_UPSTREAM_ERROR"
+  | "SUPABASE_AUTH_ERROR"
+
+export class ServerProfileError extends Error {
+  readonly code: ServerProfileErrorCode
+  readonly status: number
+
+  constructor(code: ServerProfileErrorCode, status: number, message: string) {
+    super(message)
+    this.name = "ServerProfileError"
+    this.code = code
+    this.status = status
+  }
+}
+
+export function isServerProfileError(error: unknown): error is ServerProfileError {
+  return error instanceof ServerProfileError
+}
+
+function isLikelyHtmlResponseError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    message.includes("Unexpected token '<'") ||
+    message.includes("<!DOCTYPE") ||
+    message.includes("is not valid JSON")
+  )
+}
+
+function normalizeSupabaseUrl(rawUrl: string): string {
+  const cleaned = rawUrl.trim().replace(/\/+$/, "")
+  let parsed: URL
+
+  try {
+    parsed = new URL(cleaned)
+  } catch {
+    throw new ServerProfileError(
+      "SUPABASE_CONFIG_ERROR",
+      503,
+      "NEXT_PUBLIC_SUPABASE_URL no es una URL valida"
+    )
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new ServerProfileError(
+      "SUPABASE_CONFIG_ERROR",
+      503,
+      "NEXT_PUBLIC_SUPABASE_URL debe usar http o https"
+    )
+  }
+
+  const hasPath = parsed.pathname && parsed.pathname !== "/"
+  if (hasPath) {
+    throw new ServerProfileError(
+      "SUPABASE_CONFIG_ERROR",
+      503,
+      "NEXT_PUBLIC_SUPABASE_URL no debe incluir rutas (ej. /auth/v1)"
+    )
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL
+  if (appUrl) {
+    try {
+      const appHost = new URL(appUrl).host
+      if (appHost && parsed.host === appHost) {
+        throw new ServerProfileError(
+          "SUPABASE_CONFIG_ERROR",
+          503,
+          "NEXT_PUBLIC_SUPABASE_URL apunta al dominio de la app y no al proyecto de Supabase"
+        )
+      }
+    } catch {
+      // Ignore invalid app URL, this is only a best-effort safety check
+    }
+  }
+
+  return parsed.origin
+}
+
 export async function getServerProfile(): Promise<ProfileWithKeys> {
   const cookieStore = cookies()
+  const supabaseUrl = normalizeSupabaseUrl(env.supabaseUrl())
   const supabase = createServerClient<Database>(
-    env.supabaseUrl(),
+    supabaseUrl,
     env.supabaseAnonKey(),
     {
       cookies: {
@@ -36,9 +119,32 @@ export async function getServerProfile(): Promise<ProfileWithKeys> {
     }
   )
 
-  const user = (await supabase.auth.getUser()).data.user
+  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] | null = null
+
+  try {
+    const authResult = await supabase.auth.getUser()
+    if (authResult.error) {
+      throw authResult.error
+    }
+    user = authResult.data.user
+  } catch (error) {
+    if (isLikelyHtmlResponseError(error)) {
+      throw new ServerProfileError(
+        "SUPABASE_AUTH_UPSTREAM_ERROR",
+        503,
+        "Supabase Auth devolvio HTML en lugar de JSON. Verifica NEXT_PUBLIC_SUPABASE_URL y DNS"
+      )
+    }
+
+    throw new ServerProfileError(
+      "SUPABASE_AUTH_ERROR",
+      503,
+      `Error consultando Supabase Auth: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+
   if (!user) {
-    throw new Error("User not found")
+    throw new ServerProfileError("UNAUTHORIZED", 401, "User not found")
   }
 
   const { data: profile } = await supabase
@@ -48,7 +154,7 @@ export async function getServerProfile(): Promise<ProfileWithKeys> {
     .single()
 
   if (!profile) {
-    throw new Error("Profile not found")
+    throw new ServerProfileError("PROFILE_NOT_FOUND", 401, "Profile not found")
   }
 
   const profileWithKeys = addApiKeysToProfile(profile)
