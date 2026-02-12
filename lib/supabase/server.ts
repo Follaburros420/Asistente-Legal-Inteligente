@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { Database } from "@/supabase/types"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
+import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
 
 /**
  * Create a Supabase client for Server Components
@@ -47,6 +48,9 @@ export const createClient = (cookieStore: ReturnType<typeof cookies>) => {
           // Called from Server Component - ignore
         }
       }
+    },
+    global: {
+      fetch: createSupabaseSafeFetch("server")
     }
   })
 }

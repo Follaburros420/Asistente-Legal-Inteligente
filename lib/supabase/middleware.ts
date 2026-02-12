@@ -2,6 +2,7 @@ import { getEnvVar } from "@/lib/env/runtime-env"
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
+import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
 
 let warnedInvalidSupabaseMiddlewareConfig = false
 
@@ -75,6 +76,9 @@ export const createClient = (request: NextRequest) => {
             response.cookies.set(name, '', { ...options, maxAge: 0 })
           })
         }
+      },
+      global: {
+        fetch: createSupabaseSafeFetch("middleware")
       }
     }
   )

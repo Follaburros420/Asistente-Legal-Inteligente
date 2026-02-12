@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/middleware"
+import { isSupabaseAuthHtmlParseError } from "@/lib/supabase/safe-fetch"
 import { i18nRouter } from "next-i18n-router"
 import { NextResponse, type NextRequest } from "next/server"
 import i18nConfig from "./i18nConfig"
@@ -53,6 +54,7 @@ const AUTH_ROUTES = ['/onboarding', '/login', '/register', '/setup', '/invite', 
 
 // Verificar si billing está habilitado
 const isBillingEnabled = () => getEnvVar('NEXT_PUBLIC_BILLING_ENABLED') === 'true';
+let warnedSupabaseUpstreamInMiddleware = false
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
@@ -319,6 +321,16 @@ export async function middleware(request: NextRequest) {
     // Para cualquier otra ruta, permitir acceso
     return response
   } catch (e) {
+    if (isSupabaseAuthHtmlParseError(e)) {
+      if (!warnedSupabaseUpstreamInMiddleware) {
+        warnedSupabaseUpstreamInMiddleware = true
+        console.error(
+          "[middleware] Supabase auth upstream devolvio HTML/no-JSON. Revisa NEXT_PUBLIC_SUPABASE_URL en Vercel."
+        )
+      }
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
     console.error('Middleware error:', e)
     // En caso de error, permitir acceso para no bloquear
     return NextResponse.next({

@@ -3,6 +3,8 @@ import { Database, Tables } from "@/supabase/types"
 import { VALID_ENV_KEYS } from "@/types/valid-keys"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { createSupabaseSafeFetch, isSupabaseAuthHtmlParseError } from "@/lib/supabase/safe-fetch"
+import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
 
 export type ProfileWithKeys = Tables<"profiles"> & {
   openai_api_key?: string
@@ -46,62 +48,19 @@ export function isServerProfileError(error: unknown): error is ServerProfileErro
 }
 
 function isLikelyHtmlResponseError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  return (
-    message.includes("Unexpected token '<'") ||
-    message.includes("<!DOCTYPE") ||
-    message.includes("is not valid JSON")
-  )
+  return isSupabaseAuthHtmlParseError(error)
 }
 
 function normalizeSupabaseUrl(rawUrl: string): string {
-  const cleaned = rawUrl.trim().replace(/\/+$/, "")
-  let parsed: URL
-
-  try {
-    parsed = new URL(cleaned)
-  } catch {
+  const validation = validateAndNormalizeSupabaseUrl(rawUrl)
+  if (!validation.ok) {
     throw new ServerProfileError(
       "SUPABASE_CONFIG_ERROR",
       503,
-      "NEXT_PUBLIC_SUPABASE_URL no es una URL valida"
+      validation.reason
     )
   }
-
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new ServerProfileError(
-      "SUPABASE_CONFIG_ERROR",
-      503,
-      "NEXT_PUBLIC_SUPABASE_URL debe usar http o https"
-    )
-  }
-
-  const hasPath = parsed.pathname && parsed.pathname !== "/"
-  if (hasPath) {
-    throw new ServerProfileError(
-      "SUPABASE_CONFIG_ERROR",
-      503,
-      "NEXT_PUBLIC_SUPABASE_URL no debe incluir rutas (ej. /auth/v1)"
-    )
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL
-  if (appUrl) {
-    try {
-      const appHost = new URL(appUrl).host
-      if (appHost && parsed.host === appHost) {
-        throw new ServerProfileError(
-          "SUPABASE_CONFIG_ERROR",
-          503,
-          "NEXT_PUBLIC_SUPABASE_URL apunta al dominio de la app y no al proyecto de Supabase"
-        )
-      }
-    } catch {
-      // Ignore invalid app URL, this is only a best-effort safety check
-    }
-  }
-
-  return parsed.origin
+  return validation.url
 }
 
 export async function getServerProfile(): Promise<ProfileWithKeys> {
@@ -115,6 +74,9 @@ export async function getServerProfile(): Promise<ProfileWithKeys> {
         get(name: string) {
           return cookieStore.get(name)?.value
         }
+      },
+      global: {
+        fetch: createSupabaseSafeFetch("server-chat-helpers")
       }
     }
   )

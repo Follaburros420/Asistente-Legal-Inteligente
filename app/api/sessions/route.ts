@@ -7,6 +7,8 @@ import { env, getEnvVar } from '@/lib/env/runtime-env';
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
+import { validateAndNormalizeSupabaseUrl } from '@/lib/supabase/url-validation';
+import { createSupabaseSafeFetch, isSupabaseAuthHtmlParseError } from '@/lib/supabase/safe-fetch';
 import {
   checkDeviceLimit,
   createUserSession,
@@ -44,7 +46,13 @@ async function getAuthenticatedUser(req: NextRequest) {
     throw new Error(errorMsg);
   }
   
-  const supabaseUrl = rawSupabaseUrl;
+  const urlValidation = validateAndNormalizeSupabaseUrl(rawSupabaseUrl);
+  if (!urlValidation.ok) {
+    console.error('[Sessions API] Invalid Supabase URL:', urlValidation.reason);
+    throw new Error(`Invalid Supabase URL: ${urlValidation.reason}`);
+  }
+
+  const supabaseUrl = urlValidation.url;
   const supabaseKey = rawSupabaseKey;
   
   const supabase = createServerClient(
@@ -74,10 +82,25 @@ async function getAuthenticatedUser(req: NextRequest) {
           }
         }
       }
+      ,
+      global: {
+        fetch: createSupabaseSafeFetch('sessions-get-user')
+      }
     }
   );
-  
-  const { data: { user }, error } = await supabase.auth.getUser();
+
+  let user = null as Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] | null
+  let error: any = null
+  try {
+    const authResult = await supabase.auth.getUser();
+    user = authResult.data.user
+    error = authResult.error
+  } catch (authError) {
+    if (isSupabaseAuthHtmlParseError(authError)) {
+      return null;
+    }
+    throw authError;
+  }
   
   if (error || !user) {
     return null;
@@ -149,8 +172,16 @@ export async function POST(req: NextRequest) {
       );
     }
     
+    const urlValidation = validateAndNormalizeSupabaseUrl(supabaseUrl);
+    if (!urlValidation.ok) {
+      return NextResponse.json(
+        { error: `Invalid Supabase URL: ${urlValidation.reason}` },
+        { status: 503 }
+      );
+    }
+
     const supabase = createServerClient(
-      supabaseUrl,
+      urlValidation.url,
       supabaseKey,
       {
         cookies: {
@@ -176,12 +207,34 @@ export async function POST(req: NextRequest) {
             }
           }
         }
+        ,
+        global: {
+          fetch: createSupabaseSafeFetch('sessions-post')
+        }
       }
     );
-    
+
     // Get user AND session info
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] | null = null
+    let userError: any = null
+    let session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"] | null = null
+
+    try {
+      const authUserResult = await supabase.auth.getUser();
+      user = authUserResult.data.user;
+      userError = authUserResult.error;
+
+      const authSessionResult = await supabase.auth.getSession();
+      session = authSessionResult.data.session;
+    } catch (authError) {
+      if (isSupabaseAuthHtmlParseError(authError)) {
+        return NextResponse.json(
+          { error: 'Servicio de autenticación temporalmente no disponible', code: 'SUPABASE_AUTH_UPSTREAM_ERROR' },
+          { status: 503 }
+        );
+      }
+      throw authError;
+    }
     
     if (userError || !user) {
       return NextResponse.json(

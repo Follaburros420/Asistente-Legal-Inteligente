@@ -2,6 +2,8 @@ import { env, getEnvVar } from "@/lib/env/runtime-env"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
+import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
 
 // Get the correct app URL for redirects
 function getAppUrl(): string {
@@ -34,6 +36,7 @@ export async function GET(request: Request) {
   const cookieStore = cookies()
   const supabaseUrlEnv = getEnvVar('NEXT_PUBLIC_SUPABASE_URL')
   const supabaseAnonKeyEnv = getEnvVar('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  const supabaseUrlValidation = validateAndNormalizeSupabaseUrl(supabaseUrlEnv || '')
   
   // Log available cookies for debugging PKCE issues
   const allCookies = cookieStore.getAll()
@@ -60,8 +63,8 @@ export async function GET(request: Request) {
         hasCode: !!code,
         hasSupabaseUrl: !!supabaseUrlEnv,
         hasSupabaseAnonKey: !!supabaseAnonKeyEnv,
-        urlLength: supabaseUrlEnv.length,
-        anonKeyLength: supabaseAnonKeyEnv.length,
+        urlLength: supabaseUrlEnv?.length || 0,
+        anonKeyLength: supabaseAnonKeyEnv?.length || 0,
         appUrl,
         nodeEnv: process.env.NODE_ENV
       },
@@ -77,10 +80,11 @@ export async function GET(request: Request) {
   // #endregion
 
   // Create Supabase client with proper cookie handling using getAll/setAll/removeAll
-  if (!supabaseUrlEnv || !supabaseAnonKeyEnv) {
+  if (!supabaseUrlEnv || !supabaseAnonKeyEnv || !supabaseUrlValidation.ok) {
     console.error('[Auth Callback] Missing Supabase environment variables:', {
       hasUrl: !!supabaseUrlEnv,
-      hasAnonKey: !!supabaseAnonKeyEnv
+      hasAnonKey: !!supabaseAnonKeyEnv,
+      urlValidation: supabaseUrlValidation.ok ? 'ok' : supabaseUrlValidation.reason
     })
     return NextResponse.redirect(
       new URL('/login?message=Error de configuración del servidor. Por favor contacta al administrador.', appUrl)
@@ -88,7 +92,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createServerClient(
-    supabaseUrlEnv,
+    supabaseUrlValidation.url,
     supabaseAnonKeyEnv,
     {
       cookies: {
@@ -117,6 +121,9 @@ export async function GET(request: Request) {
             console.warn('[Auth Callback] Error removing cookies:', error)
           }
         }
+      },
+      global: {
+        fetch: createSupabaseSafeFetch('auth-callback')
       }
     }
   )
