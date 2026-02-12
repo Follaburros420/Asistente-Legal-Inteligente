@@ -42,6 +42,11 @@ export interface LegalSearchResult {
   relevanceScore: number
 }
 
+interface SearchCacheEntry {
+  expiresAt: number
+  results: LegalSearchResult[]
+}
+
 // Dominios oficiales colombianos ordenados por prioridad
 const OFFICIAL_DOMAINS = [
   'corteconstitucional.gov.co',
@@ -86,6 +91,10 @@ const BANNED_DOMAINS = [
   'tiktok.com'
 ]
 
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000
+const SEARCH_CACHE_MAX_ENTRIES = 200
+const SEARCH_CACHE = new Map<string, SearchCacheEntry>()
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCIONES DE UTILIDAD
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -95,6 +104,41 @@ function normalizeText(text: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+}
+
+function cloneResults(results: LegalSearchResult[]): LegalSearchResult[] {
+  return results.map(item => ({ ...item }))
+}
+
+function buildSearchCacheKey(
+  optimizedQuery: string,
+  numResults: number,
+  includeAcademic: boolean
+): string {
+  const normalizedQuery = normalizeText(optimizedQuery).replace(/\s+/g, ' ').trim()
+  return `${normalizedQuery}|num:${numResults}|acad:${includeAcademic ? 1 : 0}`
+}
+
+function getCachedResults(cacheKey: string): LegalSearchResult[] | null {
+  const cached = SEARCH_CACHE.get(cacheKey)
+  if (!cached) return null
+  if (Date.now() > cached.expiresAt) {
+    SEARCH_CACHE.delete(cacheKey)
+    return null
+  }
+  return cloneResults(cached.results)
+}
+
+function setCachedResults(cacheKey: string, results: LegalSearchResult[]): void {
+  if (SEARCH_CACHE.size >= SEARCH_CACHE_MAX_ENTRIES) {
+    const firstKey = SEARCH_CACHE.keys().next().value
+    if (firstKey) SEARCH_CACHE.delete(firstKey)
+  }
+
+  SEARCH_CACHE.set(cacheKey, {
+    expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+    results: cloneResults(results)
+  })
 }
 
 function classifySource(url: string): { type: 'official' | 'academic' | 'general', name: string } {
@@ -231,9 +275,16 @@ export async function searchLegalColombia(
 
   // Construir query optimizada
   const { query: optimizedQuery, type: searchType } = buildOptimizedQuery(query)
+  const cacheKey = buildSearchCacheKey(optimizedQuery, numResults, includeAcademic)
   
   console.log(`🔍 Serper Legal Search: "${query}" (tipo: ${searchType})`)
   console.log(`📝 Query optimizada: "${optimizedQuery}"`)
+
+  const cachedResults = getCachedResults(cacheKey)
+  if (cachedResults) {
+    console.log(`⚡ Serper cache hit: ${cachedResults.length} resultados reutilizados`)
+    return cachedResults
+  }
 
   try {
     const response = await fetch('https://google.serper.dev/search', {
@@ -287,6 +338,7 @@ export async function searchLegalColombia(
       .sort((a, b) => b.relevanceScore - a.relevanceScore)
 
     console.log(`✅ Serper: ${results.length} resultados encontrados (${results.filter(r => r.source === 'official').length} oficiales)`)
+    setCachedResults(cacheKey, results)
     
     return results
 

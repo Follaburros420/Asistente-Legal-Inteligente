@@ -18,26 +18,22 @@ import {
   validateSession
 } from '@/db/user-sessions';
 
+const isSessionsDebugEnabled =
+  process.env.NODE_ENV !== 'production' && process.env.SESSIONS_DEBUG === 'true';
+
 // Helper to get authenticated user
 async function getAuthenticatedUser(req: NextRequest) {
   const cookieStore = cookies();
 
   const rawSupabaseUrl = getEnvVar('NEXT_PUBLIC_SUPABASE_URL');
   const rawSupabaseKey = getEnvVar('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-  const allEnvKeys = Object.keys(process.env);
-  
-  // Enhanced logging for debugging
-  const envDiagnostics = {
-    urlPresent: !!rawSupabaseUrl,
-    urlLength: rawSupabaseUrl.length,
-    keyPresent: !!rawSupabaseKey,
-    keyLength: rawSupabaseKey.length,
-    allSupabaseKeys: allEnvKeys.filter(k => k.includes('SUPABASE')).join(', '),
-    nodeEnv: process.env.NODE_ENV,
-    allEnvKeys: allEnvKeys.length
-  };
-  
-  console.log('[Sessions API] Environment diagnostics:', JSON.stringify(envDiagnostics, null, 2));
+
+  if (isSessionsDebugEnabled) {
+    console.log('[Sessions API] Supabase env status', {
+      urlPresent: Boolean(rawSupabaseUrl),
+      keyPresent: Boolean(rawSupabaseKey)
+    });
+  }
   
   if (!rawSupabaseUrl || !rawSupabaseKey) {
     const missing = [];
@@ -140,24 +136,14 @@ export async function POST(req: NextRequest) {
     const supabaseUrl = getEnvVar('NEXT_PUBLIC_SUPABASE_URL');
     const supabaseKey = getEnvVar('NEXT_PUBLIC_SUPABASE_ANON_KEY');
     
-    // Enhanced logging for debugging
     if (!supabaseUrl || !supabaseKey) {
-      const envDiagnostics = {
-        urlPresent: !!supabaseUrl,
-        urlLength: supabaseUrl?.length || 0,
-        keyPresent: !!supabaseKey,
-        keyLength: supabaseKey?.length || 0,
-        allSupabaseKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE')).join(', '),
-        nodeEnv: process.env.NODE_ENV
-      };
       const missing = [];
       if (!supabaseUrl) missing.push('NEXT_PUBLIC_SUPABASE_URL');
       if (!supabaseKey) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-      console.error(`[Sessions API] Missing Supabase env vars: ${missing.join(', ')}. Diagnostics:`, envDiagnostics);
+      console.error(`[Sessions API] Missing Supabase env vars: ${missing.join(', ')}`);
       return NextResponse.json(
         { 
-          error: `Missing Supabase configuration: ${missing.join(', ')}`,
-          diagnostics: envDiagnostics
+          error: `Missing Supabase configuration: ${missing.join(', ')}`
         },
         { status: 500 }
       );
@@ -238,9 +224,13 @@ export async function POST(req: NextRequest) {
           Buffer.from(session.access_token.split('.')[1], 'base64').toString()
         );
         authSessionId = payload.session_id;
-        console.log(`[Sessions API] Got auth session_id from JWT: ${authSessionId}`);
+        if (isSessionsDebugEnabled) {
+          console.log('[Sessions API] Extracted auth session_id from JWT');
+        }
       } catch (err) {
-        console.warn('[Sessions API] Could not decode JWT for session_id');
+        if (isSessionsDebugEnabled) {
+          console.warn('[Sessions API] Could not decode JWT for session_id');
+        }
       }
     }
     

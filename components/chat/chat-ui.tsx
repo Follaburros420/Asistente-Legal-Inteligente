@@ -56,57 +56,85 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
+
     const fetchData = async () => {
-      await fetchMessages()
-      await fetchChat()
+      const chatId = params.chatid as string | undefined
+      if (!chatId) {
+        if (!cancelled) setLoading(false)
+        return
+      }
 
-      scrollToBottom()
-      setIsAtBottom(true)
+      if (!cancelled) setLoading(true)
+
+      try {
+        await fetchMessages(chatId)
+        await fetchChat(chatId)
+
+        if (!cancelled) {
+          scrollToBottom()
+          setIsAtBottom(true)
+          handleFocusChatInput()
+        }
+      } catch (error) {
+        console.error("Error loading chat UI data:", error)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
 
-    if (params.chatid) {
-      fetchData().then(() => {
-        handleFocusChatInput()
-        setLoading(false)
-      })
-    } else {
-      setLoading(false)
+    fetchData()
+
+    return () => {
+      cancelled = true
     }
-  }, [])
+  }, [params.chatid])
 
-  const fetchMessages = async () => {
-    const fetchedMessages = await getMessagesByChatId(params.chatid as string)
+  const fetchMessages = async (chatId: string) => {
+    const fetchedMessages = await getMessagesByChatId(chatId)
 
-    const imagePromises: Promise<MessageImage>[] = fetchedMessages.flatMap(
+    const imagePromises: Promise<MessageImage | null>[] = fetchedMessages.flatMap(
       message =>
         message.image_paths
           ? message.image_paths.map(async imagePath => {
-            const url = await getMessageImageFromStorage(imagePath)
+            try {
+              const url = await getMessageImageFromStorage(imagePath)
 
-            return {
-              messageId: message.id,
-              path: imagePath,
-              base64: "", // Lazy load: we don't fetch base64 immediately anymore
-              url,
-              file: null
+              return {
+                messageId: message.id,
+                path: imagePath,
+                base64: "", // Lazy load: we don't fetch base64 immediately anymore
+                url,
+                file: null
+              }
+            } catch (error) {
+              console.warn(`Skipping image ${imagePath} due to load error`, error)
+              return null
             }
           })
           : []
     )
 
-    const images: MessageImage[] = await Promise.all(imagePromises.flat())
+    const images = (await Promise.all(imagePromises.flat())).filter(Boolean) as MessageImage[]
     setChatImages(images)
 
-    const messageFileItemPromises = fetchedMessages.map(
-      async message => await getMessageFileItemsByMessageId(message.id)
+    const messageFileItemSettled = await Promise.allSettled(
+      fetchedMessages.map(async message => await getMessageFileItemsByMessageId(message.id))
     )
 
-    const messageFileItems = await Promise.all(messageFileItemPromises)
+    const messageFileItems = messageFileItemSettled
+      .filter(
+        (
+          item
+        ): item is PromiseFulfilledResult<Awaited<ReturnType<typeof getMessageFileItemsByMessageId>>> =>
+          item.status === "fulfilled"
+      )
+      .map(item => item.value)
 
     const uniqueFileItems = messageFileItems.flatMap(item => item.file_items)
     setChatFileItems(uniqueFileItems)
 
-    const chatFiles = await getChatFilesByChatId(params.chatid as string)
+    const chatFiles = await getChatFilesByChatId(chatId)
 
     setChatFiles(
       chatFiles.files.map(file => ({
@@ -134,8 +162,8 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     setChatMessages(fetchedChatMessages)
   }
 
-  const fetchChat = async () => {
-    const chat = await getChatById(params.chatid as string)
+  const fetchChat = async (chatId: string) => {
+    const chat = await getChatById(chatId)
     if (!chat) return
 
     if (chat.assistant_id) {

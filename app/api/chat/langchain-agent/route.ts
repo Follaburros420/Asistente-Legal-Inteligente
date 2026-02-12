@@ -368,9 +368,10 @@ function convertMessages(messages: RequestBody['messages']): BaseMessage[] {
 async function getOrCreateAgent(
   chatId: string,
   modelId: string,
-  temperature: number
+  temperature: number,
+  maxIterations: number
 ): Promise<LegalAgent> {
-  const cacheKey = `${chatId}-${modelId}`
+  const cacheKey = `${chatId}-${modelId}-${maxIterations}`
 
   const cached = agentCache.get(cacheKey)
   if (cached) {
@@ -380,12 +381,63 @@ async function getOrCreateAgent(
   const agent = await LegalAgent.create({
     modelId,
     temperature,
-    maxIterations: 10, // Aumentado para consultas legales complejas
+    maxIterations,
     verbose: process.env.NODE_ENV === 'development'
   })
 
   agentCache.set(cacheKey, { agent, lastUsed: new Date() })
   return agent
+}
+
+function estimateAgentMaxIterations(userQuery: string, isDraft: boolean): number {
+  const normalized = (userQuery || "").toLowerCase()
+  const isLikelySmallTalk =
+    normalized.length < 120 &&
+    /^(hola|buenas|buenos d[ií]as|buenas tardes|buenas noches|gracias|qui[eé]n eres|qu[eé] puedes hacer)/.test(
+      normalized.trim()
+    )
+  const isSimpleArticleLookup =
+    /\bart(?:[íi]culo|\.)?\s*\d+[a-z]?\b/.test(normalized) &&
+    /(constituci[óo]n|c[óo]digo|ley|estatuto)/.test(normalized)
+  const isLikelyComplex =
+    normalized.length > 700 ||
+    /(jurisprudencia|comparad|doctrina|linea jurisprudencial|an[aá]lisis integral|estrategia legal)/.test(
+      normalized
+    )
+
+  if (isLikelySmallTalk) return 1
+  if (isDraft || isLikelyComplex) return 6
+  if (isSimpleArticleLookup) return 2
+  if (normalized.length < 220) return 3
+  return 4
+}
+
+function buildSearchDisciplineInstruction(userQuery: string): string {
+  const normalized = (userQuery || "").toLowerCase()
+  const isLikelySmallTalk =
+    normalized.length < 120 &&
+    /^(hola|buenas|buenos d[ií]as|buenas tardes|buenas noches|gracias|qui[eé]n eres|qu[eé] puedes hacer)/.test(
+      normalized.trim()
+    )
+  const isSimpleArticleLookup =
+    /\bart(?:[íi]culo|\.)?\s*\d+[a-z]?\b/.test(normalized) &&
+    /(constituci[óo]n|c[óo]digo|ley|estatuto)/.test(normalized)
+
+  if (isLikelySmallTalk) {
+    return "\n\n[INSTRUCCIÓN DE EFICIENCIA: Consulta conversacional. Responde sin usar herramientas de búsqueda.]"
+  }
+
+  if (isSimpleArticleLookup) {
+    return (
+      "\n\n[INSTRUCCIÓN DE EFICIENCIA: Esta consulta es puntual. Usa como máximo 1 búsqueda principal " +
+      "y NO repitas consultas equivalentes.]"
+    )
+  }
+
+  return (
+    "\n\n[INSTRUCCIÓN DE EFICIENCIA: No repitas búsquedas equivalentes. " +
+    "Usa máximo 2 búsquedas salvo contradicción real entre fuentes.]"
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -519,10 +571,11 @@ export async function POST(request: NextRequest) {
 
     const isDraft = classificationResult.is_document && classificationResult.confidence >= 0.6
     const draftType = classificationResult.doc_type
+    const maxIterations = estimateAgentMaxIterations(lastUserMessage, isDraft)
 
     // Obtener o crear agente
     const effectiveChatId = chatId || `temp-${Date.now()}`
-    const agent = await getOrCreateAgent(effectiveChatId, modelId, temperature)
+    const agent = await getOrCreateAgent(effectiveChatId, modelId, temperature, maxIterations)
 
     // Inyectar System Prompt si es un documento
     // Nota: El agente de LangChain maneja su propio system prompt, 
@@ -532,6 +585,8 @@ export async function POST(request: NextRequest) {
     if (isDraft) {
       const { DOCUMENT_SYSTEM_PROMPT } = await import("@/lib/prompts/document-system-prompt")
       inputMessage = `${DOCUMENT_SYSTEM_PROMPT}\n\nUSUARIO: ${lastUserMessage}`
+    } else {
+      inputMessage = `${lastUserMessage}${buildSearchDisciplineInstruction(lastUserMessage)}`
     }
 
     // Convertir historial (excluyendo el último mensaje del usuario)
@@ -750,6 +805,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               model: modelId,
               processingTime: processingTime + 's',
+              maxIterations,
               sourcesCount: mergedSources.length
             }
           })
