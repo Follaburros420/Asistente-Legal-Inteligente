@@ -48,8 +48,9 @@ interface RequestBody {
     temperature?: number
   }
   messages: Array<{
-    role: "system" | "user" | "assistant"
-    content: string
+    role: string
+    content?: unknown
+    parts?: unknown
   }>
   chatId?: string
   userId?: string
@@ -140,21 +141,16 @@ class StreamingCallbackHandler extends BaseCallbackHandler {
 
   // Cuando se inicia una herramienta
   async handleToolStart(tool: any, input: string) {
-    const toolName = tool?.name || 'herramienta'
     this.emit({
       type: 'tool_start',
-      tool: toolName,
-      input: input.substring(0, 100) + (input.length > 100 ? '...' : '')
+      tool: 'verificacion_legal',
+      input: 'Contraste de fuentes oficiales'
     })
   }
 
   // Cuando termina una herramienta
   async handleToolEnd(output: string) {
-    // Resumir el output si es muy largo
-    const summary = output.length > 200
-      ? output.substring(0, 200) + '... (ver fuentes abajo)'
-      : output
-    this.emit({ type: 'tool_end', output: summary })
+    this.emit({ type: 'tool_end', output: 'Fuentes contrastadas' })
   }
 
   // Cuando hay un error en una herramienta
@@ -166,7 +162,7 @@ class StreamingCallbackHandler extends BaseCallbackHandler {
   async handleAgentAction(action: any) {
     this.emit({
       type: 'thinking',
-      content: `📋 Decidí usar: ${action.tool} para "${action.toolInput?.query || action.toolInput?.url || '...'}"`
+      content: "Verificando fuentes juridicas relevantes..."
     })
   }
 
@@ -183,14 +179,45 @@ class StreamingCallbackHandler extends BaseCallbackHandler {
 /**
  * Convierte mensajes del formato del chat al formato de LangChain
  */
+function extractMessageText(message: RequestBody["messages"][number]): string {
+  if (typeof message.content === "string") {
+    return message.content
+  }
+
+  if (Array.isArray(message.content)) {
+    return message.content
+      .map((part: any) =>
+        typeof part === "string"
+          ? part
+          : typeof part?.text === "string"
+            ? part.text
+            : ""
+      )
+      .filter(Boolean)
+      .join("\n")
+      .trim()
+  }
+
+  if (Array.isArray(message.parts)) {
+    return message.parts
+      .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+      .filter(Boolean)
+      .join("\n")
+      .trim()
+  }
+
+  return ""
+}
+
 function convertMessages(messages: RequestBody['messages']): BaseMessage[] {
   return messages
     .filter(m => m.role !== 'system') // El system prompt lo maneja el agente
     .map(msg => {
+      const text = extractMessageText(msg)
       if (msg.role === 'user') {
-        return new HumanMessage(msg.content)
+        return new HumanMessage(text)
       } else {
-        return new AIMessage(msg.content)
+        return new AIMessage(text)
       }
     })
 }
@@ -304,7 +331,17 @@ export async function POST(request: NextRequest) {
 
     // Extraer el último mensaje del usuario
     const userMessages = messages.filter(m => m.role === 'user')
-    const lastUserMessage = userMessages[userMessages.length - 1]?.content || ''
+    let lastUserMessage = extractMessageText(userMessages[userMessages.length - 1])
+
+    if (!lastUserMessage) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const candidate = extractMessageText(messages[i])
+        if (candidate.trim().length > 0) {
+          lastUserMessage = candidate
+          break
+        }
+      }
+    }
 
     // Detección de draft: heurística + clasificación LLM
     const heuristicResult = detectDraftIntent(lastUserMessage)
@@ -380,7 +417,7 @@ export async function POST(request: NextRequest) {
           if (result.toolsUsed && result.toolsUsed.length > 0) {
             emit({
               type: 'thinking',
-              content: `🔧 Herramientas utilizadas: ${result.toolsUsed.join(', ')}`
+              content: "Verificando normas y jurisprudencia aplicables..."
             })
           }
 
@@ -390,17 +427,12 @@ export async function POST(request: NextRequest) {
               if (step.action?.tool) {
                 emit({
                   type: 'tool_start',
-                  tool: step.action.tool,
-                  input: typeof step.action.toolInput === 'string'
-                    ? step.action.toolInput.substring(0, 100)
-                    : JSON.stringify(step.action.toolInput).substring(0, 100)
+                  tool: 'verificacion_legal',
+                  input: 'Contraste de fuentes oficiales'
                 })
               }
               if (step.observation) {
-                const obsPreview = typeof step.observation === 'string'
-                  ? step.observation.substring(0, 150)
-                  : 'Resultados obtenidos'
-                emit({ type: 'tool_end', output: obsPreview + '...' })
+                emit({ type: 'tool_end', output: 'Fuentes contrastadas' })
               }
             }
           }
@@ -474,27 +506,6 @@ export async function POST(request: NextRequest) {
 
             if (uniqueSources.length > 0) {
               emit({ type: 'sources', sources: uniqueSources })
-
-              // También emitir como texto para compatibilidad
-              const sourcesSection = `\n\n---\n\n📚 **Fuentes consultadas:**\n\n${uniqueSources.map((s, i) => {
-                let title = s.title || 'Fuente legal'
-                try {
-                  const url = new URL(s.url)
-                  const hostname = url.hostname.replace('www.', '')
-                  const knownDomains: Record<string, string> = {
-                    'secretariasenado.gov.co': 'Secretaría del Senado',
-                    'corteconstitucional.gov.co': 'Corte Constitucional',
-                    'consejodeestado.gov.co': 'Consejo de Estado',
-                    'suin-juriscol.gov.co': 'SUIN-Juriscol',
-                  }
-                  if (!title || title === s.url || title.length < 3) {
-                    title = knownDomains[hostname] || hostname
-                  }
-                } catch { }
-                return `${i + 1}. [${title}](${s.url})`
-              }).join('\n')
-                }`
-              emit({ type: 'token', content: sourcesSection })
             }
           }
 
@@ -507,7 +518,7 @@ export async function POST(request: NextRequest) {
             const outputTokens = Math.ceil(cleanOutput.length / 4)
             // Input tokens: sum of all message characters
             const inputTokens = Math.ceil(
-              messages.reduce((acc, m) => acc + m.content.length, 0) / 4
+              messages.reduce((acc, m) => acc + extractMessageText(m).length, 0) / 4
             )
 
             try {

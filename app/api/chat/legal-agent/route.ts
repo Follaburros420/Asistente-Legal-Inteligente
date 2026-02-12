@@ -35,8 +35,9 @@ interface RequestBody {
     temperature?: number
   }
   messages: Array<{
-    role: "system" | "user" | "assistant"
-    content: string
+    role: string
+    content?: unknown
+    parts?: unknown
   }>
   chatId?: string
   userId?: string
@@ -82,9 +83,47 @@ Esquema JSON requerido:
 // FUNCIONES AUXILIARES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function extractLastUserMessage(messages: Array<{ role: string; content: string }>): string {
+function extractMessageText(message: { content?: unknown; parts?: unknown }): string {
+  if (typeof message.content === "string") {
+    return message.content
+  }
+
+  if (Array.isArray(message.content)) {
+    return message.content
+      .map((part: any) =>
+        typeof part === "string"
+          ? part
+          : typeof part?.text === "string"
+            ? part.text
+            : ""
+      )
+      .filter(Boolean)
+      .join("\n")
+      .trim()
+  }
+
+  if (Array.isArray(message.parts)) {
+    return message.parts
+      .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+      .filter(Boolean)
+      .join("\n")
+      .trim()
+  }
+
+  return ""
+}
+
+function extractLastUserMessage(messages: Array<{ role: string; content?: unknown; parts?: unknown }>): string {
   const userMessages = messages.filter(m => m.role === 'user')
-  return userMessages[userMessages.length - 1]?.content || ""
+  const lastUserMessage = extractMessageText(userMessages[userMessages.length - 1] || {})
+  if (lastUserMessage) return lastUserMessage
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const fallback = extractMessageText(messages[i])
+    if (fallback) return fallback
+  }
+
+  return ""
 }
 
 function requiresLegalSearch(query: string): boolean {
@@ -327,7 +366,10 @@ export async function POST(request: NextRequest) {
       chatSettings.model
     )
 
-    console.log(`📝 Query: "${userQuery.substring(0, 100)}..."`)
+    const queryPreview = userQuery
+      ? userQuery.substring(0, 100) + (userQuery.length > 100 ? "..." : "")
+      : "[vacia]"
+    console.log(`📝 Query: "${queryPreview}"`)
     console.log(`🤖 Modelo: ${modelName}${usedFallback ? ` (fallback de ${originalModel})` : ''}`)
     console.log(`🔍 Consulta legal: ${isLegalQuery}`)
     console.log(`📄 Modo borrador: ${isDraft}`)

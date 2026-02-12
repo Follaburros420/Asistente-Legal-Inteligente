@@ -174,6 +174,7 @@ export default async function RootLayout({
           name="supabase-url"
           content={publicEnv.NEXT_PUBLIC_SUPABASE_URL}
         />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta
           name="supabase-anon-key"
           content={publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY}

@@ -6,8 +6,7 @@ import { createMessageFileItems } from "@/db/message-file-items"
 import { createMessages, updateMessage } from "@/db/messages"
 import { uploadMessageImage } from "@/db/storage/message-images"
 import {
-  buildFinalMessages,
-  adaptMessagesForGoogleGemini
+  buildFinalMessages
 } from "@/lib/build-prompt"
 import { consumeReadableStream } from "@/lib/consume-stream"
 import { Tables, TablesInsert } from "@/supabase/types"
@@ -24,6 +23,11 @@ import React from "react"
 import { toast } from "sonner"
 import { v4 as uuidv4 } from "uuid"
 import { getPublicEnvVar } from "@/lib/env/public-env"
+
+type ProcessedChatResponse = {
+  text: string
+  bibliography?: BibliographyItem[]
+}
 
 export const validateChatSettings = (
   chatSettings: ChatSettings | null,
@@ -212,14 +216,9 @@ export const handleHostedChat = async (
       ? "azure"
       : modelData.provider
 
-  let draftMessages = await buildFinalMessages(payload, profile, chatImages)
-
-  let formattedMessages : any[] = []
-  if (provider === "google") {
-    formattedMessages = await adaptMessagesForGoogleGemini(payload, draftMessages)
-  } else {
-    formattedMessages = draftMessages
-  }
+  // Always send normalized text messages to backend chat endpoints.
+  // Endpoints expect OpenAI-style messages with string `content`.
+  const formattedMessages = await buildFinalMessages(payload, profile, chatImages)
 
   // Verificar si está en modo de redacción legal
   const chatMode = typeof window !== 'undefined' ? localStorage.getItem('chatMode') : null
@@ -307,9 +306,10 @@ export const processResponse = async (
   setFirstTokenReceived: React.Dispatch<React.SetStateAction<boolean>>,
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setToolInUse: React.Dispatch<React.SetStateAction<string>>
-) => {
+): Promise<ProcessedChatResponse> => {
   let fullText = ""
   let contentToAdd = ""
+  let streamedBibliography: BibliographyItem[] = []
 
   // Verificar si es respuesta de texto plano (como la del endpoint simple-direct)
   const contentType = response.headers.get('content-type') || ''
@@ -347,10 +347,13 @@ export const processResponse = async (
         })
       )
 
-      return messageText
+      return {
+        text: messageText,
+        bibliography
+      }
     } catch (error) {
       console.error('Error parsing JSON response:', error)
-      return ""
+      return { text: "" }
     }
   }
 
@@ -377,7 +380,7 @@ export const processResponse = async (
       })
     )
     
-    return fullText
+    return { text: fullText }
   }
 
   // Código para streaming con eventos JSON (langchain-agent) o texto plano
@@ -413,12 +416,12 @@ export const processResponse = async (
                     break
                     
                   case 'tool_start':
-                    thinkingContent += `\n🔧 Usando: ${event.tool}`
-                    setToolInUse(event.tool)
+                    thinkingContent += "\nValidando fuentes legales..."
+                    setToolInUse("thinking")
                     break
-                    
+                     
                   case 'tool_end':
-                    thinkingContent += ` → ${event.output}`
+                    thinkingContent += " Listo."
                     setToolInUse("none")
                     break
                     
@@ -429,6 +432,26 @@ export const processResponse = async (
                     break
                     
                   case 'sources':
+                    if (Array.isArray(event.sources)) {
+                      const normalizedSources = event.sources
+                        .filter((s: any) => typeof s?.url === "string" && s.url.startsWith("http"))
+                        .map((s: any, idx: number) => ({
+                          id: `stream-source-${idx + 1}`,
+                          title:
+                            typeof s?.title === "string" && s.title.trim().length > 0
+                              ? s.title.trim()
+                              : "Fuente legal",
+                          url: s.url,
+                          type:
+                            typeof s?.type === "string" && s.type.trim().length > 0
+                              ? s.type.trim()
+                              : "legal"
+                        }))
+
+                      streamedBibliography = normalizedSources.filter(
+                        (item, idx, arr) => arr.findIndex(x => x.url === item.url) === idx
+                      )
+                    }
                     break
                     
                   case 'done':
@@ -575,6 +598,10 @@ export const processResponse = async (
                 fileItems: chatMessage.fileItems,
                 // Agregar razonamiento al mensaje si existe
                 thinking: thinkingContent || undefined,
+                bibliography:
+                  streamedBibliography.length > 0
+                    ? streamedBibliography
+                    : chatMessage.bibliography,
                 // Agregar draft si se detectó
                 draft: draft || undefined
               }
@@ -589,7 +616,11 @@ export const processResponse = async (
       controller.signal
     )
 
-    return fullText
+    return {
+      text: fullText,
+      bibliography:
+        streamedBibliography.length > 0 ? streamedBibliography : undefined
+    }
   } else {
     throw new Error("Response body is null")
   }

@@ -10,14 +10,13 @@ import { redirect } from "next/navigation"
 import { OAuthButtons } from "@/components/auth/oauth-buttons"
 import { AnimatedTitle } from "@/components/auth/animated-title"
 
-// Force dynamic rendering - required for Supabase auth
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Iniciar Sesión"
+  title: "Registro"
 }
 
-export default async function Login({
+export default async function Register({
   params,
   searchParams
 }: {
@@ -27,22 +26,22 @@ export default async function Login({
   const { locale } = params
   const redirectPath =
     typeof searchParams.redirect === "string" ? searchParams.redirect : ""
-  const registerHref = redirectPath
-    ? `/${locale}/register?redirect=${encodeURIComponent(redirectPath)}`
-    : `/${locale}/register`
+  const loginHref = redirectPath
+    ? `/${locale}/login?redirect=${encodeURIComponent(redirectPath)}`
+    : `/${locale}/login`
   const cookieStore = cookies()
   const supabase = createClient(cookieStore)
 
-  // Use getUser() for secure authentication
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const {
+    data: { user },
+    error: authError
+  } = await supabase.auth.getUser()
 
   if (!authError && user) {
-    // If user is coming from an invite link, let them proceed to accept it even without subscription/home workspace
     if (redirectPath.startsWith("/invite/")) {
       return redirect(redirectPath)
     }
 
-    // Get user's home workspace
     const { data: homeWorkspace } = await supabase
       .from("workspaces")
       .select("*")
@@ -51,11 +50,9 @@ export default async function Login({
       .maybeSingle()
 
     if (!homeWorkspace) {
-      // No workspace - redirect to onboarding
       return redirect(`/${locale}/onboarding`)
     }
 
-    // Check for active subscription
     const { data: subscription } = await supabase
       .from("subscriptions")
       .select("id, status")
@@ -64,60 +61,45 @@ export default async function Login({
       .maybeSingle()
 
     if (!subscription) {
-      // No active subscription - redirect to onboarding for plan selection
       return redirect(`/${locale}/onboarding`)
     }
 
-    // CRITICAL: Ensure profile has onboarding_completed = true for middleware check
-    // This fixes users who paid before the bug fix
     await supabase
-      .from('profiles')
+      .from("profiles")
       .update({
         onboarding_completed: true,
-        onboarding_step: 'completed',
+        onboarding_step: "completed",
         has_onboarded: true
       })
-      .eq('user_id', user.id)
+      .eq("user_id", user.id)
 
-    // Log location for persisted session
-    try {
-      // We can't access IP easily in Server Component without headers() which is available
-      const headersList = cookies() // wait, cookies() doesn't give headers. 
-      // We need headers().
-    } catch (e) { }
-    // Actually, getting IP in Server Component:
-    // import { headers } from "next/headers"
-    // const ip = headers().get("x-forwarded-for")...
-
-    // User has workspace and subscription - go to chat
     return redirect(`/${locale}/${homeWorkspace.id}/chat`)
   }
 
-  // OAuth buttons are now handled client-side to preserve PKCE code_verifier in browser cookies
-  // See components/auth/oauth-buttons.tsx
-
   return (
     <div className="grid min-h-screen w-full grid-cols-1 md:grid-cols-2">
-      {/* Left side (visual) */}
       <div className="relative hidden md:flex items-center justify-center">
         <div className="flex flex-col items-center justify-center">
           <div className="relative" style={{ width: 480, height: 480 }}>
             <ShaderCanvas size={480} shaderId={2} />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className="text-9xl font-extrabold tracking-wide bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent whitespace-nowrap">ALI</span>
+              <span className="text-9xl font-extrabold tracking-wide bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent whitespace-nowrap">
+                ALI
+              </span>
             </div>
           </div>
           <AnimatedTitle />
         </div>
       </div>
 
-      {/* Right side (login form) */}
       <div className="flex w-full flex-1 flex-col justify-center gap-2 px-6 md:px-8 sm:max-w-md mx-auto">
         <div className="flex flex-col items-center justify-center mb-4 md:hidden">
           <div className="relative" style={{ width: 200, height: 200 }}>
             <ShaderCanvas size={200} shaderId={2} />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className="text-6xl font-extrabold tracking-wide bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent whitespace-nowrap">ALI</span>
+              <span className="text-6xl font-extrabold tracking-wide bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent whitespace-nowrap">
+                ALI
+              </span>
             </div>
           </div>
           <AnimatedTitle size="sm" />
@@ -126,13 +108,14 @@ export default async function Login({
         <div className="relative w-full rounded-2xl border border-white/10 bg-gradient-to-b from-background/60 to-background/30 backdrop-blur-xl p-6 md:p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_-20px_rgba(124,58,237,0.5)]">
           <form
             className="animate-in text-foreground flex w-full flex-1 flex-col justify-center gap-2"
-            action="/api/auth/password-signin"
+            action="/api/auth/signup"
             method="post"
           >
             <input type="hidden" name="locale" value={locale} />
             <input type="hidden" name="redirect" value={redirectPath} />
+
             <Label className="text-md mt-2" htmlFor="email">
-              Correo Electrónico
+              Correo electronico
             </Label>
             <Input
               className="mb-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
@@ -142,34 +125,36 @@ export default async function Login({
             />
 
             <Label className="text-md" htmlFor="password">
-              Contraseña
+              Contrasena
+            </Label>
+            <Input
+              className="mb-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
+              type="password"
+              name="password"
+              minLength={8}
+              required
+            />
+
+            <Label className="text-md" htmlFor="confirmPassword">
+              Confirmar contrasena
             </Label>
             <Input
               className="mb-6 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
               type="password"
-              name="password"
-              placeholder="••••••••"
+              name="confirmPassword"
+              minLength={8}
+              required
             />
 
             <SubmitButton className="mb-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-indigo-600 px-4 py-2 text-white shadow-[0_10px_30px_-10px_rgba(124,58,237,0.7)] hover:from-fuchsia-500 hover:to-indigo-500">
-              Iniciar Sesión
+              Crear cuenta
             </SubmitButton>
 
-            <Link
-              href={registerHref}
-              className="text-white border-white/10 mb-2 rounded-xl border px-4 py-2 bg-white/5 hover:bg-white/10 text-center"
-            >
-              Ir a registro
-            </Link>
-
             <div className="text-muted-foreground mt-1 flex justify-center text-sm">
-              <span className="mr-1">¿Olvidaste tu contraseña?</span>
-              <button
-                formAction="/api/auth/reset-password"
-                className="text-primary ml-1 underline hover:opacity-80"
-              >
-                Restablecer
-              </button>
+              <span className="mr-1">Ya tienes cuenta?</span>
+              <Link href={loginHref} className="text-primary ml-1 underline hover:opacity-80">
+                Iniciar sesion
+              </Link>
             </div>
           </form>
 
@@ -179,7 +164,7 @@ export default async function Login({
             </div>
             <div className="relative flex justify-center text-[10px] tracking-widest uppercase">
               <span className="bg-background/70 px-3 text-muted-foreground rounded-full border border-white/10">
-                O continúa con
+                O continua con
               </span>
             </div>
           </div>

@@ -39,8 +39,9 @@ import {
 const searchLegalOfficialTool = tool(
   async ({ query, num_results }) => {
     console.log(`🔧 Tool: search_legal_official("${query}")`)
+    const safeNumResults = num_results ?? 5
     const results = await searchLegalColombia(query, { 
-      numResults: num_results,
+      numResults: safeNumResults,
       includeAcademic: false 
     })
     return formatSearchResultsForLLM(results)
@@ -52,17 +53,27 @@ const searchLegalOfficialTool = tool(
       "SIEMPRE usa esta herramienta PRIMERO antes de responder consultas legales.",
     schema: z.object({
       query: z.string().describe("Términos de búsqueda específicos"),
-      num_results: z.number().optional().default(5).describe("Número de resultados (1-10)")
+      num_results: z
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .nullable()
+        .default(5)
+        .transform(value => value ?? 5)
+        .describe("Número de resultados (1-10)")
     })
   }
 )
 
 const searchJurisprudenciaTool = tool(
   async ({ query, tribunal, num_results }) => {
-    console.log(`🔧 Tool: search_jurisprudencia("${query}", tribunal=${tribunal})`)
+    const safeTribunal = tribunal ?? "all"
+    const safeNumResults = num_results ?? 5
+    console.log(`🔧 Tool: search_jurisprudencia("${query}", tribunal=${safeTribunal})`)
     const results = await searchJurisprudencia(query, {
-      tribunal: tribunal as any,
-      numResults: num_results
+      tribunal: safeTribunal as any,
+      numResults: safeNumResults
     })
     return formatSearchResultsForLLM(results)
   },
@@ -73,10 +84,19 @@ const searchJurisprudenciaTool = tool(
     schema: z.object({
       query: z.string().describe("Términos de búsqueda de jurisprudencia"),
       tribunal: z.enum(["constitucional", "suprema", "consejo", "all"])
-        .optional()
+        .nullable()
         .default("all")
+        .transform(value => value ?? "all")
         .describe("Tribunal específico o todos"),
-      num_results: z.number().optional().default(5).describe("Número de sentencias")
+      num_results: z
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .nullable()
+        .default(5)
+        .transform(value => value ?? 5)
+        .describe("Número de sentencias")
     })
   }
 )
@@ -119,8 +139,9 @@ const buscarArticuloTool = tool(
 const serperWebSearchTool = tool(
   async ({ query, num_results }) => {
     console.log(`🔧 Tool: serper_web_search("${query}")`)
+    const safeNumResults = num_results ?? 5
     const results = await searchLegalColombia(query, { 
-      numResults: num_results,
+      numResults: safeNumResults,
       includeAcademic: true 
     })
     return formatSearchResultsForLLM(results)
@@ -131,7 +152,15 @@ const serperWebSearchTool = tool(
       "Usa solo cuando necesites información actual no disponible en fuentes legales oficiales.",
     schema: z.object({
       query: z.string().describe("Consulta de búsqueda"),
-      num_results: z.number().optional().default(5).describe("Número de resultados")
+      num_results: z
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .nullable()
+        .default(5)
+        .transform(value => value ?? 5)
+        .describe("Número de resultados")
     })
   }
 )

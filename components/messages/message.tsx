@@ -502,7 +502,7 @@ export const Message: FC<MessageProps> = ({
         onLike={message.role === "assistant" ? handleLike : undefined}
         onDislike={message.role === "assistant" ? handleDislike : undefined}
         isLast={isLast}
-        isGenerating={isGenerating}
+        isGenerating={isGenerating && isLast}
       >
         <div className="space-y-3">
           {/* Contenido del mensaje */}

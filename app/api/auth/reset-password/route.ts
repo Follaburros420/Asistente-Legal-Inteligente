@@ -5,8 +5,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-function redirect303(path: string) {
-  return NextResponse.redirect(new URL(path, env.appUrl()), 303)
+function redirect303(path: string, request: NextRequest) {
+  const origin = request.nextUrl.origin || env.appUrl()
+  return NextResponse.redirect(new URL(path, origin), 303)
 }
 
 export async function POST(req: NextRequest) {
@@ -21,7 +22,8 @@ export async function POST(req: NextRequest) {
 
   if (!email) {
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent('El correo es obligatorio')}`
+      `/${locale}/login?message=${encodeURIComponent('El correo es obligatorio')}`,
+      req
     )
   }
 
@@ -34,11 +36,13 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent(error.message)}`
+      `/${locale}/login?message=${encodeURIComponent(error.message)}`,
+      req
     )
   }
 
   return redirect303(
-    `/${locale}/login?message=${encodeURIComponent('Revisa tu correo para restablecer la contraseña')}`
+    `/${locale}/login?message=${encodeURIComponent('Revisa tu correo para restablecer la contraseña')}`,
+    req
   )
 }

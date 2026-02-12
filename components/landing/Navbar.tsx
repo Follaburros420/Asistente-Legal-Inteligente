@@ -70,7 +70,7 @@ export default function Navbar() {
               <Link href="/login">Iniciar Sesión</Link>
             </Button>
             <Button asChild>
-              <Link href="/login">Comenzar</Link>
+              <Link href="/register">Comenzar</Link>
             </Button>
           </div>
 
@@ -111,7 +111,7 @@ export default function Navbar() {
                   <Link href="/login">Iniciar Sesión</Link>
                 </Button>
                 <Button asChild>
-                  <Link href="/login">Comenzar</Link>
+                  <Link href="/register">Comenzar</Link>
                 </Button>
               </div>
             </nav>

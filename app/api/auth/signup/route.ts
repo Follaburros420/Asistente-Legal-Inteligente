@@ -5,8 +5,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-function redirect303(path: string) {
-  return NextResponse.redirect(new URL(path, env.appUrl()), 303)
+function redirect303(path: string, request: NextRequest) {
+  const origin = request.nextUrl.origin || env.appUrl()
+  return NextResponse.redirect(new URL(path, origin), 303)
 }
 
 function splitCsv(value: string | undefined) {
@@ -38,11 +39,27 @@ export async function POST(req: NextRequest) {
 
   const email = (formData.get('email') as string | null)?.trim() || ''
   const password = (formData.get('password') as string | null) || ''
+  const confirmPassword = (formData.get('confirmPassword') as string | null) || ''
   const redirectPath = sanitizeRedirect(formData.get('redirect') as string | null)
 
   if (!email || !password) {
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent('Correo y contraseña son obligatorios')}`
+      `/${locale}/register?message=${encodeURIComponent('Correo y contrasena son obligatorios')}`,
+      req
+    )
+  }
+
+  if (!confirmPassword) {
+    return redirect303(
+      `/${locale}/register?message=${encodeURIComponent('Debes confirmar la contrasena')}`,
+      req
+    )
+  }
+
+  if (password !== confirmPassword) {
+    return redirect303(
+      `/${locale}/register?message=${encodeURIComponent('Las contrasenas no coinciden')}`,
+      req
     )
   }
 
@@ -53,9 +70,11 @@ export async function POST(req: NextRequest) {
     const domain = email.split('@')[1] || ''
     const domainMatch = emailDomainWhitelist.includes(domain)
     const emailMatch = emailWhitelist.includes(email)
+
     if (!domainMatch && !emailMatch) {
       return redirect303(
-        `/${locale}/login?message=${encodeURIComponent(`Email ${email} no está permitido para registrarse.`)}`
+        `/${locale}/register?message=${encodeURIComponent(`Email ${email} no esta permitido para registrarse.`)}`,
+        req
       )
     }
   }
@@ -75,11 +94,13 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent(error.message)}`
+      `/${locale}/register?message=${encodeURIComponent(error.message)}`,
+      req
     )
   }
 
   return redirect303(
-    `/${locale}/auth/verify-email?message=${encodeURIComponent('Revisa tu correo para verificar tu cuenta')}`
+    `/${locale}/auth/verify-email?message=${encodeURIComponent('Revisa tu correo para verificar tu cuenta')}`,
+    req
   )
 }

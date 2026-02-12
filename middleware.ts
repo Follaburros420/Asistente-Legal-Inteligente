@@ -49,7 +49,7 @@ const getRateLimitModule = async () => {
 const SUBSCRIPTION_REQUIRED_ROUTES = ['/chat'];
 
 // Rutas de autenticación que NO deben pasar por i18n
-const AUTH_ROUTES = ['/onboarding', '/login', '/setup', '/invite', '/auth/verify-email', '/auth/callback']
+const AUTH_ROUTES = ['/onboarding', '/login', '/register', '/setup', '/invite', '/auth/verify-email', '/auth/callback']
 
 // Verificar si billing está habilitado
 const isBillingEnabled = () => getEnvVar('NEXT_PUBLIC_BILLING_ENABLED') === 'true';
@@ -147,7 +147,7 @@ export async function middleware(request: NextRequest) {
   
   // Rutas públicas - verificar ANTES del i18n router para evitar redirecciones innecesarias
   // Estas rutas son accesibles tanto para usuarios autenticados como no autenticados
-  const publicSegments = ['login', 'invite', 'auth/verify-email', 'auth/callback', 'onboarding', 'setup', 'debug-auth', 'test-signup', 'precios', 'landing', 'billing/success']
+  const publicSegments = ['login', 'register', 'invite', 'auth/verify-email', 'auth/callback', 'onboarding', 'setup', 'debug-auth', 'test-signup', 'precios', 'landing', 'billing/success']
   const isPublicRoute = publicSegments.some(seg => {
     // Coincide con /seg, /seg/, /locale/seg, o cualquier variante
     return pathname === `/${seg}` || 

@@ -309,7 +309,7 @@ export const useChatHandler = () => {
         setToolInUse("retrieval")
 
         retrievedFileItems = await handleRetrieval(
-          userInput,
+          messageContent,
           newMessageFiles,
           chatFiles,
           effectiveChatSettings.embeddingsProvider,
@@ -351,7 +351,7 @@ export const useChatHandler = () => {
         setToolInUse("thinking")
         
         // Usar handleHostedChat que procesa streaming y detecta el modelo automáticamente
-        generatedText = await handleHostedChat(
+        const hostedResult = await handleHostedChat(
           payload,
           profile!,
           modelData!,
@@ -365,11 +365,13 @@ export const useChatHandler = () => {
           setChatMessages,
           setToolInUse
         )
+        generatedText = hostedResult.text
+        bibliography = hostedResult.bibliography
         
         setToolInUse("none")
       } else {
         if (modelData!.provider === "ollama") {
-          generatedText = await handleLocalChat(
+          const localResult = await handleLocalChat(
             payload,
             profile!,
             effectiveChatSettings,
@@ -381,8 +383,10 @@ export const useChatHandler = () => {
             setChatMessages,
             setToolInUse
           )
+          generatedText = localResult.text
+          bibliography = localResult.bibliography
         } else {
-          generatedText = await handleHostedChat(
+          const hostedResult = await handleHostedChat(
             payload,
             profile!,
             modelData!,
@@ -396,6 +400,8 @@ export const useChatHandler = () => {
             setChatMessages,
             setToolInUse
           )
+          generatedText = hostedResult.text
+          bibliography = hostedResult.bibliography
         }
       }
 

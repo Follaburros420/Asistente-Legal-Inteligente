@@ -6,8 +6,9 @@ import { checkRateLimit, getIdentifierFromRequest, formatRateLimitHeaders, authR
 
 export const dynamic = 'force-dynamic'
 
-function redirect303(path: string) {
-  return NextResponse.redirect(new URL(path, env.appUrl()), 303)
+function redirect303(path: string, request: NextRequest) {
+  const origin = request.nextUrl.origin || env.appUrl()
+  return NextResponse.redirect(new URL(path, origin), 303)
 }
 
 function sanitizeRedirect(path: string | null): string | null {
@@ -51,7 +52,8 @@ export async function POST(req: NextRequest) {
 
   if (!email || !password) {
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent('Correo y contraseña son obligatorios')}`
+      `/${locale}/login?message=${encodeURIComponent('Correo y contraseña son obligatorios')}`,
+      req
     )
   }
 
@@ -64,7 +66,8 @@ export async function POST(req: NextRequest) {
 
   if (error || !data.user) {
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent(error?.message || 'Error de autenticación')}`
+      `/${locale}/login?message=${encodeURIComponent(error?.message || 'Error de autenticación')}`,
+      req
     )
   }
 
@@ -99,7 +102,7 @@ export async function POST(req: NextRequest) {
 
   // If user is coming from an invitation link, send them back to accept it (no subscription/home-workspace required)
   if (redirectPath?.startsWith('/invite/')) {
-    return redirect303(redirectPath)
+    return redirect303(redirectPath, req)
   }
 
   const { data: homeWorkspace } = await supabase
@@ -110,7 +113,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (!homeWorkspace) {
-    return redirect303(`/${locale}/onboarding`)
+    return redirect303(`/${locale}/onboarding`, req)
   }
 
   const { data: subscription } = await supabase
@@ -121,7 +124,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (!subscription) {
-    return redirect303(`/${locale}/onboarding`)
+    return redirect303(`/${locale}/onboarding`, req)
   }
 
   await supabase
@@ -134,8 +137,8 @@ export async function POST(req: NextRequest) {
     .eq('user_id', userId)
 
   if (redirectPath) {
-    return redirect303(redirectPath)
+    return redirect303(redirectPath, req)
   }
 
-  return redirect303(`/${locale}/${homeWorkspace.id}/chat`)
+  return redirect303(`/${locale}/${homeWorkspace.id}/chat`, req)
 }
