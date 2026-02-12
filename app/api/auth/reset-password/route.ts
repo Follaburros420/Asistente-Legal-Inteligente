@@ -1,5 +1,6 @@
 import { env } from '@/lib/env/runtime-env'
 import { createClient } from '@/lib/supabase/server'
+import { mapFriendlyAuthMessage } from '@/lib/supabase/auth-errors'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -30,13 +31,23 @@ export async function POST(req: NextRequest) {
   const supabase = createClient(cookieStore)
   const appUrl = env.appUrl()
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${appUrl}/auth/callback?next=/${locale}/login/password`
-  })
+  let error: unknown = null
+  try {
+    const result = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${appUrl}/auth/callback?next=/${locale}/login/password`
+    })
+    error = result.error
+  } catch (resetError) {
+    error = resetError
+  }
 
   if (error) {
+    const message = mapFriendlyAuthMessage(
+      error,
+      'No fue posible enviar el correo de recuperacion'
+    )
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent(error.message)}`,
+      `/${locale}/login?message=${encodeURIComponent(message)}`,
       req
     )
   }

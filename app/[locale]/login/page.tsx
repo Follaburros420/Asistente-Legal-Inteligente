@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Metadata } from "next"
 import Link from "next/link"
 import { ShaderCanvas } from "@/components/shader-canvas"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { OAuthButtons } from "@/components/auth/oauth-buttons"
 import { AnimatedTitle } from "@/components/auth/animated-title"
@@ -27,6 +27,16 @@ export default async function Login({
   const { locale } = params
   const redirectPath =
     typeof searchParams.redirect === "string" ? searchParams.redirect : ""
+  const requestHeaders = headers()
+  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host")
+  const proto = requestHeaders.get("x-forwarded-proto") || "https"
+  const currentOrigin = host ? `${proto}://${host}` : ""
+  const passwordSigninAction = currentOrigin
+    ? `${currentOrigin}/api/auth/password-signin`
+    : "/api/auth/password-signin"
+  const resetPasswordAction = currentOrigin
+    ? `${currentOrigin}/api/auth/reset-password`
+    : "/api/auth/reset-password"
   const registerHref = redirectPath
     ? `/${locale}/register?redirect=${encodeURIComponent(redirectPath)}`
     : `/${locale}/register`
@@ -88,16 +98,6 @@ export default async function Login({
       })
       .eq('user_id', user.id)
 
-    // Log location for persisted session
-    try {
-      // We can't access IP easily in Server Component without headers() which is available
-      const headersList = cookies() // wait, cookies() doesn't give headers. 
-      // We need headers().
-    } catch (e) { }
-    // Actually, getting IP in Server Component:
-    // import { headers } from "next/headers"
-    // const ip = headers().get("x-forwarded-for")...
-
     // User has workspace and subscription - go to chat
     return redirect(`/${locale}/${homeWorkspace.id}/chat`)
   }
@@ -135,7 +135,7 @@ export default async function Login({
         <div className="relative w-full rounded-2xl border border-white/10 bg-gradient-to-b from-background/60 to-background/30 backdrop-blur-xl p-6 md:p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_-20px_rgba(124,58,237,0.5)]">
           <form
             className="animate-in text-foreground flex w-full flex-1 flex-col justify-center gap-2"
-            action="/api/auth/password-signin"
+            action={passwordSigninAction}
             method="post"
           >
             <input type="hidden" name="locale" value={locale} />
@@ -144,8 +144,10 @@ export default async function Login({
               Correo Electrónico
             </Label>
             <Input
+              id="email"
               className="mb-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
               name="email"
+              autoComplete="email"
               placeholder="tu@ejemplo.com"
               required
             />
@@ -154,9 +156,12 @@ export default async function Login({
               Contraseña
             </Label>
             <Input
+              id="password"
               className="mb-6 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
               type="password"
               name="password"
+              autoComplete="current-password"
+              required
               placeholder="••••••••"
             />
 
@@ -174,7 +179,7 @@ export default async function Login({
             <div className="text-muted-foreground mt-1 flex justify-center text-sm">
               <span className="mr-1">¿Olvidaste tu contraseña?</span>
               <button
-                formAction="/api/auth/reset-password"
+                formAction={resetPasswordAction}
                 className="text-primary ml-1 underline hover:opacity-80"
               >
                 Restablecer

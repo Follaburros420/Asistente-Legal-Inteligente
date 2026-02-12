@@ -1,5 +1,6 @@
 import { env } from '@/lib/env/runtime-env'
 import { createClient } from '@/lib/supabase/server'
+import { mapFriendlyAuthMessage } from '@/lib/supabase/auth-errors'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -84,17 +85,27 @@ export async function POST(req: NextRequest) {
   const nextAfterVerify =
     redirectPath?.startsWith('/invite/') ? redirectPath : `/${locale}/auth/verify-email`
 
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: `${appUrl}/auth/callback?next=${encodeURIComponent(nextAfterVerify)}`
-    }
-  })
+  let error: unknown = null
+  try {
+    const result = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${appUrl}/auth/callback?next=${encodeURIComponent(nextAfterVerify)}`
+      }
+    })
+    error = result.error
+  } catch (signUpError) {
+    error = signUpError
+  }
 
   if (error) {
+    const message = mapFriendlyAuthMessage(
+      error,
+      'Error al registrar la cuenta'
+    )
     return redirect303(
-      `/${locale}/register?message=${encodeURIComponent(error.message)}`,
+      `/${locale}/register?message=${encodeURIComponent(message)}`,
       req
     )
   }

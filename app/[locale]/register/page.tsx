@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Metadata } from "next"
 import Link from "next/link"
 import { ShaderCanvas } from "@/components/shader-canvas"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { OAuthButtons } from "@/components/auth/oauth-buttons"
 import { AnimatedTitle } from "@/components/auth/animated-title"
@@ -26,6 +26,13 @@ export default async function Register({
   const { locale } = params
   const redirectPath =
     typeof searchParams.redirect === "string" ? searchParams.redirect : ""
+  const requestHeaders = headers()
+  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host")
+  const proto = requestHeaders.get("x-forwarded-proto") || "https"
+  const currentOrigin = host ? `${proto}://${host}` : ""
+  const signupAction = currentOrigin
+    ? `${currentOrigin}/api/auth/signup`
+    : "/api/auth/signup"
   const loginHref = redirectPath
     ? `/${locale}/login?redirect=${encodeURIComponent(redirectPath)}`
     : `/${locale}/login`
@@ -115,40 +122,46 @@ export default async function Register({
         <div className="relative w-full rounded-2xl border border-white/10 bg-gradient-to-b from-background/60 to-background/30 backdrop-blur-xl p-6 md:p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_-20px_rgba(124,58,237,0.5)]">
           <form
             className="animate-in text-foreground flex w-full flex-1 flex-col justify-center gap-2"
-            action="/api/auth/signup"
+            action={signupAction}
             method="post"
           >
             <input type="hidden" name="locale" value={locale} />
             <input type="hidden" name="redirect" value={redirectPath} />
 
-            <Label className="text-md mt-2" htmlFor="email">
+            <Label className="text-md mt-2" htmlFor="register-email">
               Correo electronico
             </Label>
             <Input
+              id="register-email"
               className="mb-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
               name="email"
+              autoComplete="email"
               placeholder="tu@ejemplo.com"
               required
             />
 
-            <Label className="text-md" htmlFor="password">
+            <Label className="text-md" htmlFor="register-password">
               Contrasena
             </Label>
             <Input
+              id="register-password"
               className="mb-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
               type="password"
               name="password"
+              autoComplete="new-password"
               minLength={8}
               required
             />
 
-            <Label className="text-md" htmlFor="confirmPassword">
+            <Label className="text-md" htmlFor="register-confirm-password">
               Confirmar contrasena
             </Label>
             <Input
+              id="register-confirm-password"
               className="mb-6 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-foreground placeholder:text-foreground/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
               type="password"
               name="confirmPassword"
+              autoComplete="new-password"
               minLength={8}
               required
             />

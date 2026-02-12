@@ -1,5 +1,6 @@
 import { env } from '@/lib/env/runtime-env'
 import { createClient } from '@/lib/supabase/server'
+import { mapFriendlyAuthMessage } from '@/lib/supabase/auth-errors'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit, getIdentifierFromRequest, formatRateLimitHeaders, authRateLimit } from '@/lib/rate-limit'
@@ -59,14 +60,26 @@ export async function POST(req: NextRequest) {
 
   const supabase = createClient(cookieStore)
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  })
+  let data: { user: { id: string } | null } | null = null
+  let error: unknown = null
+  try {
+    const result = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
+    data = result.data as any
+    error = result.error
+  } catch (signInError) {
+    error = signInError
+  }
 
-  if (error || !data.user) {
+  if (error || !data?.user) {
+    const message = mapFriendlyAuthMessage(
+      error,
+      'Error de autenticacion'
+    )
     return redirect303(
-      `/${locale}/login?message=${encodeURIComponent(error?.message || 'Error de autenticación')}`,
+      `/${locale}/login?message=${encodeURIComponent(message)}`,
       req
     )
   }
