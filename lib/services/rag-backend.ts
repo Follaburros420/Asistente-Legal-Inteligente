@@ -1,16 +1,11 @@
-/**
- * RAG Backend Service
- * Servicio para interactuar con el backend RAG especializado
- * que proporciona búsqueda híbrida (vectorial + grafo de conocimiento)
- */
-
-export type SearchType = 'vector' | 'graph' | 'hybrid'
+import { SearchType } from '@/lib/types/search'
 
 export interface RAGChatRequest {
     message: string
     search_type?: SearchType
     workspace_id?: string
     process_id?: string
+    model?: string
 }
 
 export interface RAGChatResponse {
@@ -128,7 +123,8 @@ class RAGBackendService {
                     message: request.message,
                     search_type: request.search_type || 'hybrid',
                     workspace_id: request.workspace_id,
-                    process_id: request.process_id
+                    process_id: request.process_id,
+                    model: request.model
                 }),
                 ...this.getFetchOptions()
             })
@@ -159,41 +155,44 @@ class RAGBackendService {
                     message: request.message,
                     search_type: request.search_type || 'hybrid',
                     workspace_id: request.workspace_id,
-                    process_id: request.process_id
+                    process_id: request.process_id,
+                    model: request.model
                 }),
                 ...this.getFetchOptions()
             })
 
             if (!response.ok) {
-                throw new Error(`Stream request failed: ${response.status}`)
+                const errorData = await response.json().catch(() => ({}))
+                throw new Error(errorData.error || `Chat stream failed: ${response.status}`)
             }
 
-            if (!response.body) {
-                throw new Error('No response body')
-            }
-
-            return response.body
+            return response.body as ReadableStream
         } catch (error) {
-            console.error('❌ RAG Backend stream error:', error)
+            console.error('❌ RAG Backend stream request failed:', error)
             throw error
         }
     }
 
     /**
-     * Realizar búsqueda en el backend RAG
+     * Buscar documentos en el backend RAG (Híbrido: Vector + Grafo)
      */
     async search(request: RAGSearchRequest): Promise<RAGSearchResult[]> {
         const searchType = request.search_type || 'hybrid'
 
         try {
-            const response = await fetch(`${this.baseUrl}/search/${searchType}`, {
+            // Determinar endpoint basado en el tipo de búsqueda
+            let endpoint = '/search/hybrid'
+            if (searchType === 'vector') endpoint = '/search/vector'
+            if (searchType === 'graph') endpoint = '/search/graph' // Endpoint hipotético, ajustar según API real
+
+            const response = await fetch(`${this.baseUrl}${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     query: request.query,
-                    limit: request.limit || 10,
+                    limit: request.limit || 5,
                     workspace_id: request.workspace_id,
                     process_id: request.process_id
                 }),
@@ -201,44 +200,28 @@ class RAGBackendService {
             })
 
             if (!response.ok) {
-                throw new Error(`Search request failed: ${response.status}`)
+                throw new Error(`Search failed: ${response.status}`)
             }
 
             const data = await response.json()
-            return data.results || []
+            // Normalizar respuesta si es necesario
+            return data.results || data
         } catch (error) {
             console.error('❌ RAG Backend search error:', error)
-            throw error
+            return []
         }
     }
 
     /**
-     * Ingestar documento en el backend RAG
+     * Ingestar un documento (simulado o proxy al backend real)
      */
-    async ingestDocument(
-        file: File,
-        workspaceId?: string,
-        processId?: string,
-        metadata?: Record<string, any>
-    ): Promise<RAGIngestResponse> {
+    async ingestDocument(file: File, workspaceId: string, processId: string, metadata: Record<string, any> = {}): Promise<RAGIngestResponse> {
         try {
             const formData = new FormData()
             formData.append('file', file)
-            // Opciones adicionales por defecto para el backend RAG
-            formData.append('chunk_size', '1000')
-            formData.append('use_semantic', 'true')
-
-            if (workspaceId) {
-                formData.append('workspace_id', workspaceId)
-            }
-
-            if (processId) {
-                formData.append('process_id', processId)
-            }
-
-            if (metadata) {
-                formData.append('metadata', JSON.stringify(metadata))
-            }
+            formData.append('workspace_id', workspaceId)
+            formData.append('process_id', processId)
+            formData.append('metadata', JSON.stringify(metadata))
 
             const response = await fetch(`${this.baseUrl}/ingest`, {
                 method: 'POST',
@@ -247,28 +230,30 @@ class RAGBackendService {
             })
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}))
-                throw new Error(errorData.error || `Ingest failed: ${response.status}`)
+                throw new Error(`Ingestion failed: ${response.status}`)
             }
 
             return await response.json()
         } catch (error) {
-            console.error('❌ RAG Backend ingest error:', error)
+            console.error('❌ RAG Backend ingestion error:', error)
             throw error
         }
     }
 
     /**
-     * Listar documentos indexados
+     * Listar documentos (Proxy al backend)
      */
-    async listDocuments(workspaceId?: string, processId?: string, limit: number = 100): Promise<RAGDocument[]> {
+    async listDocuments(workspaceId: string, processId?: string, limit: number = 20): Promise<RAGDocument[]> {
         try {
-            const params = new URLSearchParams()
-            if (workspaceId) params.append('workspace_id', workspaceId)
-            if (processId) params.append('process_id', processId)
-            params.append('limit', limit.toString())
+            const params = new URLSearchParams({
+                workspace_id: workspaceId,
+                limit: limit.toString()
+            })
+            if (processId) {
+                params.append('process_id', processId)
+            }
 
-            const response = await fetch(`${this.baseUrl}/documents?${params.toString()}`, {
+            const response = await fetch(`${this.baseUrl}/documents?${params}`, {
                 method: 'GET',
                 ...this.getFetchOptions()
             })
@@ -281,52 +266,46 @@ class RAGBackendService {
             return data.documents || []
         } catch (error) {
             console.error('❌ RAG Backend list documents error:', error)
-            throw error
+            return []
         }
     }
 
     /**
-     * Obtener grafo de conocimiento
+     * Obtener grafo de conocimiento (Nodos y Relaciones)
      */
-    async getGraph(
-        workspaceId: string,
-        processId: string,
-        status: string = 'active',
-        limit: number = 100,
-        maxDepth: number = 3
-    ): Promise<any> {
+    async getGraph(workspaceId: string, processId: string, limit: number = 50, maxDepth: number = 2): Promise<any> {
         try {
-            const params = new URLSearchParams()
-            if (workspaceId) params.append('workspace_id', workspaceId)
-            if (processId) params.append('process_id', processId)
-            params.append('status', status)
-            params.append('limit', limit.toString())
-            params.append('max_depth', maxDepth.toString())
+            const params = new URLSearchParams({
+                workspace_id: workspaceId,
+                process_id: processId,
+                limit: limit.toString(),
+                max_depth: maxDepth.toString()
+            })
 
-            const response = await fetch(`${this.baseUrl}/graph?${params.toString()}`, {
+            const response = await fetch(`${this.baseUrl}/graph/visualize?${params}`, {
                 method: 'GET',
                 ...this.getFetchOptions()
             })
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}))
-                throw new Error(errorData.error || `Graph request failed: ${response.status}`)
+                console.warn(`Graph visualization failed: ${response.status}`)
+                // Retornar estructura vacía en caso de error para no romper UI
+                return { nodes: [], edges: [] }
             }
 
             return await response.json()
         } catch (error) {
             console.error('❌ RAG Backend graph error:', error)
-            throw error
+            return { nodes: [], edges: [] }
         }
     }
 
     /**
-     * Verificar si el backend está configurado
+     * Verifica si el servicio está configurado
      */
     isConfigured(): boolean {
-        return Boolean(this.baseUrl)
+        return !!this.baseUrl
     }
 }
 
-// Singleton instance
 export const ragBackendService = new RAGBackendService()

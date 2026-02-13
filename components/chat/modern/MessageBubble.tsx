@@ -128,11 +128,7 @@ export const MessageBubble = memo(({
         </div>
       ) : (
         <div className="w-9 h-9 flex-shrink-0 rounded-full overflow-hidden ring-2 ring-violet-500/20 ring-offset-2 ring-offset-background shadow-lg shadow-violet-500/10">
-          {isGenerating ? (
-            <ShaderCanvas size={36} shaderId={shaderId} />
-          ) : (
-            <StaticShaderAvatar size={36} />
-          )}
+          <ShaderCanvas size={36} shaderId={shaderId} />
         </div>
       )}
 

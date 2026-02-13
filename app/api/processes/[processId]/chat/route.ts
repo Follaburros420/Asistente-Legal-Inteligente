@@ -166,7 +166,8 @@ export async function POST(
         message: userMessage,
         workspace_id: processRecord.workspace_id,
         process_id: processId,
-        search_type: "hybrid"
+        search_type: "hybrid",
+        model: chatSettings?.model
       })
 
       // Convert the SSE stream to a text stream for the client
