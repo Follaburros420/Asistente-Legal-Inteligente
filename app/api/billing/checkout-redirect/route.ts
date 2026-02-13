@@ -14,11 +14,9 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // Helper to get error redirect URL
-// Check referer to determine if we should redirect to precios or onboarding
+// /precios is the canonical pricing surface
 function getErrorRedirectUrl(req: NextRequest, error: string, details?: string): URL {
-  const referer = req.headers.get('referer') || '';
-  const isFromPrecios = referer.includes('/precios') || referer.includes('/billing');
-  const redirectPath = isFromPrecios ? '/precios' : '/onboarding';
+  const redirectPath = '/precios';
 
   const url = new URL(redirectPath, req.nextUrl.origin);
   url.searchParams.set('error', error);

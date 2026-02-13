@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
+import {
   CheckCircle, 
   XCircle, 
   Loader2, 
@@ -15,7 +15,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 interface TransactionData {
   status: 'success' | 'failed' | 'pending' | 'unknown';
@@ -44,21 +44,33 @@ export default function BillingSuccessPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const router = useRouter();
+  const pathname = usePathname();
+  const locale = pathname?.split('/')[1] || 'es';
+
+  const isSubscriptionActivated = (subscription?: TransactionData['subscription']) => {
+    return subscription?.status === 'active' || subscription?.status === 'trialing';
+  };
 
   useEffect(() => {
     checkTransactionStatus();
   }, []);
 
-  // Auto-retry para transacciones pendientes
+  // Auto-retry para transacciones pendientes o aprobadas sin activación aún
   useEffect(() => {
-    if (data?.status === 'pending' && retryCount < 10) {
+    const shouldRetry =
+      data?.status === 'pending' ||
+      (data?.status === 'success' &&
+        !!data?.subscription &&
+        !isSubscriptionActivated(data.subscription));
+
+    if (shouldRetry && retryCount < 10) {
       const timer = setTimeout(() => {
         setRetryCount(prev => prev + 1);
         checkTransactionStatus();
       }, 3000); // Reintentar cada 3 segundos
       return () => clearTimeout(timer);
     }
-  }, [data?.status, retryCount]);
+  }, [data?.status, data?.subscription?.status, retryCount]);
 
   const checkTransactionStatus = async () => {
     try {
@@ -86,12 +98,11 @@ export default function BillingSuccessPage() {
 
       setData(result.data);
 
-      // Si fue exitoso, redirigir al chat después de 3 segundos
-      if (result.data.status === 'success' && result.data.subscription) {
+      // Redirigir al chat solo cuando la suscripcion ya este activa
+      if (result.data.status === 'success' && isSubscriptionActivated(result.data.subscription)) {
         setTimeout(() => {
-          const locale = window.location.pathname.split('/')[1] || 'es'
-          router.push(`/${locale}/onboarding?post_payment=1`);
-        }, 5000);
+          router.push(`/${locale}`);
+        }, 2500);
       }
 
     } catch (err) {
@@ -230,7 +241,7 @@ export default function BillingSuccessPage() {
             )}
 
             {/* Detalles de la suscripción */}
-            {data?.subscription && data.status === 'success' && (
+            {data?.subscription && data.status === 'success' && isSubscriptionActivated(data.subscription) && (
               <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
                 <h4 className="font-semibold text-green-800 mb-2">
                   ✅ Suscripción Activada
@@ -256,8 +267,11 @@ export default function BillingSuccessPage() {
               </div>
             )}
 
-            {/* Indicador de reintento para pendientes */}
-            {data?.status === 'pending' && (
+            {/* Indicador de reintento para pendientes o activacion en curso */}
+            {(data?.status === 'pending' ||
+              (data?.status === 'success' &&
+                !!data?.subscription &&
+                !isSubscriptionActivated(data.subscription))) && (
               <div className="flex items-center justify-center gap-2 text-yellow-600">
                 <RefreshCw className="w-4 h-4 animate-spin" />
                 <span className="text-sm">Verificando estado... ({retryCount}/10)</span>
@@ -266,9 +280,9 @@ export default function BillingSuccessPage() {
 
             {/* Botones de acción */}
             <div className="flex gap-3 justify-center pt-4">
-              {data?.status === 'success' && (
+              {data?.status === 'success' && data?.subscription && isSubscriptionActivated(data.subscription) && (
                 <Button asChild className="bg-green-600 hover:bg-green-700">
-                  <Link href="/">
+                  <Link href={`/${locale}`}>
                     <ArrowRight className="w-4 h-4 mr-2" />
                     Ir al Chat
                   </Link>

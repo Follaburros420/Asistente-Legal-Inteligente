@@ -310,6 +310,13 @@ export default function OnboardingPage() {
           }));
         }
 
+        // Determine which step to show
+        const hasProfileInfo = !!(profile?.first_name || profile?.last_name || profile?.phone_number || profile?.has_onboarded)
+        if (hasProfileInfo || profile?.onboarding_step === 'plan_selection') {
+          window.location.href = '/precios';
+          return;
+        }
+
         // Fetch plans
         await fetchPlansAndOffers();
 
@@ -318,13 +325,7 @@ export default function OnboardingPage() {
         // Mark as initialized to prevent re-runs
         setInitialized(true);
 
-        // Determine which step to show
-        const hasProfileInfo = !!(profile?.first_name || profile?.last_name || profile?.phone_number || profile?.has_onboarded)
-        if (hasProfileInfo || profile?.onboarding_step === 'plan_selection') {
-          setCurrentStep('plan_selection');
-        } else {
-          setCurrentStep('profile_setup');
-        }
+        setCurrentStep('profile_setup');
         
         setPageLoading(false);
       } catch (error) {
@@ -397,7 +398,7 @@ export default function OnboardingPage() {
 
       if (error) throw error;
 
-      setCurrentStep('plan_selection');
+      window.location.href = '/precios';
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || 'Error al guardar el perfil' });
     } finally {
