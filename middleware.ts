@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/middleware"
 import { isSupabaseAuthHtmlParseError } from "@/lib/supabase/safe-fetch"
 import { isSupabaseAuthUpstreamError } from "@/lib/supabase/auth-resilience"
+import { isSupabaseRefreshTokenNotFound } from "@/lib/supabase/auth-errors"
+import { clearSupabaseAuthCookiesInResponse } from "@/lib/supabase/auth-cookie-cleanup"
 import { i18nRouter } from "next-i18n-router"
 import { NextResponse, type NextRequest } from "next/server"
 import i18nConfig from "./i18nConfig"
@@ -196,8 +198,14 @@ export async function middleware(request: NextRequest) {
     // Verificar autenticación para rutas protegidas
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    // Redirigir a login si no hay sesión
+    // Redirigir a login si no hay sesion
     if (authError || !user) {
+      if (authError && isSupabaseRefreshTokenNotFound(authError)) {
+        const loginUrl = new URL('/login?message=Tu%20sesion%20expiro.%20Inicia%20sesion%20nuevamente.', request.url)
+        const redirectResponse = NextResponse.redirect(loginUrl)
+        clearSupabaseAuthCookiesInResponse(redirectResponse, request)
+        return redirectResponse
+      }
       return NextResponse.redirect(new URL('/login', request.url))
     }
 

@@ -1,5 +1,6 @@
 import {
   isSupabaseAuthUpstreamUnavailable,
+  isSupabaseRefreshTokenNotFound,
   mapFriendlyAuthMessage
 } from "@/lib/supabase/auth-errors"
 
@@ -22,6 +23,28 @@ describe("supabase auth error mapping", () => {
       "fallback"
     )
     expect(message).toContain("temporalmente no disponible")
+  })
+
+  test("detects refresh token not found", () => {
+    expect(
+      isSupabaseRefreshTokenNotFound({
+        status: 400,
+        code: "refresh_token_not_found",
+        message: "Invalid Refresh Token: Refresh Token Not Found"
+      })
+    ).toBe(true)
+  })
+
+  test("returns friendly refresh token message", () => {
+    const message = mapFriendlyAuthMessage(
+      {
+        status: 400,
+        code: "refresh_token_not_found",
+        message: "Invalid Refresh Token: Refresh Token Not Found"
+      },
+      "fallback"
+    )
+    expect(message).toContain("sesion expiro")
   })
 
   test("falls back to upstream message when not upstream outage", () => {

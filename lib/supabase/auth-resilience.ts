@@ -1,4 +1,7 @@
-import { isSupabaseAuthUpstreamUnavailable } from "@/lib/supabase/auth-errors"
+import {
+  isSupabaseAuthUpstreamUnavailable,
+  isSupabaseRefreshTokenNotFound
+} from "@/lib/supabase/auth-errors"
 import { isSupabaseAuthHtmlParseError } from "@/lib/supabase/safe-fetch"
 
 const warnedScopes = new Set<string>()
@@ -52,6 +55,10 @@ export function isSupabaseAuthUpstreamError(error: unknown): boolean {
   return isSupabaseAuthHtmlParseError(error) || isSupabaseAuthUpstreamUnavailable(error)
 }
 
+export function isSupabaseRecoverableAuthError(error: unknown): boolean {
+  return isSupabaseAuthUpstreamError(error) || isSupabaseRefreshTokenNotFound(error)
+}
+
 export function applySupabaseAuthResilience<TClient extends { auth?: unknown }>(
   client: TClient,
   scope: string
@@ -73,7 +80,7 @@ export function applySupabaseAuthResilience<TClient extends { auth?: unknown }>(
       try {
         return await original.apply(auth, args)
       } catch (error) {
-        if (!isSupabaseAuthUpstreamError(error)) {
+        if (!isSupabaseRecoverableAuthError(error)) {
           throw error
         }
 

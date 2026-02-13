@@ -9,6 +9,9 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { validateAndNormalizeSupabaseUrl } from '@/lib/supabase/url-validation';
 import { createSupabaseSafeFetch, isSupabaseAuthHtmlParseError } from '@/lib/supabase/safe-fetch';
+import { applySupabaseAuthResilience } from '@/lib/supabase/auth-resilience';
+import { isSupabaseRefreshTokenNotFound } from '@/lib/supabase/auth-errors';
+import { clearSupabaseAuthCookiesInStore } from '@/lib/supabase/auth-cookie-cleanup';
 import {
   checkDeviceLimit,
   createUserSession,
@@ -55,7 +58,7 @@ async function getAuthenticatedUser(req: NextRequest) {
   const supabaseUrl = urlValidation.url;
   const supabaseKey = rawSupabaseKey;
   
-  const supabase = createServerClient(
+  const rawSupabase = createServerClient(
     supabaseUrl,
     supabaseKey,
     {
@@ -88,6 +91,7 @@ async function getAuthenticatedUser(req: NextRequest) {
       }
     }
   );
+  const supabase = applySupabaseAuthResilience(rawSupabase, "sessions-get-user");
 
   let user = null as Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] | null
   let error: any = null
@@ -96,13 +100,17 @@ async function getAuthenticatedUser(req: NextRequest) {
     user = authResult.data.user
     error = authResult.error
   } catch (authError) {
-    if (isSupabaseAuthHtmlParseError(authError)) {
+    if (isSupabaseAuthHtmlParseError(authError) || isSupabaseRefreshTokenNotFound(authError)) {
+      clearSupabaseAuthCookiesInStore(cookieStore as any);
       return null;
     }
     throw authError;
   }
   
   if (error || !user) {
+    if (isSupabaseRefreshTokenNotFound(error)) {
+      clearSupabaseAuthCookiesInStore(cookieStore as any);
+    }
     return null;
   }
   
@@ -180,7 +188,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = createServerClient(
+    const rawSupabase = createServerClient(
       urlValidation.url,
       supabaseKey,
       {
@@ -213,6 +221,7 @@ export async function POST(req: NextRequest) {
         }
       }
     );
+    const supabase = applySupabaseAuthResilience(rawSupabase, "sessions-post");
 
     // Get user AND session info
     let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] | null = null
@@ -227,7 +236,15 @@ export async function POST(req: NextRequest) {
       const authSessionResult = await supabase.auth.getSession();
       session = authSessionResult.data.session;
     } catch (authError) {
+      if (isSupabaseRefreshTokenNotFound(authError)) {
+        clearSupabaseAuthCookiesInStore(cookieStore as any);
+        return NextResponse.json(
+          { error: 'Sesion expirada. Inicia sesion nuevamente.', code: 'refresh_token_not_found' },
+          { status: 401 }
+        );
+      }
       if (isSupabaseAuthHtmlParseError(authError)) {
+        clearSupabaseAuthCookiesInStore(cookieStore as any);
         return NextResponse.json(
           { error: 'Servicio de autenticación temporalmente no disponible', code: 'SUPABASE_AUTH_UPSTREAM_ERROR' },
           { status: 503 }
@@ -237,6 +254,9 @@ export async function POST(req: NextRequest) {
     }
     
     if (userError || !user) {
+      if (isSupabaseRefreshTokenNotFound(userError)) {
+        clearSupabaseAuthCookiesInStore(cookieStore as any);
+      }
       return NextResponse.json(
         { error: 'No autorizado' },
         { status: 401 }

@@ -41,10 +41,25 @@ export function isSupabaseAuthUpstreamUnavailable(error: unknown): boolean {
   return false
 }
 
+export function isSupabaseRefreshTokenNotFound(error: unknown): boolean {
+  const { status, code, message } = toAuthErrorLike(error)
+  const normalizedMessage = (message || "").toLowerCase()
+  return (
+    code === "refresh_token_not_found" ||
+    normalizedMessage.includes("invalid refresh token") ||
+    normalizedMessage.includes("refresh token not found") ||
+    (status === 400 && normalizedMessage.includes("refresh token"))
+  )
+}
+
 export function mapFriendlyAuthMessage(
   error: unknown,
   fallbackMessage: string
 ): string {
+  if (isSupabaseRefreshTokenNotFound(error)) {
+    return "Tu sesion expiro. Inicia sesion nuevamente."
+  }
+
   if (isSupabaseAuthUpstreamUnavailable(error)) {
     return "Servicio de autenticacion temporalmente no disponible. Intenta de nuevo en 1-2 minutos."
   }
