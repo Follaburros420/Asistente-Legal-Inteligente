@@ -9,6 +9,7 @@ import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { OAuthButtons } from "@/components/auth/oauth-buttons"
 import { AnimatedTitle } from "@/components/auth/animated-title"
+import { isSupabaseAuthUpstreamError } from "@/lib/supabase/auth-resilience"
 
 // Force dynamic rendering - required for Supabase auth
 export const dynamic = 'force-dynamic'
@@ -52,7 +53,9 @@ export default async function Login({
     authError = authResult.error
   } catch (error) {
     authError = error
-    console.error("[login/page] Supabase auth check failed:", error)
+    if (!isSupabaseAuthUpstreamError(error)) {
+      console.error("[login/page] Supabase auth check failed:", error)
+    }
   }
 
   if (!authError && user && supabase) {

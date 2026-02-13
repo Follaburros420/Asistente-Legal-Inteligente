@@ -1,5 +1,6 @@
 import { getEnvVar } from "@/lib/env/runtime-env"
 import { createClient } from "@/lib/supabase/server"
+import { isSupabaseAuthUpstreamError } from "@/lib/supabase/auth-resilience"
 import { cookies } from "next/headers"
 import { redirect, notFound } from "next/navigation"
 import i18nConfig from "@/i18nConfig"
@@ -60,7 +61,9 @@ export default async function HomePage({ params }: PageProps) {
     authError = result.error
   } catch (error) {
     authError = error
-    console.error("[home/page] Supabase auth check failed:", error)
+    if (!isSupabaseAuthUpstreamError(error)) {
+      console.error("[home/page] Supabase auth check failed:", error)
+    }
   }
 
   // Si no hay usuario autenticado, mostrar landing

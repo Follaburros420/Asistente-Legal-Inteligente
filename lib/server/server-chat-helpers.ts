@@ -5,6 +5,7 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createSupabaseSafeFetch, isSupabaseAuthHtmlParseError } from "@/lib/supabase/safe-fetch"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
+import { applySupabaseAuthResilience, isSupabaseAuthUpstreamError } from "@/lib/supabase/auth-resilience"
 
 export type ProfileWithKeys = Tables<"profiles"> & {
   openai_api_key?: string
@@ -66,7 +67,7 @@ function normalizeSupabaseUrl(rawUrl: string): string {
 export async function getServerProfile(): Promise<ProfileWithKeys> {
   const cookieStore = cookies()
   const supabaseUrl = normalizeSupabaseUrl(env.supabaseUrl())
-  const supabase = createServerClient<Database>(
+  const rawSupabase = createServerClient<Database>(
     supabaseUrl,
     env.supabaseAnonKey(),
     {
@@ -80,6 +81,7 @@ export async function getServerProfile(): Promise<ProfileWithKeys> {
       }
     }
   )
+  const supabase = applySupabaseAuthResilience(rawSupabase, "server-chat-helpers")
 
   let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] | null = null
 
@@ -90,7 +92,7 @@ export async function getServerProfile(): Promise<ProfileWithKeys> {
     }
     user = authResult.data.user
   } catch (error) {
-    if (isLikelyHtmlResponseError(error)) {
+    if (isLikelyHtmlResponseError(error) || isSupabaseAuthUpstreamError(error)) {
       throw new ServerProfileError(
         "SUPABASE_AUTH_UPSTREAM_ERROR",
         503,

@@ -4,6 +4,7 @@ import { cookies } from "next/headers"
 import { Database } from "@/supabase/types"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
 import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
+import { applySupabaseAuthResilience } from "@/lib/supabase/auth-resilience"
 
 /**
  * Create a Supabase client for Server Components
@@ -34,7 +35,7 @@ export const createClient = (cookieStore: ReturnType<typeof cookies>) => {
     throw new Error(errorMessage)
   }
 
-  return createServerClient<Database>(normalized.url, anonKey, {
+  const client = createServerClient<Database>(normalized.url, anonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll()
@@ -53,4 +54,6 @@ export const createClient = (cookieStore: ReturnType<typeof cookies>) => {
       fetch: createSupabaseSafeFetch("server")
     }
   })
+
+  return applySupabaseAuthResilience(client, "server")
 }

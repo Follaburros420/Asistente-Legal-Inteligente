@@ -4,6 +4,7 @@ import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
 import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
+import { applySupabaseAuthResilience } from "@/lib/supabase/auth-resilience"
 
 // Get the correct app URL for redirects
 function getAppUrl(): string {
@@ -91,7 +92,7 @@ export async function GET(request: Request) {
     )
   }
 
-  const supabase = createServerClient(
+  const rawSupabase = createServerClient(
     supabaseUrlValidation.url,
     supabaseAnonKeyEnv,
     {
@@ -127,6 +128,7 @@ export async function GET(request: Request) {
       }
     }
   )
+  const supabase = applySupabaseAuthResilience(rawSupabase, "auth-callback")
 
   if (code) {
     // Exchange the code for a session

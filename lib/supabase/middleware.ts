@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
 import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
+import { applySupabaseAuthResilience } from "@/lib/supabase/auth-resilience"
 
 let warnedInvalidSupabaseMiddlewareConfig = false
 
@@ -35,7 +36,7 @@ export const createClient = (request: NextRequest) => {
     }
   }
 
-  const supabase = createServerClient(normalized.url, anonKey, {
+  const rawSupabase = createServerClient(normalized.url, anonKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll()
@@ -82,6 +83,7 @@ export const createClient = (request: NextRequest) => {
       }
     }
   )
+  const supabase = applySupabaseAuthResilience(rawSupabase, "middleware")
 
   return { supabase, response }
 }
