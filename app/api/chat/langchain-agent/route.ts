@@ -1,26 +1,15 @@
 /**
  * Endpoint Unificado del Agente Legal con LangChain
  *
- * Este endpoint usa LangChain para implementar un agente con tool calling nativo.
+ * Protocolo de Eventos v2.0:
+ * - {"type": "meta", message_id, render_mode, intent, confidence} - Metadatos iniciales
+ * - {"type": "status", phase, message, progress} - Cambios de fase
+ * - {"type": "delta", text} - Tokens de respuesta (renombrado de 'token')
+ * - {"type": "citations", items} - Fuentes encontradas (renombrado de 'sources')
+ * - {"type": "done", ok, metadata} - Finalización
+ * - {"type": "error", message, code} - Errores
  *
- * Características:
- * - Soporta solo modelos M vía OpenRouter
- * - Tool calling nativo (el modelo decide cuándo usar herramientas)
- * - Streaming REAL de respuestas y razonamiento
- * - Manejo de historial de conversación
- *
- * Modelos recomendados:
- * - moonshotai/kimi-k2.5: Razonamiento avanzado (M1 Pro)
- * - deepseek/deepseek-v3.2: Balance general (M1)
- * - openai/gpt-oss-120b: Rapido y eficiente (M1 Small)
- *
- * Formato de streaming (JSON Lines):
- * - {"type": "thinking", "content": "..."} - Proceso de razonamiento
- * - {"type": "tool_start", "tool": "...", "input": "..."} - Inicio de herramienta
- * - {"type": "tool_end", "tool": "...", "output": "..."} - Fin de herramienta
- * - {"type": "token", "content": "..."} - Token de respuesta
- * - {"type": "sources", "sources": [...]} - Fuentes encontradas
- * - {"type": "done"} - Fin del stream
+ * Fases: classifying → searching → drafting → streaming → completed
  */
 
 export const dynamic = 'force-dynamic'
@@ -59,6 +48,7 @@ const MAX_HISTORY_MESSAGES = 14
 const MAX_HISTORY_TOTAL_CHARS = 12_000
 const MAX_HISTORY_MESSAGE_CHARS = 1_800
 const MAX_USER_QUERY_CHARS = 6_000
+// Timeout para invocación del agente (75 segundos para investigación completa)
 const AGENT_INVOKE_TIMEOUT_MS = 75_000
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -270,6 +260,10 @@ function sanitizeFinalOutput(text: string): string {
 class StreamingCallbackHandler extends BaseCallbackHandler {
   name = "streaming_status_handler"
   private emit: StreamEmitter
+  
+  // Tracking de contenido emitido
+  public hasEmittedContent = false
+  public totalEmittedLength = 0
 
   constructor(emit: StreamEmitter) {
     super()
@@ -277,12 +271,22 @@ class StreamingCallbackHandler extends BaseCallbackHandler {
   }
 
   async handleLLMStart() {
+    console.log(`[StreamingCallback] 🎬 LLM Start - iniciando generación`)
     this.emit({
       type: "status",
-      phase: "analyzing",
-      progress: 10,
-      message: "Analizando tu consulta legal"
+      phase: "classifying",
+      progress: 15,
+      message: "Analizando tu consulta legal…"
     })
+  }
+  
+  async handleLLMEnd() {
+    console.log(`[StreamingCallback] 🏁 LLM End - generación completada, tokens emitidos: ${this.tokenCount}, contenido emitido: ${this.totalEmittedLength}`)
+    this.flushBuffer()
+  }
+  
+  async handleLLMError(error: Error) {
+    console.error(`[StreamingCallback] ❌ LLM Error:`, error.message)
   }
 
   async handleToolStart(tool: { name?: string }, input: string) {
@@ -291,38 +295,122 @@ class StreamingCallbackHandler extends BaseCallbackHandler {
 
     this.emit({
       type: "status",
-      phase: "investigating",
+      phase: "searching",
       progress: 40,
       message: label
-    })
-
-    this.emit({
-      type: "tool_start",
-      label,
-      progress: 45
     })
   }
 
   async handleToolEnd() {
     this.emit({
-      type: "tool_end",
-      message: "Fuentes contrastadas",
-      progress: 70
+      type: "status",
+      phase: "searching",
+      progress: 65,
+      message: "Fuentes contrastadas…"
     })
   }
 
   async handleToolError(err: Error) {
     this.emit({
       type: "status",
-      phase: "investigating",
+      phase: "searching",
       progress: 55,
-      message: "Hubo un problema validando una fuente, continuo con otras"
+      message: "Hubo un problema validando una fuente, continuo con otras…"
     })
+  }
 
-    this.emit({
-      type: "tool_error",
-      error: err.message
-    })
+  // Streaming real token por token
+  private inThinkBlock = false
+  private buffer = ""
+
+  private tokenCount = 0
+  
+  async handleLLMNewToken(token: string) {
+    if (!token) return
+    
+    this.tokenCount++
+    if (this.tokenCount % 50 === 0) {
+      console.log(`[LangChain Agent] 📝 Tokens emitidos: ${this.tokenCount}`)
+    }
+
+    // Acumulamos en buffer para manejar tags partidos
+    this.buffer += token
+
+    // Verificar si estamos dentro de un bloque <think>
+    if (this.inThinkBlock) {
+      // Buscar cierre
+      const endIndex = this.buffer.indexOf('</think>')
+      if (endIndex !== -1) {
+        this.inThinkBlock = false
+        // Emitir lo que sigue después del cierre
+        const remaining = this.buffer.slice(endIndex + 8) // length of </think>
+        this.buffer = ""
+        if (remaining) {
+          this.hasEmittedContent = true
+          this.totalEmittedLength += remaining.length
+          this.emit({ type: 'delta', text: remaining })
+        }
+      }
+      // Si no hay cierre, seguimos buffering (y suprimiendo)
+      if (this.buffer.length > 50000) this.buffer = "" // Safety clear
+      return
+    }
+
+    // No estamos en think block. Verificar si empieza uno.
+    const startIndex = this.buffer.indexOf('<think>')
+    if (startIndex !== -1) {
+      this.inThinkBlock = true
+      // Emitir lo que habia antes del start
+      const visible = this.buffer.slice(0, startIndex)
+      if (visible) {
+        this.hasEmittedContent = true
+        this.totalEmittedLength += visible.length
+        this.emit({ type: 'delta', text: visible })
+      }
+      this.buffer = this.buffer.slice(startIndex) // Mantener desde <think>
+      // Recursivamente checar si cierra en el mismo chunk
+      return this.handleLLMNewToken("")
+    }
+
+    // No hay tags completos. 
+    // Pero cuidado con tags parciales al final: "<", "<th", "<think"
+    if (/<(?:t(?:h(?:i(?:n(?:k(?:>)?)?)?)?)?)?$/.test(this.buffer)) {
+      // Es un posible inicio parcial, no emitimos aun.
+      if (this.buffer.length > 20) {
+        const safeToEmit = this.buffer.slice(0, -7)
+        const remaining = this.buffer.slice(-7)
+        if (safeToEmit) {
+          this.hasEmittedContent = true
+          this.totalEmittedLength += safeToEmit.length
+          this.emit({ type: 'delta', text: safeToEmit })
+        }
+        this.buffer = remaining
+      }
+      return
+    }
+
+    // Si llegamos aqui, el buffer es contenido seguro
+    if (this.buffer) {
+      this.hasEmittedContent = true
+      this.totalEmittedLength += this.buffer.length
+      this.emit({ type: 'delta', text: this.buffer })
+    }
+    this.buffer = ""
+  }
+  
+  /**
+   * Fuerza la emisión de cualquier contenido pendiente en el buffer
+   */
+  flushBuffer() {
+    if (this.buffer && !this.inThinkBlock) {
+      const content = this.buffer.trim()
+      if (content) {
+        this.hasEmittedContent = true
+        this.totalEmittedLength += content.length
+        this.emit({ type: 'delta', text: content })
+      }
+      this.buffer = ""
+    }
   }
 }
 
@@ -354,21 +442,32 @@ async function getOrCreateAgent(
   userScope: string
 ): Promise<LegalAgent> {
   const cacheKey = `${userScope}:${chatId}-${modelId}-${maxIterations}`
+  console.log("[getOrCreateAgent] 🔍 Cache key:", cacheKey)
 
   const cached = agentCache.get(cacheKey)
   if (cached) {
+    console.log("[getOrCreateAgent] ♻️ Retornando agente desde cache")
     cached.lastUsed = new Date()
     return cached.agent
   }
-  const agent = await LegalAgent.create({
-    modelId,
-    temperature,
-    maxIterations,
-    verbose: process.env.NODE_ENV === 'development'
-  })
-
-  agentCache.set(cacheKey, { agent, lastUsed: new Date() })
-  return agent
+  
+  console.log("[getOrCreateAgent] 🆕 Creando nuevo agente LegalAgent…")
+  console.log("[getOrCreateAgent] ⚙️ Config:", { modelId, temperature, maxIterations })
+  
+  try {
+    const agent = await LegalAgent.create({
+      modelId,
+      temperature,
+      maxIterations,
+      verbose: process.env.NODE_ENV === 'development'
+    })
+    console.log("[getOrCreateAgent] ✅ Agente creado exitosamente")
+    agentCache.set(cacheKey, { agent, lastUsed: new Date() })
+    return agent
+  } catch (error) {
+    console.error("[getOrCreateAgent] ❌ Error creando LegalAgent:", error)
+    throw error
+  }
 }
 
 function estimateAgentMaxIterations(userQuery: string, isDraft: boolean): number {
@@ -428,6 +527,8 @@ function buildSearchDisciplineInstruction(userQuery: string): string {
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+  console.log("[LangChain Agent] 📥 POST recibido:", new Date().toISOString())
+  
   const context = createRequestContext(request, "api/chat/langchain-agent")
 
   // Iniciar cleanup si no está corriendo
@@ -436,7 +537,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const rawBody = await request.json().catch(() => null)
+    console.log("[LangChain Agent] 📦 Parsing body…")
+    const rawBody = await request.json().catch((err) => {
+      console.error("[LangChain Agent] ❌ Error parsing body:", err)
+      return null
+    })
+    console.log("[LangChain Agent] ✅ Body recibido:", JSON.stringify(rawBody, null, 2))
     const parsed = parseAgentChatRequest(rawBody)
     if (!parsed.success) {
       return NextResponse.json(
@@ -508,7 +614,11 @@ export async function POST(request: NextRequest) {
 
     // Validar API Key
     const apiKey = process.env.OPENROUTER_API_KEY
+    console.log("[LangChain Agent] 🔑 API Key configurada:", apiKey ? "✅ Sí" : "❌ No")
+    console.log("[LangChain Agent] 🔑 Longitud API Key:", apiKey?.length || 0)
+    
     if (!apiKey) {
+      console.error("[LangChain Agent] ❌ OPENROUTER_API_KEY no configurada")
       return jsonWithRequestId(
         context.requestId,
         { error: "OPENROUTER_API_KEY no configurada" },
@@ -538,24 +648,37 @@ export async function POST(request: NextRequest) {
 
     // Detección de draft: heurística + clasificación LLM
     const heuristicResult = detectDraftIntent(lastUserMessage)
-    let classificationResult = await classifyDocumentIntent(lastUserMessage, heuristicResult, true)
+    let classificationResult = await classifyDocumentIntent(lastUserMessage, heuristicResult)
 
-    // Si la heurística tiene alta confianza pero LLM dice que no, dar más peso a heurística
-    if (heuristicResult.isDraft && heuristicResult.confidence >= 0.8 && !classificationResult.is_document) {
-      classificationResult = {
-        is_document: true,
-        doc_type: (heuristicResult.type as any) || "otro",
-        confidence: heuristicResult.confidence * 0.9
-      }
-    }
+    // Lógica estricta de decisión basada en el clasificador
+    const isDraft = classificationResult.intent === "document_write" && classificationResult.is_document
 
-    const isDraft = classificationResult.is_document && classificationResult.confidence >= 0.6
+    // Manejo de Ambigüedad: Si es ambiguo, forzamos Chat Mode pero instruimos al modelo para que aclare
+    const isAmbiguous = classificationResult.intent === "ambiguous"
+
     const draftType = classificationResult.doc_type
     const maxIterations = estimateAgentMaxIterations(lastUserMessage, isDraft)
 
     // Obtener o crear agente
     const effectiveChatId = chatId || `temp-${Date.now()}`
-    const agent = await getOrCreateAgent(effectiveChatId, modelId, temperature, maxIterations, effectiveUserId)
+    console.log("[LangChain Agent] 🔧 Creando/Obteniendo agente…")
+    console.log("[LangChain Agent] ⚙️ Config - Model:", modelId, "MaxIter:", maxIterations)
+    
+    let agent
+    try {
+      agent = await getOrCreateAgent(effectiveChatId, modelId, temperature, maxIterations, effectiveUserId)
+      console.log("[LangChain Agent] ✅ Agente creado/obtenido exitosamente")
+    } catch (agentError) {
+      console.error("[LangChain Agent] ❌ Error creando agente:", agentError)
+      return jsonWithRequestId(
+        context.requestId,
+        {
+          error: "Error inicializando el agente legal",
+          details: agentError instanceof Error ? agentError.message : "Unknown error"
+        },
+        500
+      )
+    }
 
     // Inyectar System Prompt si es un documento
     // Nota: El agente de LangChain maneja su propio system prompt, 
@@ -565,6 +688,8 @@ export async function POST(request: NextRequest) {
     if (isDraft) {
       const { DOCUMENT_SYSTEM_PROMPT } = await import("@/lib/prompts/document-system-prompt")
       inputMessage = `${DOCUMENT_SYSTEM_PROMPT}\n\nUSUARIO: ${lastUserMessage}`
+    } else if (isAmbiguous) {
+      inputMessage = `${lastUserMessage}\n\n[SISTEMA]: La intención del usuario es AMBIGUA entre consulta y redacción. NO generes un documento completo todavía. PREGUNTA cortésmente si desea que redactes/generes el documento formalmente o si solo busca información.`
     } else {
       inputMessage = `${lastUserMessage}${buildSearchDisciplineInstruction(lastUserMessage)}`
     }
@@ -610,32 +735,42 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          // Emitir estado inicial
+          // ═══════════════════════════════════════════════════════════════════
+          // EVENTO META: Metadatos iniciales del stream
+          // ═══════════════════════════════════════════════════════════════════
           emit({
-            type: "status",
-            phase: "preparing",
-            progress: 5,
-            message: "Preparando contexto legal"
-          })
-          emit({
-            type: "status",
-            phase: "investigating",
-            progress: 15,
-            message: "Analizando el alcance de la consulta"
+            type: "meta",
+            message_id: effectiveChatId,
+            render_mode: isDraft ? "document" : "chat",
+            intent: classificationResult.intent,
+            confidence: classificationResult.confidence || 0.8
           })
 
+          // ═══════════════════════════════════════════════════════════════════
+          // FASE: CLASSIFYING - Análisis inicial
+          // ═══════════════════════════════════════════════════════════════════
+          emit({
+            type: "status",
+            phase: "classifying",
+            progress: 10,
+            message: "Analizando tu consulta legal…"
+          })
+
+          // ═══════════════════════════════════════════════════════════════════
+          // FASE: SEARCHING - Investigación de fuentes
+          // ═══════════════════════════════════════════════════════════════════
           const heartbeatMessages = [
-            "Investigando normas y precedentes relevantes",
-            "Contrastando fuentes oficiales y vigentes",
-            "Verificando consistencia jurídica de los hallazgos"
+            "Investigando normas oficiales…",
+            "Contrastando jurisprudencia aplicable…",
+            "Verificando texto literal de artículos…"
           ]
           let heartbeatIndex = 0
           heartbeat = setInterval(() => {
             if (isClosed) return
             emit({
               type: "status",
-              phase: "investigating",
-              progress: Math.min(70, 20 + heartbeatIndex * 8),
+              phase: "searching",
+              progress: Math.min(70, 25 + heartbeatIndex * 15),
               message: heartbeatMessages[Math.min(heartbeatIndex, heartbeatMessages.length - 1)]
             })
             heartbeatIndex = Math.min(heartbeatIndex + 1, heartbeatMessages.length - 1)
@@ -644,6 +779,10 @@ export async function POST(request: NextRequest) {
           const callbackHandler = new StreamingCallbackHandler(emit)
 
           // Ejecutar el agente
+          console.log("[LangChain Agent] 🤖 Invocando agente…")
+          console.log("[LangChain Agent] 📝 Input:", inputMessage.substring(0, 100))
+          console.log("[LangChain Agent] 📜 Chat history length:", chatHistory.length)
+          
           const result = await withTimeout(
             agent.invoke(
               {
@@ -657,31 +796,26 @@ export async function POST(request: NextRequest) {
             AGENT_INVOKE_TIMEOUT_MS,
             "Timeout ejecutando el agente legal"
           )
-
-          // Emitir información sobre herramientas usadas
-          if (result.toolsUsed && result.toolsUsed.length > 0) {
-            emit({
-              type: "status",
-              phase: "investigating",
-              progress: 75,
-              message: "Sintetizando hallazgos y validando consistencia"
-            })
-          }
+          
+          console.log("[LangChain Agent] ✅ Agente completado")
+          console.log("[LangChain Agent] 📄 Output length:", result.output?.length || 0)
+          console.log("[LangChain Agent] 📄 Output preview:", result.output?.substring(0, 200))
+          console.log("[LangChain Agent] 🔧 Tools used:", result.toolsUsed?.join(', ') || 'ninguna')
+          console.log("[LangChain Agent] 📊 Intermediate steps:", result.intermediateSteps?.length || 0)
 
           if (heartbeat) {
             clearInterval(heartbeat)
             heartbeat = null
           }
 
-          // Emitir fin del razonamiento
-          emit({
-            type: "thinking_done"
-          })
+          // ═══════════════════════════════════════════════════════════════════
+          // FASE: DRAFTING - Preparación de respuesta
+          // ═══════════════════════════════════════════════════════════════════
           emit({
             type: "status",
-            phase: "generating",
-            progress: 85,
-            message: "Redactando respuesta final"
+            phase: "drafting",
+            progress: 75,
+            message: "Sintetizando hallazgos…"
           })
 
           // Limpiar la respuesta del modelo
@@ -719,30 +853,69 @@ export async function POST(request: NextRequest) {
             // Limpieza de formato normal
             const sanitizedOutput = sanitizeFinalOutput(
               cleanOutput
-              .replace(/\*{0,2}Fuentes consultadas\*{0,2}\s*\n+/gi, '')
-              .replace(/\d+\s*referencias?\s*\n+/gi, '')
-              .replace(/\n+---\n*\*{0,2}Fuentes?\s*(consultadas|legales?)?\*{0,2}:?\s*\n*$/gi, '')
-              .replace(/\n+\*{0,2}Fuentes?\s*(consultadas|legales?)?\*{0,2}:?\s*\n*$/gi, '')
-              .replace(/\n{3,}/g, '\n\n')
-              .trim()
+                .replace(/\*{0,2}Fuentes consultadas\*{0,2}\s*\n+/gi, '')
+                .replace(/\d+\s*referencias?\s*\n+/gi, '')
+                .replace(/\n+---\n*\*{0,2}Fuentes?\s*(consultadas|legales?)?\*{0,2}:?\s*\n*$/gi, '')
+                .replace(/\n+\*{0,2}Fuentes?\s*(consultadas|legales?)?\*{0,2}:?\s*\n*$/gi, '')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim()
             )
             cleanOutput = sanitizedOutput || cleanOutput.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
           }
 
-          // Emitir respuesta token por token (streaming real)
-          const words = cleanOutput.split(' ').filter(Boolean)
-
-          for (let i = 0; i < words.length; i++) {
-            const word = words[i] + (i < words.length - 1 ? ' ' : '')
-            emit({ type: 'token', content: word })
+          // ═══════════════════════════════════════════════════════════════════
+          // EMITIR RESPUESTA FINAL
+          // ═══════════════════════════════════════════════════════════════════
+          // Hacer flush del buffer del callback para asegurar que todo se emitió
+          callbackHandler.flushBuffer()
+          
+          // Verificar si el callback emitió suficiente contenido
+          // Si no emitió nada o muy poco, emitimos la respuesta completa limpia
+          const emittedLength = callbackHandler.totalEmittedLength
+          const expectedLength = cleanOutput.length
+          const emissionRatio = expectedLength > 0 ? emittedLength / expectedLength : 0
+          
+          console.log(`[LangChain Agent] 📊 Streaming check: emitted=${emittedLength}, expected=${expectedLength}, ratio=${emissionRatio.toFixed(2)}`)
+          
+          // Si se emitió menos del 80% del contenido esperado, emitir la respuesta completa
+          if (emissionRatio < 0.8 && expectedLength > 0) {
+            console.log(`[LangChain Agent] ⚠️ Streaming incompleto, emitiendo respuesta completa…`)
+            emit({
+              type: "status",
+              phase: "streaming",
+              progress: 85,
+              message: "Generando respuesta…"
+            })
+            emit({ type: 'delta', text: cleanOutput })
+          } else if (!callbackHandler.hasEmittedContent && expectedLength > 0) {
+            // Caso extremo: no se emitió nada
+            console.log(`[LangChain Agent] ⚠️ No se emitió contenido via streaming, enviando respuesta completa…`)
+            emit({ type: 'delta', text: cleanOutput })
+          }
+          
+          // Caso especial: si el output parece incompleto (muy corto o solo la frase inicial)
+          if (expectedLength < 50 && expectedLength > 0) {
+            console.log(`[LangChain Agent] ⚠️ Respuesta muy corta (${expectedLength} chars), posible respuesta incompleta`)
+            // No hacer nada especial, solo loggear para monitoreo
           }
 
-          // Emitir fuentes si existen
+          // ═══════════════════════════════════════════════════════════════════
+          // FASE: STREAMING → COMPLETED - Finalización
+          // Emitir citas si existen (antes de done para que estén disponibles)
+          // ═══════════════════════════════════════════════════════════════════
           const fallbackSources = extractSourcesFromText(cleanOutput)
           const mergedSources = normalizeSources([...(result.sources || []), ...fallbackSources])
 
           if (mergedSources.length > 0) {
-            emit({ type: "sources", sources: mergedSources })
+            emit({ 
+              type: "citations", 
+              items: mergedSources.map((s, idx) => ({
+                id: `source-${idx + 1}`,
+                title: s.title,
+                url: s.url,
+                type: s.type
+              }))
+            })
           }
 
           // ═══════════════════════════════════════════════════════════════════
@@ -777,16 +950,11 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Emitir evento de finalización
+          // Evento de finalización
           const processingTime = ((Date.now() - startTime) / 1000).toFixed(1)
           emit({
-            type: "status",
-            phase: "completed",
-            progress: 100,
-            message: "Respuesta lista"
-          })
-          emit({
-            type: 'done',
+            type: "done",
+            ok: true,
             metadata: {
               model: modelId,
               processingTime: processingTime + 's',
@@ -808,16 +976,15 @@ export async function POST(request: NextRequest) {
 
           if (error instanceof TimeoutError || error?.name === "TimeoutError") {
             errorMessage = 'La consulta tomo demasiado tiempo. Intenta con una pregunta mas acotada.'
-            emit({ type: 'token', content: errorMessage })
-            emit({ type: 'done', metadata: { partial: true, timeout: true } })
+            emit({ type: 'delta', text: errorMessage })
+            emit({ type: 'error', message: errorMessage, code: 'TIMEOUT', recoverable: true })
           } else if (error.message?.includes('max iterations') || error.message?.includes('Agent stopped')) {
             errorMessage = 'La consulta requiere más investigación de la que puedo completar en este momento. ' +
               'Te recomiendo dividir tu pregunta en consultas más específicas.'
-            // Emitir como respuesta parcial, no como error
-            emit({ type: 'token', content: errorMessage })
-            emit({ type: 'done', metadata: { partial: true } })
+            emit({ type: 'delta', text: errorMessage })
+            emit({ type: 'done', ok: true, metadata: { partial: true, maxIterationsReached: true } })
           } else {
-            emit({ type: 'error', message: errorMessage })
+            emit({ type: 'error', message: errorMessage, code: 'AGENT_ERROR' })
           }
 
           safeClose()
@@ -828,13 +995,15 @@ export async function POST(request: NextRequest) {
     return new Response(stream, {
       headers: withRequestIdHeaders(
         {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Transfer-Encoding': 'chunked',
-        'X-Model-Used': modelId,
-        'X-Streaming': 'true',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no'
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Transfer-Encoding': 'chunked',
+          'X-Model-Used': modelId,
+          'X-Streaming': 'true',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          "X-Render-Mode": isDraft ? "document" : "chat",
+          "X-Intent": classificationResult.intent,
         },
         context.requestId
       )

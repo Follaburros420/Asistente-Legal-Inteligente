@@ -1,5 +1,5 @@
 export const M1_SMALL_MODEL_ID = "openai/gpt-oss-120b"
-export const M1_MODEL_ID = "deepseek/deepseek-v3.2"
+export const M1_MODEL_ID = "moonshotai/kimi-k2.5"
 export const M1_PRO_MODEL_ID = "moonshotai/kimi-k2.5"
 
 export const ALLOWED_M_MODELS = [
@@ -19,12 +19,14 @@ const LEGACY_MODEL_ALIASES: Record<string, AllowedMModel> = {
   "moonshotai/kimi-k2-thinking": M1_PRO_MODEL_ID,
   "openai/gpt-oss-120b:free": M1_SMALL_MODEL_ID,
   "openai/gpt-oss-120b:exacto": M1_SMALL_MODEL_ID,
+  "deepseek/deepseek-v3.2": M1_MODEL_ID,
   "deepseek/deepseek-v3.2-exp": M1_MODEL_ID,
   "deepseek/deepseek-v3.2-speciale": M1_MODEL_ID
 }
 
 export const PROVIDER_HINTS: Partial<Record<AllowedMModel, string>> = {
   [M1_SMALL_MODEL_ID]: "chutes/bf16",
+  [M1_MODEL_ID]: "chutes/int4",
   [M1_PRO_MODEL_ID]: "chutes/int4"
 }
 
