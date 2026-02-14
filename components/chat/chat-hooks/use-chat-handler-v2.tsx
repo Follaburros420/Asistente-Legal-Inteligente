@@ -109,7 +109,8 @@ export const useChatHandlerV2 = () => {
     console.log("[ChatV2] 📝 Created message IDs:", { user: userMessageId, assistant: assistantMessageId })
     
     // Crear mensaje del usuario
-    const userMessage: ChatMessage = {
+    // NOTA: assistant_id removido temporalmente - no existe en schema de producción
+    const userMessage: any = {
       message: {
         id: userMessageId,
         chat_id: selectedChat?.id || "",
@@ -119,7 +120,6 @@ export const useChatHandlerV2 = () => {
         sequence_number: sequenceNumber,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        assistant_id: null,
         image_paths: [],
         model: chatSettings?.model || M1_MODEL_ID
       },
@@ -127,7 +127,8 @@ export const useChatHandlerV2 = () => {
     }
     
     // Crear mensaje del asistente (vacío inicialmente)
-    const assistantMessage: ChatMessage = {
+    // NOTA: assistant_id removido temporalmente - no existe en schema de producción
+    const assistantMessage: any = {
       message: {
         id: assistantMessageId,
         chat_id: selectedChat?.id || "",
@@ -137,7 +138,6 @@ export const useChatHandlerV2 = () => {
         sequence_number: sequenceNumber + 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        assistant_id: selectedAssistant?.id || null,
         image_paths: [],
         model: chatSettings?.model || M1_MODEL_ID
       },

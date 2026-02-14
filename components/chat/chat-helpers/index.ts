@@ -843,9 +843,9 @@ export const handleCreateMessages = async (
   selectedAssistant: Tables<"assistants"> | null,
   bibliography?: BibliographyItem[]
 ) => {
-  const finalUserMessage: TablesInsert<"messages"> = {
+  // NOTA: assistant_id removido temporalmente - no existe en schema de producción
+  const finalUserMessage: any = {
     chat_id: currentChat.id,
-    assistant_id: null,
     user_id: profile.user_id,
     content: messageContent,
     model: modelData.modelId,
@@ -854,9 +854,8 @@ export const handleCreateMessages = async (
     image_paths: []
   }
 
-  const finalAssistantMessage: TablesInsert<"messages"> = {
+  const finalAssistantMessage: any = {
     chat_id: currentChat.id,
-    assistant_id: selectedAssistant?.id || null,
     user_id: profile.user_id,
     content: generatedText,
     model: modelData.modelId,
