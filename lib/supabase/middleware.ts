@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
 import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
 import { applySupabaseAuthResilience } from "@/lib/supabase/auth-resilience"
+import { applyRefreshDeduping } from "@/lib/supabase/auth-refresh-dedupe"
 
 let warnedInvalidSupabaseMiddlewareConfig = false
 
@@ -83,7 +84,8 @@ export const createClient = (request: NextRequest) => {
       }
     }
   )
-  const supabase = applySupabaseAuthResilience(rawSupabase, "middleware")
+  let resilientSupabase = applySupabaseAuthResilience(rawSupabase, "middleware")
+  const supabase = applyRefreshDeduping(resilientSupabase, "middleware")
 
   return { supabase, response }
 }

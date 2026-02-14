@@ -5,6 +5,7 @@ import { Database } from "@/supabase/types"
 import { validateAndNormalizeSupabaseUrl } from "@/lib/supabase/url-validation"
 import { createSupabaseSafeFetch } from "@/lib/supabase/safe-fetch"
 import { applySupabaseAuthResilience } from "@/lib/supabase/auth-resilience"
+import { applyRefreshDeduping } from "@/lib/supabase/auth-refresh-dedupe"
 
 /**
  * Create a Supabase client for Server Components
@@ -55,5 +56,6 @@ export const createClient = (cookieStore: ReturnType<typeof cookies>) => {
     }
   })
 
-  return applySupabaseAuthResilience(client, "server")
+  let resilientClient = applySupabaseAuthResilience(client, "server")
+  return applyRefreshDeduping(resilientClient, "server")
 }

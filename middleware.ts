@@ -3,6 +3,11 @@ import { isSupabaseAuthHtmlParseError } from "@/lib/supabase/safe-fetch"
 import { isSupabaseAuthUpstreamError } from "@/lib/supabase/auth-resilience"
 import { isSupabaseRefreshTokenNotFound } from "@/lib/supabase/auth-errors"
 import { clearSupabaseAuthCookiesInResponse } from "@/lib/supabase/auth-cookie-cleanup"
+import { 
+  generateRequestId, 
+  getPendingMiddlewareRefresh, 
+  setPendingMiddlewareRefresh 
+} from "@/lib/supabase/auth-refresh-dedupe"
 import { i18nRouter } from "next-i18n-router"
 import { NextResponse, type NextRequest } from "next/server"
 import i18nConfig from "./i18nConfig"
@@ -58,6 +63,31 @@ const AUTH_ROUTES = ['/onboarding', '/login', '/register', '/setup', '/invite', 
 // Verificar si billing está habilitado
 const isBillingEnabled = () => getEnvVar('NEXT_PUBLIC_BILLING_ENABLED') === 'true';
 let warnedSupabaseUpstreamInMiddleware = false
+// Track recent refresh token errors to prevent log spam
+const recentRefreshErrors = new Map<string, number>()
+const REFRESH_ERROR_LOG_THROTTLE_MS = 30000 // 30 seconds
+
+function shouldLogRefreshError(requestId: string): boolean {
+  const now = Date.now()
+  const lastError = recentRefreshErrors.get(requestId)
+  
+  if (!lastError || (now - lastError) > REFRESH_ERROR_LOG_THROTTLE_MS) {
+    recentRefreshErrors.set(requestId, now)
+    return true
+  }
+  
+  return false
+}
+
+// Clean up old entries periodically
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, timestamp] of recentRefreshErrors.entries()) {
+    if (now - timestamp > REFRESH_ERROR_LOG_THROTTLE_MS * 2) {
+      recentRefreshErrors.delete(key)
+    }
+  }
+}, 60000)
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
@@ -196,11 +226,42 @@ export async function middleware(request: NextRequest) {
     }
 
     // Verificar autenticación para rutas protegidas
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Use deduplication to prevent concurrent refresh token requests
+    const requestId = generateRequestId(request)
+    let pendingRefresh = getPendingMiddlewareRefresh(requestId)
+    
+    let user: any = null
+    let authError: any = null
+    
+    if (pendingRefresh) {
+      // Wait for pending refresh to complete
+      try {
+        await pendingRefresh
+      } catch {
+        // Ignore errors from pending refresh, we'll try our own getUser
+      }
+    }
+    
+    // Perform getUser with potential deduplication
+    const getUserPromise = supabase.auth.getUser()
+    setPendingMiddlewareRefresh(requestId, getUserPromise.catch(() => null))
+    
+    try {
+      const result = await getUserPromise
+      user = result.data?.user
+      authError = result.error
+    } catch (error) {
+      authError = error
+    }
 
     // Redirigir a login si no hay sesion
     if (authError || !user) {
       if (authError && isSupabaseRefreshTokenNotFound(authError)) {
+        // Throttle error logging
+        if (shouldLogRefreshError(requestId)) {
+          console.log("[middleware] Refresh token not found, redirecting to login")
+        }
+        
         const loginUrl = new URL('/login?message=Tu%20sesion%20expiro.%20Inicia%20sesion%20nuevamente.', request.url)
         const redirectResponse = NextResponse.redirect(loginUrl)
         clearSupabaseAuthCookiesInResponse(redirectResponse, request)

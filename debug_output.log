@@ -1,0 +1,35 @@
+
+--- Input: "Hola" ---
+Heuristic: isDraft=false, conf=0.1, type=otro
+Calling classifier...
+Classifier: intent=chat_response, is_document=false, conf=1
+> RESULT: isDraft=false, isAmbiguous=false
+=> CHAT MODE
+
+--- Input: "Hola, necesito una tutela" ---
+Heuristic: isDraft=true, conf=0.9, type=tutela
+Calling classifier...
+Classifier: intent=ambiguous, is_document=false, conf=0.7
+> RESULT: isDraft=false, isAmbiguous=true
+=> ASKS CLARIFICATION
+
+--- Input: "Redacta una tutela por salud" ---
+Heuristic: isDraft=true, conf=0.9, type=tutela
+Calling classifier...
+Classifier: intent=document_write, is_document=true, conf=1
+> RESULT: isDraft=true, isAmbiguous=false
+=> ACTIVATES DOCUMENT MODE
+
+--- Input: "Qué es una tutela?" ---
+Heuristic: isDraft=false, conf=0.1, type=tutela
+Calling classifier...
+Classifier: intent=chat_response, is_document=false, conf=1
+> RESULT: isDraft=false, isAmbiguous=false
+=> CHAT MODE
+
+--- Input: "Necesito un contrato" ---
+Heuristic: isDraft=true, conf=0.9, type=contrato
+Calling classifier...
+Classifier: intent=ambiguous, is_document=false, conf=0.7
+> RESULT: isDraft=false, isAmbiguous=true
+=> ASKS CLARIFICATION

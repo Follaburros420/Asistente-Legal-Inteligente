@@ -1,15 +1,15 @@
-import { useChatHandler } from "@/components/chat/chat-hooks/use-chat-handler"
+import { useChatHandlerV2 } from "@/components/chat/chat-hooks/use-chat-handler-v2"
 import { ALIContext } from "@/context/context"
 import { Tables } from "@/supabase/types"
 import { FC, useContext, useMemo, useState } from "react"
-import { Message } from "../messages/message"
+import { MessageV2 } from "../messages/message-v2"
 
 interface ChatMessagesProps { }
 
 export const ChatMessages: FC<ChatMessagesProps> = ({ }) => {
   const { chatMessages, chatFileItems } = useContext(ALIContext)
 
-  const { handleSendEdit } = useChatHandler()
+  const { handleSendEdit } = useChatHandlerV2()
 
   const [editingMessage, setEditingMessage] = useState<Tables<"messages">>()
 
@@ -26,16 +26,14 @@ export const ChatMessages: FC<ChatMessagesProps> = ({ }) => {
             )
 
             return (
-              <Message
+              <MessageV2
                 key={chatMessage.message.sequence_number}
                 message={chatMessage.message}
                 fileItems={messageFileItems}
                 bibliography={chatMessage.bibliography}
-                thinking={chatMessage.thinking}
-                draft={chatMessage.draft}
                 isEditing={editingMessage?.id === chatMessage.message.id}
                 isLast={index === array.length - 1}
-                onStartEdit={setEditingMessage}
+                onStartEdit={() => setEditingMessage(chatMessage.message)}
                 onCancelEdit={() => setEditingMessage(undefined)}
                 onSubmitEdit={handleSendEdit}
               />

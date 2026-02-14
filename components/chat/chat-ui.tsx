@@ -1,5 +1,5 @@
 import Loading from "@/app/[locale]/loading"
-import { useChatHandler } from "@/components/chat/chat-hooks/use-chat-handler"
+import { useChatHandlerV2 } from "@/components/chat/chat-hooks/use-chat-handler-v2"
 import { ALIContext } from "@/context/context"
 import { getAssistantToolsByAssistantId } from "@/db/assistant-tools"
 import { getChatFilesByChatId } from "@/db/chat-files"
@@ -43,7 +43,7 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     setSelectedTools
   } = useContext(ALIContext)
 
-  const { handleNewChat, handleFocusChatInput } = useChatHandler()
+  const { handleNewChat, handleFocusChatInput } = useChatHandlerV2()
 
   const {
     messagesStartRef,

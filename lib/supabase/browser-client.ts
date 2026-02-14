@@ -5,6 +5,7 @@ import {
   initClientEnv,
   checkClientEnv
 } from "@/lib/env/client-env"
+import { applyRefreshDeduping } from "@/lib/supabase/auth-refresh-dedupe"
 
 /**
  * Initialize environment before creating client
@@ -43,11 +44,12 @@ function getSupabaseEnv() {
 }
 
 /**
- * Create a Supabase browser client
+ * Create a Supabase browser client with refresh deduplication
  */
 export const createClient = () => {
   const { url, anonKey } = getSupabaseEnv()
-  return createBrowserClient<Database>(url, anonKey)
+  const client = createBrowserClient<Database>(url, anonKey)
+  return applyRefreshDeduping(client, "browser")
 }
 
 // Lazy-initialized singleton instance

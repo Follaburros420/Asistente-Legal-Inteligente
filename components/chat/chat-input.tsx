@@ -13,7 +13,7 @@ import { ModernSendIcon } from "../ui/placeholders-and-vanish-input"
 import { ChatInputArea } from "./chat-input-area"
 import { ChatCommandInput } from "./chat-command-input"
 import { ChatFilesDisplay } from "./chat-files-display"
-import { useChatHandler } from "./chat-hooks/use-chat-handler"
+import { useChatHandlerV2 } from "./chat-hooks/use-chat-handler-v2"
 import { useChatHistoryHandler } from "./chat-hooks/use-chat-history"
 import { usePromptAndCommand } from "./chat-hooks/use-prompt-and-command"
 import { useSelectFileHandler } from "./chat-hooks/use-select-file-handler"
@@ -36,7 +36,7 @@ export const ChatInput: FC<ChatInputProps> = ({ }) => {
     setFocusAssistant,
     userInput,
     chatMessages,
-    isGenerating,
+    streamPhase,
     selectedPreset,
     selectedAssistant,
     focusPrompt,
@@ -58,11 +58,12 @@ export const ChatInput: FC<ChatInputProps> = ({ }) => {
   } = useContext(ALIContext)
 
   const {
-    chatInputRef,
     handleSendMessage,
-    handleStopMessage,
-    handleFocusChatInput
-  } = useChatHandler()
+    handleStopMessage
+  } = useChatHandlerV2()
+  
+  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  const handleFocusChatInput = () => chatInputRef.current?.focus()
 
   const { handleInputChange } = usePromptAndCommand()
 
@@ -230,7 +231,7 @@ export const ChatInput: FC<ChatInputProps> = ({ }) => {
           onPaste={handlePaste}
           onCompositionStart={() => setIsTyping(true)}
           onCompositionEnd={() => setIsTyping(false)}
-          disabled={isGenerating}
+          disabled={streamPhase === "streaming" || streamPhase === "classifying" || streamPhase === "searching"}
           showSuggestions={showPlaceholderSuggestions}
           placeholders={[
             "¿Cuáles son los requisitos para una demanda de responsabilidad civil?",
@@ -262,7 +263,7 @@ export const ChatInput: FC<ChatInputProps> = ({ }) => {
             </CreateFileModal>
           }
           rightElement={
-            isGenerating ? (
+            (streamPhase === "streaming" || streamPhase === "classifying" || streamPhase === "searching") ? (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -287,7 +288,9 @@ export const ChatInput: FC<ChatInputProps> = ({ }) => {
                     setShowPlaceholderSuggestions(false)
                   }
 
-                  handleSendMessage(userInput, chatMessages, false)
+                  if (userInput.trim()) {
+                handleSendMessage(userInput, chatMessages, false)
+              }
                   handleInputChange("") // Explicitly clear input
                 }}
                 disabled={!userInput}

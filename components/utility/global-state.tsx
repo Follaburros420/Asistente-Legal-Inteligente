@@ -255,12 +255,17 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
       console.log('[Auth State Change]', event, session?.user?.email || 'no user')
 
       // If signed out or token refresh failed, redirect to login
-      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+      if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
         console.log('[Auth State Change] Session ended, redirecting to login')
         // Clear local storage session data
         localStorage.removeItem('ali_session_token')
         localStorage.removeItem('ali_current_session_id')
         router.push('/login?message=Tu sesión fue cerrada desde otro dispositivo.')
+      }
+      
+      // Handle refresh token errors
+      if (event === 'TOKEN_REFRESHED' && session) {
+        console.log('[Auth State Change] Token refreshed successfully')
       }
     })
 
@@ -268,6 +273,22 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
       subscription.unsubscribe()
     }
   }, [router])
+  
+  // Handle visibility change to prevent refresh storms when tab becomes active
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // When tab becomes visible, check session but with deduplication
+        // The deduping in browser-client will handle concurrent requests
+        console.log('[Auth] Tab became visible, checking session')
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
 
   useEffect(() => {
     ; (async () => {

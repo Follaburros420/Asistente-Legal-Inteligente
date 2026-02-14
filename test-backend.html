@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Backend Connection</title>
+</head>
+<body>
+  <h1>Test de Conexión al Backend</h1>
+  <button onclick="testBackend()">Probar Conexión</button>
+  <pre id="result"></pre>
+
+  <script>
+    async function testBackend() {
+      const result = document.getElementById('result');
+      result.textContent = 'Probando...\n\n';
+
+      try {
+        console.log('🧪 Iniciando test...');
+        result.textContent += '🧪 Iniciando test...\n';
+
+        const endpoint = '/api/chat/langchain-agent';
+        const fullUrl = `${window.location.origin}${endpoint}`;
+        
+        result.textContent += `📡 URL: ${fullUrl}\n\n`;
+        console.log('📡 URL:', fullUrl);
+
+        const requestBody = {
+          chatSettings: {
+            model: "gpt-4o-mini",
+            temperature: 0.5
+          },
+          messages: [{role: "user", "content": "hola"}]
+        };
+
+        result.textContent += `📦 Request Body:\n${JSON.stringify(requestBody, null, 2)}\n\n`;
+        console.log('📦 Request Body:', requestBody);
+
+        const controller = new AbortController();
+        
+        // Timeout de 10 segundos
+        setTimeout(() => {
+          controller.abort();
+          result.textContent += '⏱️ Timeout: Abortado después de 10 segundos\n';
+        }, 10000);
+
+        result.textContent += '📡 Haciendo fetch...\n';
+        console.log('📡 Haciendo fetch...');
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+
+        result.textContent += `✅ Response status: ${response.status}\n`;
+        result.textContent += `✅ Response headers: ${JSON.stringify([...response.headers])}\n\n`;
+        console.log('✅ Response:', response);
+
+        if (!response.ok) {
+          result.textContent += `❌ Error HTTP ${response.status}\n`;
+          const errorText = await response.text();
+          result.textContent += `❌ Error body: ${errorText}\n`;
+          return;
+        }
+
+        result.textContent += '📥 Leyendo stream...\n\n';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let received = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            result.textContent += '✅ Stream completado\n';
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          received += chunk;
+          result.textContent += `📦 Chunk recibido: ${chunk}\n`;
+          console.log('📦 Chunk:', chunk);
+          
+          // Solo mostrar primeros 5 chunks para no saturar
+          if (received.split('\n').length > 5) {
+            result.textContent += '... (más chunks recibidos, revisa la consola)\n';
+            break;
+          }
+        }
+
+      } catch (error) {
+        result.textContent += `\n💥 ERROR: ${error.name}: ${error.message}\n`;
+        result.textContent += `💥 Stack: ${error.stack}\n`;
+        console.error('💥 ERROR:', error);
+      }
+    }
+  </script>
+</body>
+</html>
