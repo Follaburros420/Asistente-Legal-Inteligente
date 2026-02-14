@@ -1,21 +1,25 @@
 /**
- * useChatHandler V2
+ * useChatHandler V2 - VERSIÓN CORREGIDA
  * 
- * Usa el orquestador thin con streaming real.
- * Reemplaza handleHostedChat legacy.
+ * CORRECCIONES CRÍTICAS:
+ * 1. Preservar mensajes anteriores correctamente
+ * 2. Manejo de errores robusto
+ * 3. Logs exhaustivos
+ * 4. No perder historial en errores
  */
 
 import { useContext, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ALIContext } from "@/context/context"
 import { streamChat, StreamCallbacks } from "@/components/chat/chat-helpers/stream-chat"
-import { createTempMessages, handleCreateChat, handleCreateMessages } from "@/components/chat/chat-helpers"
+import { handleCreateChat, handleCreateMessages } from "@/components/chat/chat-helpers"
 import { updateChat } from "@/db/chats"
 import { deleteMessagesIncludingAndAfter } from "@/db/messages"
 import { ChatMessage } from "@/types"
 import { M1_MODEL_ID, normalizeMModel } from "@/lib/models/m1-models"
 import { INITIAL_STREAM_STATE } from "@/lib/stream-protocol"
 import { v4 as uuidv4 } from "uuid"
+import { toast } from "sonner"
 
 export const useChatHandlerV2 = () => {
   const router = useRouter()
@@ -33,20 +37,15 @@ export const useChatHandlerV2 = () => {
     setSelectedChat,
     setChats,
     chatSettings,
-    setChatSettings,
     setStreamState,
     setStreamPhase,
     setStreamMessage,
-    newMessageImages,
-    setNewMessageImages,
-    chatImages,
     setChatImages
   } = useContext(ALIContext)
 
   const handleNewChat = useCallback(() => {
     if (!selectedWorkspace) return
     
-    // Cancelar stream activo si existe
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
@@ -73,37 +72,95 @@ export const useChatHandlerV2 = () => {
 
   const handleSendMessage = useCallback(async (
     messageContent: string,
-    chatMessages: ChatMessage[],
+    currentChatMessages: ChatMessage[],
     isRegeneration: boolean
   ) => {
-    if (!messageContent.trim() || !selectedWorkspace) return
+    console.log("[ChatV2] ================================================")
+    console.log("[ChatV2] 🚀 START - Message:", messageContent.substring(0, 50))
+    console.log("[ChatV2] 📊 Current chat messages count:", currentChatMessages.length)
+    console.log("[ChatV2] 🔄 isRegeneration:", isRegeneration)
     
-    console.log("[ChatV2] 🚀 Sending:", messageContent.substring(0, 50))
+    if (!messageContent.trim()) {
+      console.log("[ChatV2] ⚠️ Empty message, aborting")
+      return
+    }
     
-    // Crear AbortController nuevo
+    if (!selectedWorkspace) {
+      console.log("[ChatV2] ❌ No workspace selected")
+      toast.error("No hay workspace seleccionado")
+      return
+    }
+    
+    if (!profile) {
+      console.log("[ChatV2] ❌ No profile")
+      toast.error("Perfil no cargado")
+      return
+    }
+    
+    // Crear AbortController
     abortControllerRef.current = new AbortController()
     const abortController = abortControllerRef.current
     
-    // Crear mensajes temporales
-    const { tempUserChatMessage, tempAssistantChatMessage } = createTempMessages(
-      messageContent,
-      chatMessages,
-      chatSettings || {
-        model: M1_MODEL_ID,
-        prompt: "",
-        temperature: 0.3,
-        contextLength: 4096,
-        includeProfileContext: true,
-        includeWorkspaceInstructions: true,
-        embeddingsProvider: "openai"
-      },
-      [],
-      isRegeneration,
-      setChatMessages,
-      selectedAssistant
-    )
+    // Crear IDs para mensajes
+    const userMessageId = uuidv4()
+    const assistantMessageId = uuidv4()
+    const sequenceNumber = currentChatMessages.length
     
-    const assistantMessageId = tempAssistantChatMessage.message.id
+    console.log("[ChatV2] 📝 Created message IDs:", { user: userMessageId, assistant: assistantMessageId })
+    
+    // Crear mensaje del usuario
+    const userMessage: ChatMessage = {
+      message: {
+        id: userMessageId,
+        chat_id: selectedChat?.id || "",
+        user_id: profile.user_id,
+        content: messageContent,
+        role: "user",
+        sequence_number: sequenceNumber,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        assistant_id: null,
+        image_paths: [],
+        model: chatSettings?.model || M1_MODEL_ID
+      },
+      fileItems: []
+    }
+    
+    // Crear mensaje del asistente (vacío inicialmente)
+    const assistantMessage: ChatMessage = {
+      message: {
+        id: assistantMessageId,
+        chat_id: selectedChat?.id || "",
+        user_id: profile.user_id,
+        content: "",
+        role: "assistant",
+        sequence_number: sequenceNumber + 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        assistant_id: selectedAssistant?.id || null,
+        image_paths: [],
+        model: chatSettings?.model || M1_MODEL_ID
+      },
+      fileItems: []
+    }
+    
+    // AGREGAR mensajes al estado INMEDIATAMENTE
+    // Esto preserva los mensajes anteriores
+    let messagesAfterAdd: ChatMessage[]
+    
+    if (isRegeneration) {
+      // En regeneración, reemplazar el último mensaje del asistente
+      console.log("[ChatV2] 🔄 Regeneration mode - replacing last assistant message")
+      const withoutLast = currentChatMessages.slice(0, -1)
+      messagesAfterAdd = [...withoutLast, { ...assistantMessage, message: { ...assistantMessage.message, content: "" } }]
+    } else {
+      // Agregar ambos mensajes nuevos
+      console.log("[ChatV2] ➕ Adding new messages to chat")
+      messagesAfterAdd = [...currentChatMessages, userMessage, assistantMessage]
+    }
+    
+    console.log("[ChatV2] 📊 Messages after add:", messagesAfterAdd.length)
+    setChatMessages(messagesAfterAdd)
     
     // Inicializar estado del stream
     setStreamState({
@@ -117,16 +174,22 @@ export const useChatHandlerV2 = () => {
     setStreamMessage("Analizando tu consulta legal…")
     setUserInput("")
     
-    // Preparar historial
-    const history = chatMessages.map(msg => ({
-      role: msg.message.role as "user" | "assistant",
-      content: msg.message.content
-    }))
+    // Preparar historial para el backend
+    // Usar messagesAfterAdd para tener el contexto actualizado
+    const history = messagesAfterAdd
+      .filter(msg => msg.message.role !== "system")
+      .slice(-20) // Últimos 20 mensajes
+      .map(msg => ({
+        role: msg.message.role as "user" | "assistant",
+        content: msg.message.content
+      }))
+    
+    console.log("[ChatV2] 📚 History for backend:", history.length, "messages")
     
     // Callbacks del stream
     const callbacks: StreamCallbacks = {
       onMeta: (messageId, intent, renderMode) => {
-        console.log("[ChatV2] 📋 Meta:", { intent, renderMode })
+        console.log("[ChatV2] 📋 Meta received:", { intent, renderMode })
         setStreamState(prev => ({
           ...prev,
           intent: intent as any,
@@ -135,7 +198,7 @@ export const useChatHandlerV2 = () => {
       },
       
       onStatus: (phase, message) => {
-        console.log("[ChatV2] 📊 Status:", phase, message)
+        console.log("[ChatV2] 📊 Status:", phase, "-", message)
         setStreamPhase(phase as any)
         setStreamMessage(message)
         setStreamState(prev => ({
@@ -146,19 +209,22 @@ export const useChatHandlerV2 = () => {
       },
       
       onDelta: (text) => {
-        // Actualizar mensaje del asistente
-        setChatMessages(prev => prev.map(msg => {
-          if (msg.message.id === assistantMessageId) {
-            return {
-              ...msg,
-              message: {
-                ...msg.message,
-                content: msg.message.content + text
+        // Actualizar SOLO el mensaje del asistente
+        setChatMessages(prev => {
+          const updated = prev.map(msg => {
+            if (msg.message.id === assistantMessageId) {
+              return {
+                ...msg,
+                message: {
+                  ...msg.message,
+                  content: msg.message.content + text
+                }
               }
             }
-          }
-          return msg
-        }))
+            return msg
+          })
+          return updated
+        })
         
         setStreamState(prev => ({
           ...prev,
@@ -195,6 +261,7 @@ export const useChatHandlerV2 = () => {
           error: message,
           completedAt: Date.now()
         }))
+        toast.error(`Error: ${message}`)
       },
       
       onCancelled: (reason) => {
@@ -211,6 +278,7 @@ export const useChatHandlerV2 = () => {
     
     try {
       // Ejecutar stream
+      console.log("[ChatV2] 🌊 Starting streamChat...")
       const result = await streamChat(
         messageContent,
         history,
@@ -226,33 +294,59 @@ export const useChatHandlerV2 = () => {
       console.log("[ChatV2] 🏁 Stream ended:", {
         textLength: result.text.length,
         citations: result.citations.length,
-        cancelled: result.cancelled
+        cancelled: result.cancelled,
+        error: result.error
       })
       
+      // Si hubo error, mostrar en el mensaje
+      if (result.error) {
+        setChatMessages(prev => prev.map(msg => {
+          if (msg.message.id === assistantMessageId) {
+            return {
+              ...msg,
+              message: {
+                ...msg.message,
+                content: `❌ Error: ${result.error}`
+              }
+            }
+          }
+          return msg
+        }))
+      }
+      
       // Guardar en BD
+      console.log("[ChatV2] 💾 Saving to database...")
       let currentChat = selectedChat
       
       if (!currentChat && !isRegeneration) {
         // Crear nuevo chat
-        currentChat = await handleCreateChat(
-          chatSettings || {
-            model: M1_MODEL_ID,
-            prompt: "",
-            temperature: 0.3,
-            contextLength: 4096,
-            includeProfileContext: true,
-            includeWorkspaceInstructions: true,
-            embeddingsProvider: "openai"
-          },
-          profile!,
-          selectedWorkspace,
-          messageContent,
-          selectedAssistant,
-          [],
-          setSelectedChat,
-          setChats,
-          () => {}
-        )
+        console.log("[ChatV2] 🆕 Creating new chat...")
+        try {
+          currentChat = await handleCreateChat(
+            chatSettings || {
+              model: M1_MODEL_ID,
+              prompt: "",
+              temperature: 0.3,
+              contextLength: 4096,
+              includeProfileContext: true,
+              includeWorkspaceInstructions: true,
+              embeddingsProvider: "openai"
+            },
+            profile,
+            selectedWorkspace,
+            messageContent,
+            selectedAssistant,
+            [],
+            setSelectedChat,
+            setChats,
+            () => {}
+          )
+          console.log("[ChatV2] ✅ Chat created:", currentChat.id)
+        } catch (error: any) {
+          console.error("[ChatV2] ❌ Error creating chat:", error)
+          toast.error("Error creando chat: " + error.message)
+          throw error
+        }
       } else if (currentChat) {
         await updateChat(currentChat.id, {
           updated_at: new Date().toISOString()
@@ -260,13 +354,23 @@ export const useChatHandlerV2 = () => {
       }
       
       if (currentChat) {
+        // Actualizar IDs de chat en los mensajes
+        setChatMessages(prev => prev.map(msg => ({
+          ...msg,
+          message: {
+            ...msg.message,
+            chat_id: currentChat!.id
+          }
+        })))
+        
+        // Guardar mensajes en BD
         await handleCreateMessages(
-          chatMessages,
+          messagesAfterAdd, // Usar los mensajes que tenemos
           currentChat,
-          profile!,
+          profile,
           { modelId: chatSettings?.model || M1_MODEL_ID } as any,
           messageContent,
-          result.text,
+          result.text || "Error: No response",
           [],
           isRegeneration,
           [],
@@ -276,14 +380,32 @@ export const useChatHandlerV2 = () => {
           selectedAssistant,
           result.citations.length > 0 ? result.citations : undefined
         )
+        console.log("[ChatV2] ✅ Messages saved to DB")
       }
       
     } catch (error: any) {
       console.error("[ChatV2] 💥 Fatal error:", error)
       setStreamPhase("error")
       setStreamMessage(`Error: ${error.message}`)
+      
+      // Mostrar error en el mensaje del asistente
+      setChatMessages(prev => prev.map(msg => {
+        if (msg.message.id === assistantMessageId) {
+          return {
+            ...msg,
+            message: {
+              ...msg.message,
+              content: `❌ Error: ${error.message || "Error desconocido"}`
+            }
+          }
+        }
+        return msg
+      }))
+      
+      toast.error(error.message || "Error en el chat")
     } finally {
       abortControllerRef.current = null
+      console.log("[ChatV2] 🧹 Cleanup done")
     }
   }, [
     selectedWorkspace,
