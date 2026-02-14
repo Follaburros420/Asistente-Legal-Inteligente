@@ -266,16 +266,15 @@ export async function POST(request: NextRequest) {
     const isLegalQuery = requiresLegalSearch(userQuery)
 
     const heuristicResult = detectDraftIntent(userQuery)
-    let classificationResult = await classifyDocumentIntent(userQuery, heuristicResult, true)
-    if (heuristicResult.isDraft && heuristicResult.confidence >= 0.8 && !classificationResult.is_document) {
-      classificationResult = {
-        is_document: true,
-        doc_type: (heuristicResult.type as any) || "otro",
-        confidence: heuristicResult.confidence * 0.9
-      }
-    }
+    const classification = await classifyDocumentIntent(userQuery, heuristicResult)
 
-    const isDraft = classificationResult.is_document && classificationResult.confidence >= 0.6
+    // Lógica estricta de decisión
+    const isDraft = classification.intent === "document_write" && classification.is_document
+
+    // Manejo de Ambigüedad: Si es ambiguo, forzamos Chat Mode pero instruimos al modelo para que aclare
+    const isAmbiguous = classification.intent === "ambiguous"
+
+    // (isDraft y classification ya definidos arriba)
 
     const { model: modelName, usedFallback, originalModel } = await selectModelWithFallback(
       client,
@@ -293,6 +292,8 @@ export async function POST(request: NextRequest) {
     let systemContent = LEGAL_AGENT_SYSTEM_PROMPT
     if (isDraft) {
       systemContent += DRAFT_MODE_INSTRUCTIONS
+    } else if (isAmbiguous) {
+      systemContent += "\n\n[SISTEMA]: La intención del usuario es AMBIGUA entre consulta y redacción. NO generes un documento completo todavía. PREGUNTA cortésmente si desea que redactes/generes el documento formalmente o si solo busca información."
     }
 
     let userMessageContent = userQuery

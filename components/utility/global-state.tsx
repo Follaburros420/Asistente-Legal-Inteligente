@@ -3,6 +3,7 @@
 "use client"
 
 import { ALIContext } from "@/context/context"
+import { StreamState, INITIAL_STREAM_STATE } from "@/lib/stream-protocol"
 import { toast } from "sonner"
 import { getProfileByUserId } from "@/db/profile"
 import { getWorkspaceImageFromStorage } from "@/db/storage/workspace-images"
@@ -223,6 +224,26 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
   // SUGGESTED QUESTIONS STORE
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
   const [showSuggestedQuestions, setShowSuggestedQuestions] = useState<boolean>(false)
+
+  // STREAM STATE STORE (nuevo protocolo v2.0)
+  const [streamState, setStreamState] = useState<StreamState>(INITIAL_STREAM_STATE)
+  const [streamPhase, setStreamPhase] = useState<StreamState["phase"]>("idle")
+  const [streamMessage, setStreamMessage] = useState<string>("")
+
+  // Exponer estado para debuggear en consola (solo en desarrollo)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      (window as any).__ALI_DEBUG__ = {
+        getState: () => ({
+          streamPhase,
+          streamMessage,
+          streamState,
+          isGenerating,
+          firstTokenReceived
+        })
+      }
+    }
+  }, [streamPhase, streamMessage, streamState, isGenerating, firstTokenReceived])
 
   // LOADING STORE
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -492,7 +513,15 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
           suggestedQuestions,
           setSuggestedQuestions,
           showSuggestedQuestions,
-          setShowSuggestedQuestions
+          setShowSuggestedQuestions,
+
+          // STREAM STATE STORE (nuevo protocolo v2.0)
+          streamState,
+          setStreamState,
+          streamPhase,
+          setStreamPhase,
+          streamMessage,
+          setStreamMessage
         }}
       >
         {isLoading ? <LoadingScreen message={loadingMessage} /> : children}

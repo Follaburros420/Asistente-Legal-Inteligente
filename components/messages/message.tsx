@@ -31,6 +31,7 @@ import { useSuggestedQuestions } from "@/lib/hooks/use-suggested-questions"
 import { toast } from "sonner"
 import { AnswerView } from "./answer-view"
 import { CitationsPanel } from "./citations-panel"
+import { ThinkingIndicator } from "./thinking-indicator"
 import { parseModelAnswer } from "@/lib/parsers/model-answer"
 import { processStreamContent } from "@/lib/stream-processor"
 import { DocumentSheet } from "../chat/document-sheet"
@@ -85,8 +86,18 @@ export const Message: FC<MessageProps> = ({
     setShowSuggestedQuestions,
     setUserInput,
     selectedWorkspace,
-    selectedChat
+    selectedChat,
+    streamPhase,
+    streamMessage,
+    streamState
   } = useContext(ALIContext)
+
+  // Log para debuggear el estado del mensaje (solo para el último mensaje del asistente)
+  useEffect(() => {
+    if (message.role === "assistant" && isLast) {
+      console.log(`[Message] 📝 Render - isLast: ${isLast}, isGenerating: ${isGenerating}, streamPhase: ${streamPhase}`)
+    }
+  }, [message.role, isLast, isGenerating, streamPhase])
 
   const router = useRouter()
   const { handleSendMessage } = useChatHandler()
@@ -310,19 +321,28 @@ export const Message: FC<MessageProps> = ({
   const modelDetails = LLM_LIST.find(model => model.modelId === message.model)
 
   // Detectar si el mensaje es un documento legal estructurado
-  const isLegalDocument =
+  // PRIORIDAD 1: Usar renderMode del stream state (backend indica document vs chat)
+  // PRIORIDAD 2: Heurística como fallback (solo para mensajes históricos sin stream)
+  const isLegalDocumentFromStream = streamState.renderMode === "document" && isLast && isGenerating
+  
+  // Heurística de fallback: detectar JSON de draft en el contenido
+  const hasDraftContent = message.content.trim().startsWith('{') && 
+                          message.content.includes('"type": "draft"')
+  
+  // Heurística de fallback 2: contenido HTML con palabras clave de documento
+  const isLegalDocumentFromHeuristics =
+    !isGenerating && // Solo aplicar a mensajes completados históricos
     message.role === "assistant" &&
     (message.content.includes("<h1>") || message.content.includes("<h2>")) &&
-    (message.content.includes("demanda") ||
-      message.content.includes("tutela") ||
-      message.content.includes("contrato") ||
-      message.content.includes("documento legal") ||
-      message.content.includes("memorial") ||
-      message.content.includes("derecho de petición") ||
-      message.assistant_id && assistants.find(a =>
-        a.id === message.assistant_id &&
-        (a.name.toLowerCase().includes("redacción") || a.name.toLowerCase().includes("redaccion"))
-      ))
+    (message.content.includes("ARTICULO") ||
+     message.content.includes("CONTRATO") ||
+     message.content.includes("DEMANDA") ||
+     message.content.includes("MEMORIAL"))
+  
+  // Combinar: stream state tiene prioridad para mensajes activos
+  const isLegalDocument = isGenerating 
+    ? isLegalDocumentFromStream 
+    : (hasDraftContent || isLegalDocumentFromHeuristics)
 
   const fileAccumulator: Record<
     string,
@@ -371,40 +391,19 @@ export const Message: FC<MessageProps> = ({
     return profile?.display_name || profile?.username || "Usuario"
   }
 
-  // Contenido del mensaje
+  // Determinar si se deben mostrar las citas
+  // Solo cuando el stream está completado
+  const shouldShowCitations = 
+    message.role === "assistant" && 
+    streamPhase === "completed" && 
+    assistantCitations.length > 0
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // RENDERIZADO DEL MENSAJE - REFACTORIZADO v2.0
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
   const renderMessageContent = () => {
-    // Solo mostrar indicador de carga si es el último mensaje del asistente y está generando
-    if (!firstTokenReceived && isGenerating && isLast && message.role === "assistant") {
-      const steps = thinkingSteps.slice(-3)
-      return (
-        <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-            <span className="text-sm font-medium text-foreground">{currentProgressLabel}</span>
-          </div>
-
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-primary/60 via-primary to-primary/60 transition-all duration-500"
-              style={{ width: `${currentProgressPercent}%` }}
-            />
-          </div>
-
-          <div className="mt-2 space-y-1">
-            {steps.length > 0 ? (
-              steps.map((step, index) => (
-                <div key={`${step}-${index}`} className="text-xs text-muted-foreground">
-                  {step}
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-muted-foreground">Investigando fuentes confiables...</div>
-            )}
-          </div>
-        </div>
-      )
-    }
-
+    // MODO EDICIÓN: Input editable
     if (isEditing) {
       return (
         <div className="space-y-4">
@@ -427,91 +426,60 @@ export const Message: FC<MessageProps> = ({
       )
     }
 
-    if (isLegalDocument) {
-      return <DocumentViewer content={message.content} messageId={message.id} />
+    // MODO STREAMING ACTIVO
+    if (isGenerating && isLast && message.role === "assistant") {
+      console.log(`[Message] 🎨 Rendering streaming - phase: ${streamPhase}, content length: ${message.content.length}`)
+      
+      // Si ya hay contenido sustancial (>100 chars) y estamos en fase streaming, mostrar texto
+      if (streamPhase === "streaming" || message.content.length > 100) {
+        return <AnswerView text={assistantAnswer.text} isStreaming={true} />
+      }
+      
+      // En cualquier otra fase, mostrar thinking
+      const displayPhase = (streamPhase === "idle" || streamPhase === "unknown") ? "classifying" : streamPhase
+      const displayMessage = streamMessage || "Analizando tu consulta…"
+      return <ThinkingIndicator phase={displayPhase as any} statusMessage={displayMessage} />
     }
 
+    // MODO MENSAJE COMPLETADO (no está generando)
     if (message.role === "assistant") {
-      // Priorizar draft del prop (viene del stream processing)
-      let draft: LegalDraft | null = draftFromProps || null
-
-      // Si no hay draft en props, intentar parsear del contenido
-      if (!draft) {
-        let draftContent = assistantAnswer.text
-
-        // Usar utilidad de validación para mejor parsing
-        const { validateDraftContent } = require("@/lib/utils/draft-utils")
-        const { tryConvertToDraft } = require("@/lib/utils/draft-converter")
-
-        // Primero intentar como JSON
-        const validation = validateDraftContent(draftContent)
-
-        if (validation.valid && validation.draft) {
-          draft = validation.draft
-        } else {
-          // Intentar extraer JSON si está envuelto en markdown
-          const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/
-          const match = draftContent.match(jsonBlockRegex)
-
-          if (match) {
-            const revalidation = validateDraftContent(match[1])
-            if (revalidation.valid && revalidation.draft) {
-              draft = revalidation.draft
-            }
-          } else if (draftContent.trim().startsWith('{') && draftContent.includes('"type": "draft"')) {
-            // Intentar parsear directamente (puede estar incompleto durante streaming)
-            try {
-              // Buscar el JSON completo incluso si está incompleto
-              const jsonStart = draftContent.indexOf('{')
-              if (jsonStart !== -1) {
-                // Intentar encontrar el cierre del JSON
-                let braceCount = 0
-                let jsonEnd = jsonStart
-                for (let i = jsonStart; i < draftContent.length; i++) {
-                  if (draftContent[i] === '{') braceCount++
-                  if (draftContent[i] === '}') braceCount--
-                  if (braceCount === 0) {
-                    jsonEnd = i + 1
-                    break
-                  }
-                }
-                const jsonCandidate = draftContent.substring(jsonStart, jsonEnd)
-                const candidateValidation = validateDraftContent(jsonCandidate)
-                if (candidateValidation.valid && candidateValidation.draft) {
-                  draft = candidateValidation.draft
-                }
-              }
-            } catch (e) {
-              // Si falla el parseo, intentar convertir desde texto
-            }
+      // Verificar si es un draft válido (solo mensajes completados)
+      let draft: LegalDraft | null = null
+      
+      // Solo parsear draft si el contenido parece ser JSON de draft
+      // NO convertir texto plano a draft automáticamente
+      if (message.content.trim().startsWith('{') && message.content.includes('"type": "draft"')) {
+        try {
+          const { validateDraftContent } = require("@/lib/utils/draft-utils")
+          const validation = validateDraftContent(message.content)
+          if (validation.valid && validation.draft) {
+            draft = validation.draft
           }
-
-          // Si aún no hay draft, intentar convertir desde texto plano
-          // (útil cuando el modelo no genera JSON)
-          if (!draft) {
-            const convertedDraft = tryConvertToDraft(draftContent, message.content)
-            if (convertedDraft) {
-              draft = convertedDraft
-              console.log("📄 Draft convertido desde texto plano")
-            }
-          }
+        } catch (e) {
+          // Ignorar errores de parseo
         }
       }
-
+      
+      // Si hay draft válido, mostrar editor
       if (draft) {
-        // Handler para cambios en el draft (persistencia local)
-        const handleDraftChange = (newContent: string) => {
-          // Guardar en estado local si es necesario
-          // Por ahora solo actualizamos el estado del componente
-          // En el futuro se podría guardar en metadata del mensaje
-        }
-
-        return <DocumentEditor draft={draft} onContentChange={handleDraftChange} />
+        return <DocumentEditor draft={draft} onContentChange={() => {}} />
       }
-
-      return <AnswerView text={assistantAnswer.text} />
+      
+      // Verificar si es documento HTML (heurística más estricta)
+      const hasDocumentHTML = message.content.includes("<h1>") && 
+                              message.content.includes("ARTICULO") &&
+                              (message.content.includes("CONTRATO") || 
+                               message.content.includes("DEMANDA"))
+      
+      if (hasDocumentHTML) {
+        return <DocumentViewer content={message.content} messageId={message.id} />
+      }
+      
+      // Respuesta normal de chat
+      return <AnswerView text={assistantAnswer.text} isStreaming={false} />
     }
 
+    // Mensaje del usuario
     return <MessageMarkdown content={message.content} />
   }
 
@@ -564,7 +532,8 @@ export const Message: FC<MessageProps> = ({
             </Button>
           )}
 
-          {message.role === "assistant" && assistantCitations.length > 0 && (
+          {/* Fuentes Consultadas - Solo visible cuando stream está completado */}
+          {shouldShowCitations && (
             <CitationsPanel items={assistantCitations} />
           )}
 

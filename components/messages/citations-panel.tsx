@@ -26,9 +26,9 @@ const getTypeIcon = (type?: string) => {
 
 const getTypeColor = (type?: string) => {
   const t = type?.toLowerCase()
-  if (t?.includes("ley") || t?.includes("código") || t?.includes("norma")) 
+  if (t?.includes("ley") || t?.includes("código") || t?.includes("norma"))
     return "from-emerald-500/20 to-emerald-600/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-  if (t?.includes("jurisprudencia") || t?.includes("sentencia")) 
+  if (t?.includes("jurisprudencia") || t?.includes("sentencia"))
     return "from-amber-500/20 to-amber-600/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
   return "from-blue-500/20 to-blue-600/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
 }
@@ -54,9 +54,9 @@ export const CitationsPanel = ({ items, className }: CitationsPanelProps) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+      transition={{ duration: 0.4, delay: 0.35, ease: "easeOut" }}
     >
       <Card className={cn(
         "mt-6 overflow-hidden",
@@ -112,7 +112,7 @@ export const CitationsPanel = ({ items, className }: CitationsPanelProps) => {
                         const TypeIcon = getTypeIcon(item.type)
                         const typeColorClass = getTypeColor(item.type)
                         const isHovered = hoveredId === item.id
-                        
+
                         return (
                           <motion.div
                             key={item.id}
@@ -178,8 +178,8 @@ export const CitationsPanel = ({ items, className }: CitationsPanelProps) => {
                                 {/* Metadata badges */}
                                 <div className="flex flex-wrap items-center gap-2">
                                   {item.type && (
-                                    <Badge 
-                                      variant="outline" 
+                                    <Badge
+                                      variant="outline"
                                       className={cn(
                                         "text-[10px] uppercase tracking-wider font-medium",
                                         "bg-muted/50 border-border/60",

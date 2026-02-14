@@ -174,7 +174,7 @@ export const MessageBubble = memo(({
             isUser && 'font-medium',
             isAI && 'font-normal',
           )}>
-            {(() => {
+            {children ? children : (() => {
               // Intento de parsear si es un draft JSON
               let draft: LegalDraft | null = null
               if (isAI && content.trim().startsWith('{') && content.includes('"type": "draft"')) {

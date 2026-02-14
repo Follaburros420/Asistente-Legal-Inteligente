@@ -72,7 +72,10 @@ export const useChatHandler = () => {
     isToolPickerOpen,
     setShowPlaceholderSuggestions,
     setSuggestedQuestions,
-    setShowSuggestedQuestions
+    setShowSuggestedQuestions,
+    setStreamPhase,
+    setStreamMessage,
+    setStreamState
   } = useContext(ALIContext)
 
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
@@ -210,6 +213,9 @@ export const useChatHandler = () => {
     setIsGenerating(false)
     setFirstTokenReceived(false)
     setToolInUse("none")
+    // Actualizar estado del stream (nuevo protocolo)
+    setStreamPhase("cancelled")
+    setStreamMessage("Cancelado por usuario")
   }
 
   const handleSendMessage = async (
@@ -218,16 +224,18 @@ export const useChatHandler = () => {
     isRegeneration: boolean
   ) => {
     const startingInput = messageContent
+    let hasError = false
+    console.log("[Chat] 🚀 Iniciando handleSendMessage:", messageContent.substring(0, 50))
 
     try {
       // Validaciones básicas sin mostrar errores al usuario
       if (!messageContent || messageContent.trim() === "") {
-        console.log("Mensaje vacío, ignorando")
+        console.log("[Chat] ⚠️ Mensaje vacío, ignorando")
         return
       }
 
       if (!selectedWorkspace) {
-        console.error("No hay workspace seleccionado")
+        console.error("[Chat] ❌ No hay workspace seleccionado")
         return
       }
 
@@ -236,6 +244,12 @@ export const useChatHandler = () => {
       setIsPromptPickerOpen(false)
       setIsFilePickerOpen(false)
       setNewMessageImages([])
+      
+      console.log("[Chat] 📋 Preparando mensajes temporales…")
+      
+      // Inicializar estado del stream (nuevo protocolo v2.0)
+      setStreamPhase("classifying")
+      setStreamMessage("Analizando tu consulta legal…")
 
       const newAbortController = new AbortController()
       setAbortController(newAbortController)
@@ -323,6 +337,7 @@ export const useChatHandler = () => {
         )
       }
 
+      console.log("[Chat] 📝 Creando mensajes temporales…")
       const { tempUserChatMessage, tempAssistantChatMessage } =
         createTempMessages(
           messageContent,
@@ -333,6 +348,23 @@ export const useChatHandler = () => {
           setChatMessages,
           selectedAssistant
         )
+      console.log("[Chat] ✅ Mensajes temporales creados. ID Asistente:", tempAssistantChatMessage.message.id)
+      
+      // Ahora que tenemos el ID, actualizar el streamState
+      setStreamState({
+        phase: "classifying",
+        messageId: tempAssistantChatMessage.message.id,
+        textBuffer: "",
+        citations: [],
+        renderMode: "chat",
+        intent: "unknown",
+        statusMessage: "Analizando tu consulta legal…",
+        progress: 10,
+        error: null,
+        startedAt: Date.now(),
+        completedAt: null
+      })
+      console.log("[Chat] 🎯 StreamState inicializado")
 
       let payload: ChatPayload = {
         chatSettings: effectiveChatSettings,
@@ -351,6 +383,25 @@ export const useChatHandler = () => {
       // Detectar si es un modelo M gestionado por LangChain
       const isManagedMModel = isAllowedMModel(payload.chatSettings.model)
       
+      // Handlers para actualizar estado del stream (nuevo protocolo)
+      const streamHandlers = {
+        onPhaseChange: (phase: string, message: string) => {
+          console.log(`[Chat] 🔄 Phase change: ${phase} - ${message}`)
+          setStreamPhase(phase as any)
+          setStreamMessage(message)
+        },
+        onComplete: () => {
+          console.log("[Chat] ✅ Stream completed")
+          setStreamPhase("completed")
+          setStreamMessage("Respuesta completa")
+        },
+        onError: (error: string) => {
+          console.log("[Chat] ❌ Stream error:", error)
+          setStreamPhase("error")
+          setStreamMessage(`Error: ${error}`)
+        }
+      }
+      
       // Usar LangChain Agent para modelos de investigación O si hay tools seleccionadas
       if (isManagedMModel || selectedTools.length > 0) {
         setToolInUse("thinking")
@@ -368,7 +419,8 @@ export const useChatHandler = () => {
           setIsGenerating,
           setFirstTokenReceived,
           setChatMessages,
-          setToolInUse
+          setToolInUse,
+          streamHandlers
         )
         generatedText = hostedResult.text
         bibliography = hostedResult.bibliography
@@ -403,7 +455,8 @@ export const useChatHandler = () => {
             setIsGenerating,
             setFirstTokenReceived,
             setChatMessages,
-            setToolInUse
+            setToolInUse,
+            streamHandlers
           )
           generatedText = hostedResult.text
           bibliography = hostedResult.bibliography
@@ -453,18 +506,41 @@ export const useChatHandler = () => {
         bibliography
       )
     } catch (error: any) {
-      // Restaurar el input del usuario
-      setUserInput(startingInput)
+      hasError = true
+      console.error("[Chat] 💥 ERROR en handleSendMessage:", error)
+      console.error("[Chat] 💥 Stack trace:", error?.stack)
+      
+      // Solo restaurar el input si el error ocurrió ANTES de crear los mensajes temporales
+      // Si ya se crearon los mensajes, el input debe quedar vacío (el usuario ya envió)
+      if (!error?.message?.includes("stream") && !error?.message?.includes("processing")) {
+        console.log("[Chat] 🔄 Restaurando input por error temprano")
+        setUserInput(startingInput)
+      } else {
+        console.log("[Chat] 📝 Input se mantiene vacío (mensaje ya enviado)")
+      }
 
-      // Log del error para depuración (sin mostrar al usuario)
-      console.error("Error al enviar mensaje:", error?.message || error)
-
-      // No mostrar toast al usuario - solo log en consola
+      // Actualizar estado del stream a error
+      setStreamPhase("error")
+      setStreamMessage(`Error: ${error?.message || "Error desconocido"}`)
+      
+      // Mostrar error en consola detallado
+      console.error("Error al enviar mensaje:", {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        cause: error?.cause
+      })
     } finally {
       // Siempre resetear el estado al final
       setIsGenerating(false)
       setFirstTokenReceived(false)
       setToolInUse("none")
+      // Asegurar que el input quede vacío si todo salió bien
+      if (!hasError) {
+        console.log("[Chat] 🧹 Limpiando input (no hubo error)")
+        setUserInput("")
+      }
+      console.log("[Chat] 🏁 handleSendMessage finalizado")
     }
   }
 

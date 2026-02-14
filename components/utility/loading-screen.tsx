@@ -64,7 +64,7 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
 
     return (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background">
-            {/* Fondo animado con efectos de luz usando variables de tema */}
+            {/* Fondo animado */}
             <div className="absolute inset-0 overflow-hidden">
                 <div
                     className="absolute -left-1/4 top-1/4 size-[600px] animate-pulse rounded-full bg-primary/5 blur-3xl dark:bg-primary/10"
@@ -78,27 +78,21 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
 
             {/* Contenido principal */}
             <div className="relative z-10 flex flex-col items-center gap-8">
-                {/* Logo ALI o Spinner */}
+                {/* Spinner */}
                 <div className="relative flex items-center justify-center">
-                    {/* Círculo exterior pulsante */}
                     <div
                         className="absolute size-28 animate-ping rounded-full bg-primary/10"
                         style={{ animationDuration: "2s" }}
                     />
-
-                    {/* Anillos de spinner */}
                     <div className="relative size-24">
-                        {/* Anillo exterior */}
                         <div
                             className="absolute inset-0 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary"
                             style={{ animationDuration: "1.2s" }}
                         />
-                        {/* Anillo medio */}
                         <div
                             className="absolute inset-2 animate-spin rounded-full border-[3px] border-blue-500/20 border-t-blue-500"
                             style={{ animationDuration: "1.8s", animationDirection: "reverse" }}
                         />
-                        {/* Centro con brillo */}
                         <div className="absolute inset-6 flex items-center justify-center rounded-full bg-primary/5">
                             <div className="size-3 animate-pulse rounded-full bg-primary/50" />
                         </div>
@@ -120,13 +114,12 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
                     </p>
                 </div>
 
-                {/* Barra de progreso animada */}
+                {/* Barra de progreso — sólida, rápida al 80%, lenta el último 20%, se queda en 100% */}
                 <div className="h-1 w-56 overflow-hidden rounded-full bg-foreground/5">
                     <div
-                        className="h-full rounded-full bg-gradient-to-r from-primary via-blue-500 to-primary"
+                        className="h-full rounded-full bg-primary"
                         style={{
-                            animation: "shimmer 2s ease-in-out infinite",
-                            backgroundSize: "200% 100%"
+                            animation: "progressFill 2.5s ease-out forwards",
                         }}
                     />
                 </div>
@@ -139,17 +132,19 @@ export const LoadingScreen: FC<LoadingScreenProps> = ({
                 </div>
             </div>
 
-            {/* Estilos */}
             <style jsx>{`
-        @keyframes shimmer {
-          0% {
-            background-position: -200% 0;
-          }
-          100% {
-            background-position: 200% 0;
-          }
-        }
-      `}</style>
+         @keyframes progressFill {
+           0% {
+             width: 0%;
+           }
+           30% {
+             width: 80%;
+           }
+           100% {
+             width: 100%;
+           }
+         }
+       `}</style>
         </div>
     )
 }

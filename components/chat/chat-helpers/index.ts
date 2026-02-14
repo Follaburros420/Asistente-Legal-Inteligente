@@ -9,6 +9,13 @@ import {
   buildFinalMessages
 } from "@/lib/build-prompt"
 import { consumeReadableStream } from "@/lib/consume-stream"
+import { 
+  StreamEvent, 
+  parseStreamEvent, 
+  isValidStreamEvent,
+  logStreamEvent,
+  logStreamError 
+} from "@/lib/stream-protocol"
 import { Tables, TablesInsert } from "@/supabase/types"
 import {
   ChatFile,
@@ -209,8 +216,11 @@ export const handleHostedChat = async (
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>,
   setFirstTokenReceived: React.Dispatch<React.SetStateAction<boolean>>,
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-  setToolInUse: React.Dispatch<React.SetStateAction<string>>
+  setToolInUse: React.Dispatch<React.SetStateAction<string>>,
+  streamHandlers?: StreamHandlers
 ) => {
+  console.log("[handleHostedChat] 🚀 Iniciando…")
+  
   const provider =
     modelData.provider === "openai" && profile.use_azure_openai
       ? "azure"
@@ -218,24 +228,46 @@ export const handleHostedChat = async (
 
   // Always send normalized text messages to backend chat endpoints.
   // Endpoints expect OpenAI-style messages with string `content`.
-  const formattedMessages = await buildFinalMessages(payload, profile, chatImages)
+  console.log("[handleHostedChat] 📝 Formateando mensajes…")
+  console.log("[handleHostedChat] 📋 Payload:", JSON.stringify(payload.chatMessages.length, null, 2), "mensajes")
+  
+  let formattedMessages
+  try {
+    formattedMessages = await buildFinalMessages(payload, profile, chatImages)
+    console.log("[handleHostedChat] ✅ Mensajes formateados:", formattedMessages.length)
+  } catch (err) {
+    console.error("[handleHostedChat] ❌ Error en buildFinalMessages:", err)
+    throw err
+  }
 
   // Verificar si está en modo de redacción legal
   const chatMode = typeof window !== 'undefined' ? localStorage.getItem('chatMode') : null
-  
+
   // Determinar endpoint según modo: usar stream con LangChain por defecto
   let apiEndpoint = provider === "custom" ? "/api/chat/custom" : "/api/chat/langchain-agent"
-  
+
   if (chatMode === 'legal-writing') {
     apiEndpoint = "/api/chat/legal-writing"
   }
+  
+  console.log("[handleHostedChat] 🌐 Endpoint:", apiEndpoint)
+  console.log("[handleHostedChat] 🔍 window.location:", typeof window !== 'undefined' ? window.location.origin : 'SSR')
+  
+  // Verificar si la URL es correcta
+  const fullUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}${apiEndpoint}`
+    : apiEndpoint
+  console.log("[handleHostedChat] 🌐 Full URL:", fullUrl)
 
   const requestBody = {
     chatSettings: payload.chatSettings,
     messages: formattedMessages,
     customModelId: provider === "custom" ? modelData.hostedId : ""
   }
+  
+  console.log("[handleHostedChat] 📦 Request body:", JSON.stringify(requestBody, null, 2))
 
+  console.log("[handleHostedChat] 📡 Haciendo fetch…")
   const response = await fetchChatResponse(
     apiEndpoint,
     requestBody,
@@ -244,6 +276,7 @@ export const handleHostedChat = async (
     setIsGenerating,
     setChatMessages
   )
+  console.log("[handleHostedChat] ✅ Fetch completado. Status:", response.status)
 
   return await processResponse(
     response,
@@ -254,7 +287,8 @@ export const handleHostedChat = async (
     newAbortController,
     setFirstTokenReceived,
     setChatMessages,
-    setToolInUse
+    setToolInUse,
+    streamHandlers
   )
 }
 
@@ -266,28 +300,49 @@ export const fetchChatResponse = async (
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>,
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
 ) => {
-  const response = await fetch(url, {
-    method: "POST",
-    body: JSON.stringify(body),
-    signal: controller.signal
-  })
+  console.log("[fetchChatResponse] 📡 Fetching:", url)
+  console.log("[fetchChatResponse] 📦 Body:", JSON.stringify(body, null, 2))
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: controller.signal
+    })
+    
+    console.log("[fetchChatResponse] ✅ Response status:", response.status)
 
-  if (!response.ok) {
-    if (response.status === 404 && !isHosted) {
-      toast.error(
-        "Model not found. Make sure you have it downloaded via Ollama."
-      )
+    if (!response.ok) {
+      console.error("[fetchChatResponse] ❌ Response not OK:", response.status)
+      if (response.status === 404 && !isHosted) {
+        toast.error(
+          "Model not found. Make sure you have it downloaded via Ollama."
+        )
+      }
+
+      const errorData = await response.json()
+      console.error("[fetchChatResponse] ❌ Error data:", errorData)
+
+      toast.error(errorData.message)
+
+      setIsGenerating(false)
+      setChatMessages(prevMessages => prevMessages.slice(0, -2))
     }
 
-    const errorData = await response.json()
-
-    toast.error(errorData.message)
-
-    setIsGenerating(false)
-    setChatMessages(prevMessages => prevMessages.slice(0, -2))
+    return response
+  } catch (error) {
+    console.error("[fetchChatResponse] 💥 Fetch error:", error)
+    throw error
   }
+}
 
-  return response
+export interface StreamHandlers {
+  onEvent?: (event: StreamEvent) => void
+  onPhaseChange?: (phase: string, message: string) => void
+  onTextDelta?: (text: string, fullText: string) => void
+  onCitations?: (citations: BibliographyItem[]) => void
+  onComplete?: (text: string, citations: BibliographyItem[]) => void
+  onError?: (error: string) => void
 }
 
 export const processResponse = async (
@@ -297,10 +352,12 @@ export const processResponse = async (
   controller: AbortController,
   setFirstTokenReceived: React.Dispatch<React.SetStateAction<boolean>>,
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-  setToolInUse: React.Dispatch<React.SetStateAction<string>>
+  setToolInUse: React.Dispatch<React.SetStateAction<string>>,
+  streamHandlers?: StreamHandlers
 ): Promise<ProcessedChatResponse> => {
   let fullText = ""
   let streamedBibliography: BibliographyItem[] = []
+  let currentPhase = "idle"
   const progressLines: string[] = []
 
   const pushProgressLine = (value: unknown) => {
@@ -318,7 +375,7 @@ export const processResponse = async (
     const normalizedSources = rawSources
       .filter((s: any) => typeof s?.url === "string" && s.url.startsWith("http"))
       .map((s: any, idx: number) => ({
-        id: `stream-source-${idx + 1}`,
+        id: s.id || `stream-source-${idx + 1}`,
         title:
           typeof s?.title === "string" && s.title.trim().length > 0
             ? s.title.trim()
@@ -334,8 +391,70 @@ export const processResponse = async (
       (item, idx, arr) => arr.findIndex(x => x.url === item.url) === idx
     )
   }
+  
+  // Procesar evento del nuevo protocolo
+  const processProtocolEvent = (event: StreamEvent) => {
+    console.log("[processResponse] 📥 Evento recibido:", event.type, event)
+    logStreamEvent("RX", event)
+    
+    // Notificar al handler externo si existe
+    streamHandlers?.onEvent?.(event)
+
+    switch (event.type) {
+      case "meta":
+        console.log("[processResponse] 🎯 Evento META - render_mode:", (event as any).render_mode)
+        currentPhase = "classifying"
+        streamHandlers?.onPhaseChange?.(currentPhase, "Analizando…")
+        break
+        
+      case "status":
+        console.log("[processResponse] 📊 Evento STATUS - phase:", (event as any).phase, "message:", (event as any).message)
+        currentPhase = event.phase
+        pushProgressLine(event.message)
+        streamHandlers?.onPhaseChange?.(event.phase, event.message)
+        break
+        
+      case "delta":
+        fullText += event.text
+        setFirstTokenReceived(true)
+        streamHandlers?.onTextDelta?.(event.text, fullText)
+        break
+        
+      case "citations":
+        console.log("[processResponse] 📚 Evento CITATIONS - items:", (event as any).items?.length)
+        streamedBibliography = normalizeSources(event.items)
+        streamHandlers?.onCitations?.(streamedBibliography)
+        break
+        
+      case "done":
+        console.log("[processResponse] ✅ Evento DONE")
+        currentPhase = "completed"
+        streamHandlers?.onComplete?.(fullText, streamedBibliography)
+        break
+        
+      case "error":
+        currentPhase = "error"
+        logStreamError("Error en stream", event)
+        streamHandlers?.onError?.(event.message)
+        break
+        
+      case "cancelled":
+        currentPhase = "cancelled"
+        break
+    }
+  }
+
+  // Verificar si es respuesta de texto plano (como la del endpoint simple-direct)
+  const contentType = response.headers.get('content-type') || ''
+  const isPlainText = contentType.includes('text/plain')
+  const renderMode = response.headers.get('X-Render-Mode')
 
   const detectDraftFromText = (text: string) => {
+    // Si el backend dice explícitamente "chat", NO detectar borrador heurísticamente
+    if (renderMode === 'chat') {
+      return null
+    }
+
     let draft: any = null
 
     const looksLikeDraft =
@@ -436,9 +555,7 @@ export const processResponse = async (
     )
   }
 
-  // Verificar si es respuesta de texto plano (como la del endpoint simple-direct)
-  const contentType = response.headers.get('content-type') || ''
-  const isPlainText = contentType.includes('text/plain')
+
 
 
   if (contentType.includes('application/json')) {
@@ -448,8 +565,8 @@ export const processResponse = async (
         typeof data === "string"
           ? data
           : typeof data?.message === "string"
-          ? data.message
-          : JSON.stringify(data)
+            ? data.message
+            : JSON.stringify(data)
       const bibliography = Array.isArray(data?.bibliography)
         ? data.bibliography
         : undefined
@@ -487,7 +604,7 @@ export const processResponse = async (
     // Si es texto plano, leer toda la respuesta de una vez
     const text = await response.text()
     fullText = text
-    
+
     // Actualizar el mensaje del asistente
     setChatMessages(prev =>
       prev.map(chatMessage => {
@@ -515,7 +632,15 @@ export const processResponse = async (
     const isEventStream = contentType.includes('text/event-stream')
     let eventBuffer = ''
 
-    const processEvent = (event: any) => {
+    // Procesar evento del stream (soporta protocolo nuevo y legacy)
+    const processStreamEventInternal = (event: any) => {
+      // Si es un evento válido del nuevo protocolo, usarlo
+      if (isValidStreamEvent(event)) {
+        processProtocolEvent(event as StreamEvent)
+        return
+      }
+      
+      // Fallback a protocolo legacy
       switch (event?.type) {
         case 'thinking':
           pushProgressLine(event.content)
@@ -538,15 +663,19 @@ export const processResponse = async (
           break
 
         case 'token':
-          if (typeof event.content === "string") {
-            fullText += event.content
+        case 'delta': // Nuevo protocolo
+          const text = event.text || event.content
+          if (typeof text === "string") {
+            fullText += text
             setFirstTokenReceived(true)
           }
           break
 
         case 'sources':
-          if (Array.isArray(event.sources)) {
-            streamedBibliography = normalizeSources(event.sources)
+        case 'citations': // Nuevo protocolo
+          const items = event.items || event.sources
+          if (Array.isArray(items)) {
+            streamedBibliography = normalizeSources(items)
           }
           break
 
@@ -571,10 +700,13 @@ export const processResponse = async (
       }
     }
 
+    console.log("[processResponse] 🔄 Iniciando consumo del stream…")
+    
     await consumeReadableStream(
       response.body,
       chunk => {
         const chunkStr = typeof chunk === 'string' ? chunk : String(chunk)
+        console.log("[processResponse] 📦 Chunk recibido:", chunkStr.substring(0, 100))
 
         if (isEventStream || chunkStr.trimStart().startsWith('{')) {
           eventBuffer += chunkStr
@@ -585,10 +717,13 @@ export const processResponse = async (
             eventBuffer = eventBuffer.slice(newlineIndex + 1)
 
             if (rawLine.length > 0) {
+              console.log("[processResponse] 📄 Línea parseada:", rawLine.substring(0, 100))
               try {
                 const event = JSON.parse(rawLine)
-                processEvent(event)
-              } catch {
+                console.log("[processResponse] ✅ Evento JSON válido:", event.type)
+                processStreamEventInternal(event)
+              } catch (e) {
+                console.log("[processResponse] ⚠️ No es JSON válido, tratando como texto")
                 if (!isEventStream) {
                   fullText += rawLine
                   setFirstTokenReceived(true)
@@ -606,15 +741,15 @@ export const processResponse = async (
         const contentToAdd = isHosted
           ? chunkStr
           : String(chunkStr)
-              .trimEnd()
-              .split("\n")
-              .reduce((acc: string, line: string) => {
-                try {
-                  return acc + JSON.parse(line).message.content
-                } catch {
-                  return acc + line
-                }
-              }, "")
+            .trimEnd()
+            .split("\n")
+            .reduce((acc: string, line: string) => {
+              try {
+                return acc + JSON.parse(line).message.content
+              } catch {
+                return acc + line
+              }
+            }, "")
 
         fullText += contentToAdd
         setFirstTokenReceived(true)
@@ -626,7 +761,7 @@ export const processResponse = async (
     if (eventBuffer.trim().length > 0) {
       try {
         const trailingEvent = JSON.parse(eventBuffer.trim())
-        processEvent(trailingEvent)
+        processStreamEventInternal(trailingEvent)
         updateAssistantMessage()
       } catch {
         if (!isEventStream) {
@@ -758,9 +893,8 @@ export const handleCreateMessages = async (
     const uploadPromises = newMessageImages
       .filter(obj => obj.file !== null)
       .map(obj => {
-        let filePath = `${profile.user_id}/${currentChat.id}/${
-          createdMessages[0].id
-        }/${uuidv4()}`
+        let filePath = `${profile.user_id}/${currentChat.id}/${createdMessages[0].id
+          }/${uuidv4()}`
 
         return uploadMessageImage(filePath, obj.file as File).catch(error => {
           console.error(`Failed to upload image at ${filePath}:`, error)

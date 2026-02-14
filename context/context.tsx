@@ -10,6 +10,7 @@ import {
 } from "@/types"
 import { AssistantImage } from "@/types/images/assistant-image"
 import { VALID_ENV_KEYS } from "@/types/valid-keys"
+import { StreamState } from "@/lib/stream-protocol"
 import { Dispatch, SetStateAction, createContext } from "react"
 
 interface ALIContext {
@@ -148,6 +149,14 @@ interface ALIContext {
   setSuggestedQuestions: Dispatch<SetStateAction<string[]>>
   showSuggestedQuestions: boolean
   setShowSuggestedQuestions: Dispatch<SetStateAction<boolean>>
+
+  // STREAM STATE STORE (nuevo protocolo)
+  streamState: StreamState
+  setStreamState: Dispatch<SetStateAction<StreamState>>
+  streamPhase: StreamState["phase"]
+  setStreamPhase: Dispatch<SetStateAction<StreamState["phase"]>>
+  streamMessage: string
+  setStreamMessage: Dispatch<SetStateAction<string>>
 }
 
 export const ALIContext = createContext<ALIContext>({
@@ -285,5 +294,25 @@ export const ALIContext = createContext<ALIContext>({
   suggestedQuestions: [],
   setSuggestedQuestions: () => { },
   showSuggestedQuestions: false,
-  setShowSuggestedQuestions: () => { }
+  setShowSuggestedQuestions: () => { },
+
+  // STREAM STATE STORE (nuevo protocolo)
+  streamState: {
+    phase: "idle",
+    messageId: null,
+    textBuffer: "",
+    citations: [],
+    renderMode: "chat",
+    intent: "unknown",
+    statusMessage: "",
+    progress: 0,
+    error: null,
+    startedAt: null,
+    completedAt: null
+  },
+  setStreamState: () => { },
+  streamPhase: "idle",
+  setStreamPhase: () => { },
+  streamMessage: "",
+  setStreamMessage: () => { }
 })
