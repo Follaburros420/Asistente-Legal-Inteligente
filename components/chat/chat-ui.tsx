@@ -13,6 +13,7 @@ import { LLMID, MessageImage } from "@/types"
 import { useParams } from "next/navigation"
 import { FC, useContext, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import { ShaderCanvas } from "@/components/shader-canvas"
 import { ChatHelp } from "./chat-help"
 import { ModelSelectorToggle } from "./model-selector-toggle"
 import { useScroll } from "./chat-hooks/use-scroll"
@@ -29,6 +30,7 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
   const params = useParams()
 
   const {
+    chatMessages,
     setChatMessages,
     selectedChat,
     setSelectedChat,
@@ -40,7 +42,8 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     setChatFiles,
     setShowFilesDisplay,
     setUseRetrieval,
-    setSelectedTools
+    setSelectedTools,
+    streamPhase
   } = useContext(ALIContext)
 
   const { handleNewChat, handleFocusChatInput } = useChatHandlerV2()
@@ -54,6 +57,16 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
   } = useScroll()
 
   const [loading, setLoading] = useState(true)
+  const [selectedShader, setSelectedShader] = useState(1)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const saved = localStorage.getItem("selectedShader")
+    if (saved) setSelectedShader(parseInt(saved, 10))
+    const onShaderChanged = (e: CustomEvent<number>) => setSelectedShader(e.detail)
+    window.addEventListener("shaderChanged", onShaderChanged as EventListener)
+    return () => window.removeEventListener("shaderChanged", onShaderChanged as EventListener)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -61,6 +74,14 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     const fetchData = async () => {
       const chatId = params.chatid as string | undefined
       if (!chatId) {
+        if (!cancelled) setLoading(false)
+        return
+      }
+
+      // NO recargar mensajes si estamos procesando un mensaje activo
+      // Esto evita que los mensajes locales se sobrescriban con los de BD
+      if (streamPhase !== "idle" && streamPhase !== "completed" && streamPhase !== "error") {
+        console.log("[ChatUI] ⏸️ Skipping fetchMessages - active stream in progress:", streamPhase)
         if (!cancelled) setLoading(false)
         return
       }
@@ -88,7 +109,7 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     return () => {
       cancelled = true
     }
-  }, [params.chatid])
+  }, [params.chatid]) // Solo depende de params.chatid, streamPhase se lee dentro
 
   const fetchMessages = async (chatId: string) => {
     const fetchedMessages = await getMessagesByChatId(chatId)
@@ -159,7 +180,43 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
       }
     })
 
-    setChatMessages(fetchedChatMessages)
+    // Merge con mensajes locales para no perder mensajes no guardados aún
+    console.log("[ChatUI] 🔄 fetchMessages - mensajes de BD:", fetchedChatMessages.length)
+    
+    setChatMessages(prevMessages => {
+      console.log("[ChatUI] 🔄 setChatMessages callback - prev:", prevMessages.length, "fetched:", fetchedChatMessages.length)
+      
+      // Si tenemos mensajes locales y la BD está vacía o tiene menos, mantener locales
+      if (prevMessages.length > 0 && fetchedChatMessages.length === 0) {
+        console.log("[ChatUI] ⚠️ BD vacía pero hay mensajes locales, manteniendo locales")
+        return prevMessages
+      }
+      
+      // Si tenemos más mensajes locales que en BD, hay algo nuevo que aún no se guardó
+      if (prevMessages.length > fetchedChatMessages.length) {
+        console.log("[ChatUI] ⚠️ Más mensajes locales que en BD, haciendo merge conservador")
+        // Solo agregar mensajes locales que no estén en BD
+        const fetchedIds = new Set(fetchedMessages.map(m => m.id))
+        const localOnlyMessages = prevMessages.filter(pm => !fetchedIds.has(pm.message.id))
+        
+        if (localOnlyMessages.length > 0) {
+          const merged = [...fetchedChatMessages, ...localOnlyMessages].sort(
+            (a, b) => a.message.sequence_number - b.message.sequence_number
+          )
+          console.log("[ChatUI] ✅ Mergeado conservador:", merged.length, "mensajes")
+          return merged
+        }
+      }
+      
+      if (prevMessages.length === 0) {
+        console.log("[ChatUI] 🔄 No hay mensajes previos, usando BD")
+        return fetchedChatMessages
+      }
+      
+      // Caso normal: misma cantidad o más en BD
+      console.log("[ChatUI] 🔄 Usando mensajes de BD:", fetchedChatMessages.length)
+      return fetchedChatMessages
+    })
   }
 
   const fetchChat = async (chatId: string) => {
@@ -202,25 +259,52 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
 
   return (
     <div className="flex h-full flex-col bg-gradient-to-br from-background via-background to-primary/20 overflow-hidden">
-      {/* Header */}
-      <div className="px-3 md:px-6 py-3 md:py-4 border-b border-border flex items-center justify-end relative">
+      {/* Header: surface semitransparente + blur, sin border */}
+      <header
+        className="flex-shrink-0 px-2 py-2.5 sm:px-3 md:px-6 md:py-4 pt-[max(0.5rem,env(safe-area-inset-top))] flex items-center justify-end relative bg-background/60 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.18)]"
+        role="banner"
+      >
         <div className="flex-shrink-0 z-20">
           <ModelSelectorToggle />
         </div>
-      </div>
+      </header>
 
-      {/* Main Content */}
+      {/* Main Content - Padding inferior para dejar espacio al input flotante */}
       <div
-        className="flex-1 overflow-auto"
+        className="flex-1 min-h-0 overflow-auto pb-32 md:pb-28"
         onScroll={handleScroll}
       >
-        <div ref={messagesStartRef} />
-        <ChatMessages />
-        <div ref={messagesEndRef} />
+        {chatMessages.length === 0 ? (
+          <div className="flex flex-1 min-h-full items-center justify-center p-4 md:p-6">
+            <div className="w-full max-w-2xl text-center">
+              <div className="flex justify-center mb-6 md:mb-8">
+                <ShaderCanvas size={100} shaderId={selectedShader} />
+              </div>
+              <h1 className="text-2xl md:text-3xl lg:text-4xl text-foreground font-light">
+                ¿En qué puedo ayudarte hoy?
+              </h1>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div ref={messagesStartRef} />
+            <ChatMessages />
+            <div ref={messagesEndRef} />
+          </>
+        )}
       </div>
 
-      {/* Input Area */}
-      <div className="px-3 md:px-6 py-3 md:py-4 border-t border-border">
+      {/* Input Area: Sin fondo/banda, glassmorphism aplicado directo en el input */}
+      <div
+        className="fixed z-50 w-full px-4 sm:px-6 md:px-8 
+                   /* Móvil: pegado abajo con safe-area | Desktop: flotante con margen */
+                   bottom-0 md:bottom-6 
+                   pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-0
+                   /* Sin fondo ni sombra - la barra trae su propio glassmorphism */
+                   bg-transparent"
+        role="region"
+        aria-label="Área de escritura del chat"
+      >
         <div className="w-full max-w-3xl mx-auto">
           <ChatInput />
         </div>

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/robust-client"
+import { supabase, executeWithSchemaRetry } from "@/lib/supabase/robust-client"
 import { TablesInsert } from "@/supabase/types"
 
 export const getMessageFileItemsByMessageId = async (messageId: string) => {
@@ -23,13 +23,15 @@ export const getMessageFileItemsByMessageId = async (messageId: string) => {
 export const createMessageFileItems = async (
   messageFileItems: TablesInsert<"message_file_items">[]
 ) => {
-  const { data: createdMessageFileItems, error } = await supabase
-    .from("message_file_items")
-    .insert(messageFileItems)
-    .select("*")
+  const { data: createdMessageFileItems, error } = await executeWithSchemaRetry(() =>
+    supabase
+      .from("message_file_items")
+      .insert(messageFileItems)
+      .select("*")
+  )
 
-  if (!createdMessageFileItems) {
-    throw new Error(error.message)
+  if (error || !createdMessageFileItems) {
+    throw new Error(error?.message || "Failed to create message file items")
   }
 
   return createdMessageFileItems

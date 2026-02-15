@@ -243,8 +243,8 @@ export const handleHostedChat = async (
   // Verificar si está en modo de redacción legal
   const chatMode = typeof window !== 'undefined' ? localStorage.getItem('chatMode') : null
 
-  // Determinar endpoint según modo: usar stream con LangChain por defecto
-  let apiEndpoint = provider === "custom" ? "/api/chat/custom" : "/api/chat/langchain-agent"
+  // Determinar endpoint: usar stream (único endpoint disponible)
+  let apiEndpoint = "/api/chat/stream"
 
   if (chatMode === 'legal-writing') {
     apiEndpoint = "/api/chat/legal-writing"
@@ -259,10 +259,22 @@ export const handleHostedChat = async (
     : apiEndpoint
   console.log("[handleHostedChat] 🌐 Full URL:", fullUrl)
 
+  // Construir requestBody según el endpoint
+  // El nuevo endpoint /api/chat/stream espera: { message, history, config }
+  const lastMessage = formattedMessages[formattedMessages.length - 1]
+  const historyMessages = formattedMessages.slice(0, -1)
+  
   const requestBody = {
-    chatSettings: payload.chatSettings,
-    messages: formattedMessages,
-    customModelId: provider === "custom" ? modelData.hostedId : ""
+    message: lastMessage?.content || "",
+    history: historyMessages.map((msg: any) => ({
+      role: msg.role,
+      content: msg.content
+    })),
+    config: {
+      model: payload.chatSettings.model,
+      temperature: payload.chatSettings.temperature,
+      maxTokens: 4000
+    }
   }
   
   console.log("[handleHostedChat] 📦 Request body:", JSON.stringify(requestBody, null, 2))
@@ -626,7 +638,7 @@ export const processResponse = async (
     return { text: fullText }
   }
 
-  // Código para streaming con eventos JSON (langchain-agent) o texto plano
+  // Código para streaming con eventos JSON o texto plano
   if (response.body) {
     // Detectar si es streaming con eventos JSON (nuevo formato)
     const isEventStream = contentType.includes('text/event-stream')
@@ -883,73 +895,78 @@ export const handleCreateMessages = async (
 
     setChatMessages(finalChatMessages)
   } else {
-    const createdMessages = await createMessages([
-      finalUserMessage,
-      finalAssistantMessage
-    ])
+    try {
+      const createdMessages = await createMessages([
+        finalUserMessage,
+        finalAssistantMessage
+      ])
 
-    // Upload each image (stored in newMessageImages) for the user message to message_images bucket
-    const uploadPromises = newMessageImages
-      .filter(obj => obj.file !== null)
-      .map(obj => {
-        let filePath = `${profile.user_id}/${currentChat.id}/${createdMessages[0].id
-          }/${uuidv4()}`
+      // Upload each image (stored in newMessageImages) for the user message to message_images bucket
+      const uploadPromises = newMessageImages
+        .filter(obj => obj.file !== null)
+        .map(obj => {
+          let filePath = `${profile.user_id}/${currentChat.id}/${createdMessages[0].id
+            }/${uuidv4()}`
 
-        return uploadMessageImage(filePath, obj.file as File).catch(error => {
-          console.error(`Failed to upload image at ${filePath}:`, error)
-          return null
+          return uploadMessageImage(filePath, obj.file as File).catch(error => {
+            console.error(`Failed to upload image at ${filePath}:`, error)
+            return null
+          })
         })
+
+      const paths = (await Promise.all(uploadPromises)).filter(
+        Boolean
+      ) as string[]
+
+      setChatImages(prevImages => [
+        ...prevImages,
+        ...newMessageImages.map((obj, index) => ({
+          ...obj,
+          messageId: createdMessages[0].id,
+          path: paths[index]
+        }))
+      ])
+
+      const updatedMessage = await updateMessage(createdMessages[0].id, {
+        ...createdMessages[0],
+        image_paths: paths
       })
 
-    const paths = (await Promise.all(uploadPromises)).filter(
-      Boolean
-    ) as string[]
-
-    setChatImages(prevImages => [
-      ...prevImages,
-      ...newMessageImages.map((obj, index) => ({
-        ...obj,
-        messageId: createdMessages[0].id,
-        path: paths[index]
-      }))
-    ])
-
-    const updatedMessage = await updateMessage(createdMessages[0].id, {
-      ...createdMessages[0],
-      image_paths: paths
-    })
-
-    const createdMessageFileItems = await createMessageFileItems(
-      retrievedFileItems.map(fileItem => {
-        return {
-          user_id: profile.user_id,
-          message_id: createdMessages[1].id,
-          file_item_id: fileItem.id
-        }
-      })
-    )
-
-    finalChatMessages = [
-      ...chatMessages,
-      {
-        message: updatedMessage,
-        fileItems: []
-      },
-      {
-        message: createdMessages[1],
-        fileItems: retrievedFileItems.map(fileItem => fileItem.id),
-        ...(bibliography ? { bibliography } : {})
-      }
-    ]
-
-    setChatFileItems(prevFileItems => {
-      const newFileItems = retrievedFileItems.filter(
-        fileItem => !prevFileItems.some(prevItem => prevItem.id === fileItem.id)
+      const createdMessageFileItems = await createMessageFileItems(
+        retrievedFileItems.map(fileItem => {
+          return {
+            user_id: profile.user_id,
+            message_id: createdMessages[1].id,
+            file_item_id: fileItem.id
+          }
+        })
       )
 
-      return [...prevFileItems, ...newFileItems]
-    })
+      finalChatMessages = [
+        ...chatMessages,
+        {
+          message: updatedMessage,
+          fileItems: []
+        },
+        {
+          message: createdMessages[1],
+          fileItems: retrievedFileItems.map(fileItem => fileItem.id),
+          ...(bibliography ? { bibliography } : {})
+        }
+      ]
 
-    setChatMessages(finalChatMessages)
+      setChatFileItems(prevFileItems => {
+        const newFileItems = retrievedFileItems.filter(
+          fileItem => !prevFileItems.some(prevItem => prevItem.id === fileItem.id)
+        )
+
+        return [...prevFileItems, ...newFileItems]
+      })
+
+      setChatMessages(finalChatMessages)
+    } catch (error: any) {
+      console.error('[handleCreateMessages] ❌ Error saving messages:', error)
+      throw error  // Propagamos para que el caller lo maneje
+    }
   }
 }

@@ -57,6 +57,25 @@ let _supabaseInstance: ReturnType<
   typeof createBrowserClient<Database>
 > | null = null
 
+/**
+ * Reset the cached Supabase client (useful when schema changes)
+ */
+export function resetSupabaseClient() {
+  _supabaseInstance = null
+  console.log('[Supabase] Client cache reset')
+}
+
+/**
+ * Create a fresh Supabase client (bypassing cache)
+ */
+export function createFreshClient() {
+  const { url, anonKey } = getSupabaseEnv()
+  _supabaseInstance = createBrowserClient<Database>(url, anonKey, {
+    db: { schema: 'public' }
+  })
+  return applyRefreshDeduping(_supabaseInstance, "browser-fresh")
+}
+
 export const supabase = new Proxy(
   {} as ReturnType<typeof createBrowserClient<Database>>,
   {
@@ -71,6 +90,56 @@ export const supabase = new Proxy(
     }
   }
 )
+
+/**
+ * Check if error is a schema cache error
+ */
+function isSchemaCacheError(error: any): boolean {
+  if (!error) return false
+  const message = error.message || String(error)
+  return message.includes('schema cache') || 
+         (message.includes('column') && message.includes('in the schema cache'))
+}
+
+/**
+ * Execute a Supabase query with automatic retry on schema cache errors
+ * 
+ * NOTE: Schema cache errors are typically resolved by hard-refreshing the browser (Ctrl+F5)
+ * or restarting the dev server. This function will retry once after resetting the client.
+ */
+export async function executeWithSchemaRetry<T>(
+  queryFn: () => Promise<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  let result = await queryFn()
+  
+  // If we get a schema cache error, try to recover
+  if (result.error && isSchemaCacheError(result.error)) {
+    console.warn('[Supabase] Schema cache error detected:', result.error.message)
+    console.warn('[Supabase] Try hard-refreshing the browser (Ctrl+F5) or clearing site data')
+    
+    // Try resetting client first
+    resetSupabaseClient()
+    
+    // Small delay to ensure clean state
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Retry the query
+    result = await queryFn()
+    
+    // If still failing, return error with helpful message
+    if (result.error && isSchemaCacheError(result.error)) {
+      return {
+        data: null,
+        error: {
+          ...result.error,
+          message: `Schema cache error: The database schema has changed. Please hard-refresh the page (Ctrl+F5) or clear browser cache and reload.`
+        }
+      }
+    }
+  }
+  
+  return result
+}
 
 /**
  * Check if Supabase client can be created (for diagnostics)

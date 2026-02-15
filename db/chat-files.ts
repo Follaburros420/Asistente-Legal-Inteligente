@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/robust-client"
+import { supabase, executeWithSchemaRetry } from "@/lib/supabase/browser-client"
 import { TablesInsert } from "@/supabase/types"
 
 export const getChatFilesByChatId = async (chatId: string) => {
@@ -46,13 +46,15 @@ export const createChatFile = async (chatFile: TablesInsert<"chat_files">) => {
 export const createChatFiles = async (
   chatFiles: TablesInsert<"chat_files">[]
 ) => {
-  const { data: createdChatFiles, error } = await supabase
-    .from("chat_files")
-    .insert(chatFiles)
-    .select("*")
+  const { data: createdChatFiles, error } = await executeWithSchemaRetry(() =>
+    supabase
+      .from("chat_files")
+      .insert(chatFiles)
+      .select("*")
+  )
 
-  if (!createdChatFiles) {
-    throw new Error(error.message)
+  if (error || !createdChatFiles) {
+    throw new Error(error?.message || "Failed to create chat files")
   }
 
   return createdChatFiles

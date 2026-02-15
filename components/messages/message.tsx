@@ -32,6 +32,7 @@ import { toast } from "sonner"
 import { AnswerView } from "./answer-view"
 import { CitationsPanel } from "./citations-panel"
 import { ThinkingIndicator } from "./thinking-indicator"
+import { ShaderCanvas } from "@/components/shader-canvas"
 import { parseModelAnswer } from "@/lib/parsers/model-answer"
 import { processStreamContent } from "@/lib/stream-processor"
 import { DocumentSheet } from "../chat/document-sheet"
@@ -324,24 +325,24 @@ export const Message: FC<MessageProps> = ({
   // PRIORIDAD 1: Usar renderMode del stream state (backend indica document vs chat)
   // PRIORIDAD 2: Heurística como fallback (solo para mensajes históricos sin stream)
   const isLegalDocumentFromStream = streamState.renderMode === "document" && isLast && isGenerating
-  
+
   // Heurística de fallback: detectar JSON de draft en el contenido
-  const hasDraftContent = message.content.trim().startsWith('{') && 
-                          message.content.includes('"type": "draft"')
-  
+  const hasDraftContent = message.content.trim().startsWith('{') &&
+    message.content.includes('"type": "draft"')
+
   // Heurística de fallback 2: contenido HTML con palabras clave de documento
   const isLegalDocumentFromHeuristics =
     !isGenerating && // Solo aplicar a mensajes completados históricos
     message.role === "assistant" &&
     (message.content.includes("<h1>") || message.content.includes("<h2>")) &&
     (message.content.includes("ARTICULO") ||
-     message.content.includes("CONTRATO") ||
-     message.content.includes("DEMANDA") ||
-     message.content.includes("MEMORIAL"))
-  
+      message.content.includes("CONTRATO") ||
+      message.content.includes("DEMANDA") ||
+      message.content.includes("MEMORIAL"))
+
   // Combinar: stream state tiene prioridad para mensajes activos
-  const isLegalDocument = isGenerating 
-    ? isLegalDocumentFromStream 
+  const isLegalDocument = isGenerating
+    ? isLegalDocumentFromStream
     : (hasDraftContent || isLegalDocumentFromHeuristics)
 
   const fileAccumulator: Record<
@@ -393,15 +394,15 @@ export const Message: FC<MessageProps> = ({
 
   // Determinar si se deben mostrar las citas
   // Solo cuando el stream está completado
-  const shouldShowCitations = 
-    message.role === "assistant" && 
-    streamPhase === "completed" && 
+  const shouldShowCitations =
+    message.role === "assistant" &&
+    streamPhase === "completed" &&
     assistantCitations.length > 0
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // RENDERIZADO DEL MENSAJE - REFACTORIZADO v2.0
   // ═══════════════════════════════════════════════════════════════════════════════
-  
+
   const renderMessageContent = () => {
     // MODO EDICIÓN: Input editable
     if (isEditing) {
@@ -429,12 +430,12 @@ export const Message: FC<MessageProps> = ({
     // MODO STREAMING ACTIVO
     if (isGenerating && isLast && message.role === "assistant") {
       console.log(`[Message] 🎨 Rendering streaming - phase: ${streamPhase}, content length: ${message.content.length}`)
-      
+
       // Si ya hay contenido sustancial (>100 chars) y estamos en fase streaming, mostrar texto
       if (streamPhase === "streaming" || message.content.length > 100) {
         return <AnswerView text={assistantAnswer.text} isStreaming={true} />
       }
-      
+
       // En cualquier otra fase, mostrar thinking
       const displayPhase = (streamPhase === "idle" || streamPhase === "unknown") ? "classifying" : streamPhase
       const displayMessage = streamMessage || "Analizando tu consulta…"
@@ -445,7 +446,7 @@ export const Message: FC<MessageProps> = ({
     if (message.role === "assistant") {
       // Verificar si es un draft válido (solo mensajes completados)
       let draft: LegalDraft | null = null
-      
+
       // Solo parsear draft si el contenido parece ser JSON de draft
       // NO convertir texto plano a draft automáticamente
       if (message.content.trim().startsWith('{') && message.content.includes('"type": "draft"')) {
@@ -459,22 +460,22 @@ export const Message: FC<MessageProps> = ({
           // Ignorar errores de parseo
         }
       }
-      
+
       // Si hay draft válido, mostrar editor
       if (draft) {
-        return <DocumentEditor draft={draft} onContentChange={() => {}} />
+        return <DocumentEditor draft={draft} onContentChange={() => { }} />
       }
-      
+
       // Verificar si es documento HTML (heurística más estricta)
-      const hasDocumentHTML = message.content.includes("<h1>") && 
-                              message.content.includes("ARTICULO") &&
-                              (message.content.includes("CONTRATO") || 
-                               message.content.includes("DEMANDA"))
-      
+      const hasDocumentHTML = message.content.includes("<h1>") &&
+        message.content.includes("ARTICULO") &&
+        (message.content.includes("CONTRATO") ||
+          message.content.includes("DEMANDA"))
+
       if (hasDocumentHTML) {
         return <DocumentViewer content={message.content} messageId={message.id} />
       }
-      
+
       // Respuesta normal de chat
       return <AnswerView text={assistantAnswer.text} isStreaming={false} />
     }
@@ -494,6 +495,38 @@ export const Message: FC<MessageProps> = ({
     )
   }
 
+  // Determinar si está en modo thinking (sin bubble)
+  const isThinking = isGenerating && isLast && message.role === "assistant" &&
+    streamPhase !== "streaming" && message.content.length <= 100
+
+  // ======= MODO THINKING: Avatar + texto inline, SIN bubble =======
+  if (isThinking) {
+    const displayPhase = (streamPhase === "idle" || streamPhase === "unknown") ? "classifying" : streamPhase
+    const displayMessage = streamMessage || "Analizando tu consulta…"
+
+    return (
+      <div
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+        onKeyDown={handleKeyDown}
+      >
+        <div className="flex items-center gap-3 px-4 py-3">
+          {/* Avatar del asistente */}
+          <div className="w-9 h-9 flex-shrink-0 rounded-full overflow-hidden ring-2 ring-violet-500/20 ring-offset-2 ring-offset-background shadow-lg shadow-violet-500/10">
+            <ShaderCanvas size={36} shaderId={(() => {
+              if (typeof window === 'undefined') return 1
+              const saved = localStorage.getItem('selectedShader')
+              return saved ? parseInt(saved, 10) : 1
+            })()} />
+          </div>
+          {/* ThinkingIndicator inline, sin contenedor */}
+          <ThinkingIndicator phase={displayPhase as any} statusMessage={displayMessage} />
+        </div>
+      </div>
+    )
+  }
+
+  // ======= MODO NORMAL: MessageBubble wrapping content =======
   return (
     <div
       onMouseEnter={() => setIsHovering(true)}

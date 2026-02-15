@@ -22,17 +22,10 @@ interface ChatInputAreaProps {
 }
 
 /**
- * ChatInputArea - Componente de input para el chat
+ * ChatInputArea - Componente de input para el chat con glassmorphism real
  *
- * REFACTORIZACIÓN: Este componente ahora usa un enfoque completamente controlado.
- * El valor se gestiona EXCLUSIVAMENTE desde el padre (userInput del contexto).
- * No hay estado local que pueda causar race conditions.
- *
- * La sincronización funciona así:
- * - El usuario escribe → onChange(actualValue) → padre actualiza userInput
- * - Padre re-renderiza con nuevo value → input muestra el valor correcto
- *
- * Para limpiar el input, el padre debe llamar setUserInput("")
+ * REFACTORIZACIÓN: Glassmorphism aplicado directamente en la barra de input,
+ * eliminando cualquier fondo/banda detrás. Efectos hover en desktop.
  */
 export const ChatInputArea: FC<ChatInputAreaProps> = ({
     value,
@@ -51,6 +44,7 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
 }) => {
     const [isFocused, setIsFocused] = useState(false)
     const [currentPlaceholder, setCurrentPlaceholder] = useState(0)
+    const [isHovered, setIsHovered] = useState(false)
 
     // Internal ref as fallback if external ref not provided
     const internalRef = useRef<HTMLTextAreaElement>(null)
@@ -73,19 +67,50 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
     }
 
     return (
-        <div
+        <motion.div
             className={cn(
                 "relative mx-auto w-full overflow-hidden",
                 "rounded-2xl",
-                "bg-background/95 backdrop-blur-xl",
-                "border border-white/10 dark:border-white/5",
-                "transition-colors duration-200",
-                isFocused && "border-primary/30",
-                value && "bg-background"
+                /* Glassmorphism: fondo semitransparente que funciona con o sin blur */
+                "bg-white/10 dark:bg-black/40",
+                "border border-white/15 dark:border-white/10",
+                "shadow-lg shadow-black/15 dark:shadow-black/30",
+                /* Transiciones suaves */
+                "transition-all duration-300 ease-out",
+                /* Focus state */
+                isFocused && [
+                    "border-primary/40",
+                    "shadow-xl shadow-primary/10",
+                    "bg-white/15 dark:bg-black/50"
+                ],
+                /* Hover effect - solo en desktop (detectado por isHovered) */
+                isHovered && !isFocused && [
+                    "border-white/25 dark:border-white/15",
+                    "shadow-xl shadow-black/20 dark:shadow-black/40"
+                ],
+                /* Clase para fallback sin backdrop-filter */
+                "glass-fallback-supported"
             )}
-            style={{ minHeight: "60px" }}
+            style={{
+                /* Backdrop filter con fallback */
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+                minHeight: "60px"
+            }}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            initial={false}
+            animate={{
+                scale: isHovered && !isFocused ? 1.02 : 1,
+            }}
+            transition={{
+                type: "spring",
+                stiffness: 400,
+                damping: 25
+            }}
         >
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+            {/* Gradiente sutil en la parte superior */}
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
             <div className="flex items-end gap-2 px-3 py-2 relative z-10 w-full">
                 {leftElement && (
@@ -152,7 +177,17 @@ export const ChatInputArea: FC<ChatInputAreaProps> = ({
                 )}
             </div>
 
-            <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-border/30 to-transparent" />
-        </div>
+            {/* Gradiente sutil en la parte inferior */}
+            <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+            {/* Fallback para navegadores sin backdrop-filter */}
+            <noscript>
+                <style>{`
+                    .glass-input-fallback {
+                        background: rgba(0, 0, 0, 0.4) !important;
+                    }
+                `}</style>
+            </noscript>
+        </motion.div>
     )
 }

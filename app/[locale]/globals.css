@@ -717,6 +717,13 @@
 }
 
 @layer utilities {
+  /* Fallback para glassmorphism: aumentar opacidad cuando no hay backdrop-filter */
+  @supports not (backdrop-filter: blur(1px)) {
+    .glass-fallback-supported {
+      background: rgba(0, 0, 0, 0.65) !important;
+    }
+  }
+  
   /* Efecto de brillo en bordes */
   .border-glow {
     position: relative;

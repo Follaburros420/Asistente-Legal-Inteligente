@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/robust-client"
+import { supabase, executeWithSchemaRetry } from "@/lib/supabase/browser-client"
 import { TablesInsert, TablesUpdate } from "@/supabase/types"
 
 export const getMessageById = async (messageId: string) => {
@@ -16,10 +16,16 @@ export const getMessageById = async (messageId: string) => {
 }
 
 export const getMessagesByChatId = async (chatId: string) => {
-  const { data: messages } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("chat_id", chatId)
+  const { data: messages, error } = await executeWithSchemaRetry(() =>
+    supabase
+      .from("messages")
+      .select("*")
+      .eq("chat_id", chatId)
+  )
+
+  if (error) {
+    throw new Error(error.message)
+  }
 
   if (!messages) {
     throw new Error("Messages not found")
@@ -29,11 +35,13 @@ export const getMessagesByChatId = async (chatId: string) => {
 }
 
 export const createMessage = async (message: TablesInsert<"messages">) => {
-  const { data: createdMessage, error } = await supabase
-    .from("messages")
-    .insert([message])
-    .select("*")
-    .single()
+  const { data: createdMessage, error } = await executeWithSchemaRetry(() =>
+    supabase
+      .from("messages")
+      .insert([message])
+      .select("*")
+      .single()
+  )
 
   if (error) {
     throw new Error(error.message)
@@ -43,10 +51,12 @@ export const createMessage = async (message: TablesInsert<"messages">) => {
 }
 
 export const createMessages = async (messages: TablesInsert<"messages">[]) => {
-  const { data: createdMessages, error } = await supabase
-    .from("messages")
-    .insert(messages)
-    .select("*")
+  const { data: createdMessages, error } = await executeWithSchemaRetry(() =>
+    supabase
+      .from("messages")
+      .insert(messages)
+      .select("*")
+  )
 
   if (error) {
     throw new Error(error.message)
@@ -59,12 +69,14 @@ export const updateMessage = async (
   messageId: string,
   message: TablesUpdate<"messages">
 ) => {
-  const { data: updatedMessage, error } = await supabase
-    .from("messages")
-    .update(message)
-    .eq("id", messageId)
-    .select("*")
-    .single()
+  const { data: updatedMessage, error } = await executeWithSchemaRetry(() =>
+    supabase
+      .from("messages")
+      .update(message)
+      .eq("id", messageId)
+      .select("*")
+      .single()
+  )
 
   if (error) {
     throw new Error(error.message)

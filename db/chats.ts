@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/robust-client"
+import { supabase, executeWithSchemaRetry } from "@/lib/supabase/browser-client"
 import { TablesInsert, TablesUpdate } from "@/supabase/types"
 
 export const getChatById = async (chatId: string) => {
@@ -26,11 +26,13 @@ export const getChatsByWorkspaceId = async (workspaceId: string) => {
 }
 
 export const createChat = async (chat: TablesInsert<"chats">) => {
-  const { data: createdChat, error } = await supabase
-    .from("chats")
-    .insert([chat])
-    .select("*")
-    .single()
+  const { data: createdChat, error } = await executeWithSchemaRetry(() =>
+    supabase
+      .from("chats")
+      .insert([chat])
+      .select("*")
+      .single()
+  )
 
   if (error) {
     throw new Error(error.message)

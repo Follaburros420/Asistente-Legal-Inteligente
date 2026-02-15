@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { PlaceholdersAndVanishInput, ModernSendIcon } from "@/components/ui/placeholders-and-vanish-input"
 import { CreateFileModal } from "@/components/modals/CreateFileModal"
 import { cn } from "@/lib/utils"
+import { ThinkingIndicator } from "@/components/messages/thinking-indicator"
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUGGESTIONS CONFIG
@@ -224,14 +225,14 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
                     </div>
                   </motion.div>
 
-                  {/* Respuesta del asistente (pensando) */}
+                  {/* Respuesta del asistente (pensando) — inline, sin bubble */}
                   <motion.div
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 0.5, ease: "easeOut" }}
-                    className="flex gap-3 items-start"
+                    className="flex items-center gap-3 px-4 py-3"
                   >
-                    {/* Avatar del asistente - aparece donde termina el orbe */}
+                    {/* Avatar del asistente */}
                     <motion.div
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
@@ -240,30 +241,8 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
                     >
                       <ShaderCanvas size={36} shaderId={selectedShader} />
                     </motion.div>
-                    <div className="relative overflow-hidden bg-gradient-to-br from-card via-card to-muted/50 border border-border/60 shadow-md shadow-black/5 dark:shadow-black/20 px-4 py-3.5 rounded-2xl rounded-tl-sm backdrop-blur-sm">
-                      {/* Glass effect */}
-                      <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent pointer-events-none" />
-                      <div className="flex items-center gap-1.5 relative z-10">
-                        <span className="text-xs font-medium text-muted-foreground">Pensando</span>
-                        <div className="flex space-x-1">
-                          <motion.div
-                            animate={{ y: [0, -4, 0], scale: [1, 1.1, 1] }}
-                            transition={{ repeat: Infinity, duration: 0.6, delay: 0 }}
-                            className="w-1.5 h-1.5 bg-gradient-to-br from-primary to-primary/60 rounded-full shadow-sm shadow-primary/30"
-                          />
-                          <motion.div
-                            animate={{ y: [0, -4, 0], scale: [1, 1.1, 1] }}
-                            transition={{ repeat: Infinity, duration: 0.6, delay: 0.12 }}
-                            className="w-1.5 h-1.5 bg-gradient-to-br from-primary to-primary/60 rounded-full shadow-sm shadow-primary/30"
-                          />
-                          <motion.div
-                            animate={{ y: [0, -4, 0], scale: [1, 1.1, 1] }}
-                            transition={{ repeat: Infinity, duration: 0.6, delay: 0.24 }}
-                            className="w-1.5 h-1.5 bg-gradient-to-br from-primary to-primary/60 rounded-full shadow-sm shadow-primary/30"
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    {/* ThinkingIndicator inline, sin contenedor */}
+                    <ThinkingIndicator phase="classifying" />
                   </motion.div>
                 </div>
               </motion.div>

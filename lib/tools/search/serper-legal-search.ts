@@ -219,8 +219,12 @@ function buildOptimizedQuery(query: string): { query: string; type: 'constitucio
   const normalized = normalizeText(query)
   const articleInfo = detectLegalArticle(query)
   
-  // Consulta constitucional
-  if (articleInfo.type === 'constitucion' || normalized.includes('constitucion')) {
+  // Consulta constitucional - solo si hay un número de artículo específico o la palabra está al inicio
+  // Evitar falsos positivos como "participación" que contiene "cip" pero no "constitución"
+  const isConstitucionExplicit = normalized.includes('constitucion') || normalized.includes('constitucional')
+  const hasArticuloNumero = articleInfo.type === 'constitucion' && articleInfo.number
+  
+  if (hasArticuloNumero || (isConstitucionExplicit && !normalized.includes('participacion'))) {
     return {
       query: `"artículo ${articleInfo.number || ''}" "Constitución Política de Colombia" site:secretariasenado.gov.co OR site:corteconstitucional.gov.co`,
       type: 'constitucion'

@@ -96,9 +96,9 @@ export const ModelSelectorToggle = () => {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "flex items-center gap-2 h-9 px-3",
+          "flex items-center gap-1.5 min-[380px]:gap-2 h-8 min-[380px]:h-9 px-2 min-[380px]:px-3",
           "bg-secondary/30 backdrop-blur-sm rounded-lg",
-          "border border-border/50 hover:border-border",
+          "border border-border/50 hover:border-border focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "shadow-sm hover:shadow",
           "transition-all duration-200"
         )}

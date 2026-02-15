@@ -1,29 +1,34 @@
 /**
- * useChatHandler V2 - VERSIÓN CORREGIDA
+ * useChatHandler V2 - VERSIÓN CORREGIDA CON MANEJO DE ERRORES ROBUSTO
  * 
  * CORRECCIONES CRÍTICAS:
  * 1. Preservar mensajes anteriores correctamente
- * 2. Manejo de errores robusto
+ * 2. Manejo de errores robusto con getErrorMessage
  * 3. Logs exhaustivos
  * 4. No perder historial en errores
  */
 
-import { useContext, useRef, useCallback } from "react"
+import { useContext, useRef, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ALIContext } from "@/context/context"
 import { streamChat, StreamCallbacks } from "@/components/chat/chat-helpers/stream-chat"
-import { handleCreateChat, handleCreateMessages } from "@/components/chat/chat-helpers"
+import { handleCreateChat } from "@/components/chat/chat-helpers"
+import { saveMessagesToDB } from "@/lib/chat/save-messages"
 import { updateChat } from "@/db/chats"
 import { deleteMessagesIncludingAndAfter } from "@/db/messages"
 import { ChatMessage } from "@/types"
 import { M1_MODEL_ID, normalizeMModel } from "@/lib/models/m1-models"
 import { INITIAL_STREAM_STATE } from "@/lib/stream-protocol"
+import { getErrorMessage, logError } from "@/lib/errors/error-utils"
 import { v4 as uuidv4 } from "uuid"
 import { toast } from "sonner"
 
 export const useChatHandlerV2 = () => {
   const router = useRouter()
   const abortControllerRef = useRef<AbortController | null>(null)
+  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  const chatMessagesRef = useRef<ChatMessage[]>([])
+  const isProcessingMessageRef = useRef<boolean>(false)
   
   const {
     userInput,
@@ -40,11 +45,33 @@ export const useChatHandlerV2 = () => {
     setStreamState,
     setStreamPhase,
     setStreamMessage,
-    setChatImages
+    setChatImages,
+    isPromptPickerOpen,
+    isFilePickerOpen,
+    isToolPickerOpen
   } = useContext(ALIContext)
+  
+  useEffect(() => {
+    if (!isPromptPickerOpen && !isFilePickerOpen && !isToolPickerOpen) {
+      chatInputRef.current?.focus()
+    }
+  }, [isPromptPickerOpen, isFilePickerOpen, isToolPickerOpen])
+  
+  // Sincronizar ref con estado actual de mensajes
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages
+    console.log("[ChatV2] 🔄 chatMessagesRef actualizado:", chatMessages.length, "mensajes")
+  }, [chatMessages])
 
-  const handleNewChat = useCallback(() => {
+  const handleNewChat = useCallback((options?: { preserveChatMode?: boolean }) => {
     if (!selectedWorkspace) return
+    
+    const preserveChatMode = options?.preserveChatMode ?? false
+    
+    if (typeof window !== "undefined" && !preserveChatMode) {
+      localStorage.removeItem("chatMode")
+      window.dispatchEvent(new Event("chat-mode-changed"))
+    }
     
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -72,11 +99,18 @@ export const useChatHandlerV2 = () => {
 
   const handleSendMessage = useCallback(async (
     messageContent: string,
-    currentChatMessages: ChatMessage[],
+    _currentChatMessages: ChatMessage[], // Parámetro legacy, usamos el estado actual
     isRegeneration: boolean
   ) => {
     console.log("[ChatV2] ================================================")
     console.log("[ChatV2] 🚀 START - Message:", messageContent.substring(0, 50))
+    
+    // Marcar que estamos procesando un mensaje (para evitar que fetchMessages sobrescriba)
+    isProcessingMessageRef.current = true
+    
+    // Usar la referencia para obtener el estado ACTUAL de los mensajes
+    const currentChatMessages = chatMessagesRef.current
+    
     console.log("[ChatV2] 📊 Current chat messages count:", currentChatMessages.length)
     console.log("[ChatV2] 🔄 isRegeneration:", isRegeneration)
     
@@ -107,9 +141,9 @@ export const useChatHandlerV2 = () => {
     const sequenceNumber = currentChatMessages.length
     
     console.log("[ChatV2] 📝 Created message IDs:", { user: userMessageId, assistant: assistantMessageId })
+    console.log("[ChatV2] 🔢 Sequence number:", sequenceNumber)
     
     // Crear mensaje del usuario
-    // NOTA: assistant_id removido temporalmente - no existe en schema de producción
     const userMessage: any = {
       message: {
         id: userMessageId,
@@ -127,7 +161,6 @@ export const useChatHandlerV2 = () => {
     }
     
     // Crear mensaje del asistente (vacío inicialmente)
-    // NOTA: assistant_id removido temporalmente - no existe en schema de producción
     const assistantMessage: any = {
       message: {
         id: assistantMessageId,
@@ -145,21 +178,22 @@ export const useChatHandlerV2 = () => {
     }
     
     // AGREGAR mensajes al estado INMEDIATAMENTE
-    // Esto preserva los mensajes anteriores
     let messagesAfterAdd: ChatMessage[]
     
+    console.log("[ChatV2] 📊 currentChatMessages count:", currentChatMessages.length)
+    console.log("[ChatV2] 📊 currentChatMessages:", currentChatMessages.map(m => ({role: m.message.role, seq: m.message.sequence_number, content: m.message.content.substring(0, 30)})))
+    
     if (isRegeneration) {
-      // En regeneración, reemplazar el último mensaje del asistente
       console.log("[ChatV2] 🔄 Regeneration mode - replacing last assistant message")
       const withoutLast = currentChatMessages.slice(0, -1)
       messagesAfterAdd = [...withoutLast, { ...assistantMessage, message: { ...assistantMessage.message, content: "" } }]
     } else {
-      // Agregar ambos mensajes nuevos
       console.log("[ChatV2] ➕ Adding new messages to chat")
       messagesAfterAdd = [...currentChatMessages, userMessage, assistantMessage]
     }
     
     console.log("[ChatV2] 📊 Messages after add:", messagesAfterAdd.length)
+    console.log("[ChatV2] 📊 New messages array:", messagesAfterAdd.map(m => ({role: m.message.role, seq: m.message.sequence_number, content: m.message.content.substring(0, 30)})))
     setChatMessages(messagesAfterAdd)
     
     // Inicializar estado del stream
@@ -175,10 +209,9 @@ export const useChatHandlerV2 = () => {
     setUserInput("")
     
     // Preparar historial para el backend
-    // Usar messagesAfterAdd para tener el contexto actualizado
     const history = messagesAfterAdd
       .filter(msg => msg.message.role !== "system")
-      .slice(-20) // Últimos 20 mensajes
+      .slice(-20)
       .map(msg => ({
         role: msg.message.role as "user" | "assistant",
         content: msg.message.content
@@ -209,7 +242,6 @@ export const useChatHandlerV2 = () => {
       },
       
       onDelta: (text) => {
-        // Actualizar SOLO el mensaje del asistente
         setChatMessages(prev => {
           const updated = prev.map(msg => {
             if (msg.message.id === assistantMessageId) {
@@ -223,6 +255,7 @@ export const useChatHandlerV2 = () => {
             }
             return msg
           })
+          console.log("[ChatV2] 📝 onDelta - messages count:", updated.length)
           return updated
         })
         
@@ -319,7 +352,6 @@ export const useChatHandlerV2 = () => {
       let currentChat = selectedChat
       
       if (!currentChat && !isRegeneration) {
-        // Crear nuevo chat
         console.log("[ChatV2] 🆕 Creating new chat...")
         try {
           currentChat = await handleCreateChat(
@@ -342,51 +374,74 @@ export const useChatHandlerV2 = () => {
             () => {}
           )
           console.log("[ChatV2] ✅ Chat created:", currentChat.id)
-        } catch (error: any) {
-          console.error("[ChatV2] ❌ Error creating chat:", error)
-          toast.error("Error creando chat: " + error.message)
-          throw error
+        } catch (error: unknown) {
+          const errorMsg = getErrorMessage(error, "Error creando chat")
+          logError("ChatV2", error, { operation: "createChat" })
+          toast.error("Error guardando chat: " + errorMsg)
+          return
         }
       } else if (currentChat) {
-        await updateChat(currentChat.id, {
-          updated_at: new Date().toISOString()
-        })
+        try {
+          await updateChat(currentChat.id, {
+            updated_at: new Date().toISOString()
+          })
+        } catch (e) {
+          console.warn("[ChatV2] ⚠️ Failed to update chat timestamp:", e)
+        }
       }
       
       if (currentChat) {
-        // Actualizar IDs de chat en los mensajes
-        setChatMessages(prev => prev.map(msg => ({
-          ...msg,
-          message: {
-            ...msg.message,
-            chat_id: currentChat!.id
+        try {
+          // Actualizar IDs de chat en los mensajes actuales
+          setChatMessages(prev => prev.map(msg => ({
+            ...msg,
+            message: {
+              ...msg.message,
+              chat_id: currentChat!.id
+            }
+          })))
+          
+          // Guardar mensajes en BD sin modificar estado
+          const saveResult = await saveMessagesToDB({
+            userMessage: userMessage,
+            assistantMessage: {
+              ...assistantMessage,
+              message: {
+                ...assistantMessage.message,
+                content: result.text || "Error: No response",
+                chat_id: currentChat!.id
+              }
+            },
+            currentChat,
+            profile,
+            bibliography: result.citations.length > 0 ? result.citations : undefined
+          })
+          
+          if (saveResult.success) {
+            console.log("[ChatV2] ✅ Messages saved to DB")
+          } else {
+            console.warn("[ChatV2] ⚠️ Failed to save messages:", saveResult.error)
+            toast.error("Error guardando mensajes: " + saveResult.error)
           }
-        })))
-        
-        // Guardar mensajes en BD
-        await handleCreateMessages(
-          messagesAfterAdd, // Usar los mensajes que tenemos
-          currentChat,
-          profile,
-          { modelId: chatSettings?.model || M1_MODEL_ID } as any,
-          messageContent,
-          result.text || "Error: No response",
-          [],
-          isRegeneration,
-          [],
-          setChatMessages,
-          () => {},
-          setChatImages,
-          selectedAssistant,
-          result.citations.length > 0 ? result.citations : undefined
-        )
-        console.log("[ChatV2] ✅ Messages saved to DB")
+        } catch (error: unknown) {
+          const errorMsg = getErrorMessage(error, "Error guardando mensajes")
+          logError("ChatV2", error, { operation: "saveMessages" })
+          toast.error("Error guardando mensajes: " + errorMsg)
+        }
+      } else {
+        console.warn("[ChatV2] ⚠️ No chat to save messages to")
       }
       
-    } catch (error: any) {
-      console.error("[ChatV2] 💥 Fatal error:", error)
+    } catch (error: unknown) {
+      // Usar el sistema robusto de manejo de errores
+      const errorMessage = getErrorMessage(error, "Error en el chat")
+      logError("ChatV2", error, { 
+        operation: "stream",
+        messagePreview: messageContent.substring(0, 50)
+      })
+      
       setStreamPhase("error")
-      setStreamMessage(`Error: ${error.message}`)
+      setStreamMessage(`Error: ${errorMessage}`)
       
       // Mostrar error en el mensaje del asistente
       setChatMessages(prev => prev.map(msg => {
@@ -395,17 +450,18 @@ export const useChatHandlerV2 = () => {
             ...msg,
             message: {
               ...msg.message,
-              content: `❌ Error: ${error.message || "Error desconocido"}`
+              content: `❌ Error: ${errorMessage}`
             }
           }
         }
         return msg
       }))
       
-      toast.error(error.message || "Error en el chat")
+      toast.error(errorMessage)
     } finally {
       abortControllerRef.current = null
-      console.log("[ChatV2] 🧹 Cleanup done")
+      isProcessingMessageRef.current = false
+      console.log("[ChatV2] 🧹 Cleanup done, processing flag reset")
     }
   }, [
     selectedWorkspace,
@@ -435,17 +491,38 @@ export const useChatHandlerV2 = () => {
       sequenceNumber
     )
     
-    const filteredMessages = chatMessages.filter(
-      msg => msg.message.sequence_number < sequenceNumber
-    )
+    // Filtrar mensajes localmente primero
+    setChatMessages(prev => {
+      const filtered = prev.filter(
+        msg => msg.message.sequence_number < sequenceNumber
+      )
+      return filtered
+    })
     
-    setChatMessages(filteredMessages)
-    handleSendMessage(editedContent, filteredMessages, false)
-  }, [selectedChat, chatMessages, setChatMessages, handleSendMessage])
+    // Llamar handleSendMessage (obtendrá el estado actual automáticamente)
+    handleSendMessage(editedContent, [], false)
+  }, [selectedChat, setChatMessages, handleSendMessage])
 
   return {
     handleNewChat,
     handleSendMessage,
+    handleStopMessage,
+    handleSendEdit
+  }
+  
+  const handleFocusChatInput = () => {
+    chatInputRef.current?.focus()
+  }
+  
+  // Prompt es undefined en el legacy, mantener compatibilidad
+  const prompt = undefined
+  
+  return {
+    chatInputRef,
+    prompt,
+    handleNewChat,
+    handleSendMessage,
+    handleFocusChatInput,
     handleStopMessage,
     handleSendEdit
   }
