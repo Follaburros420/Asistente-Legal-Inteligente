@@ -6,9 +6,8 @@ import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
 import { Database } from "@/supabase/types"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
-import { createMessage } from "@/db/messages"
 import { assertWorkspaceAccess } from "@/lib/server/workspaces/access"
-import { ragBackendService } from "@/lib/services/rag-backend"
+import { localRAGService } from "@/lib/services/local-rag-service"
 import { StreamingTextResponse } from "ai"
 import { checkRateLimit, formatRateLimitHeaders, chatRateLimit } from "@/lib/rate-limit"
 
@@ -137,100 +136,56 @@ export async function POST(
       )
     }
 
-    // Use RAG Backend for chat
-    console.log(`🔍 [RAG Backend] Enviando mensaje al backend RAG...`)
-
-    // Save user message to database
-    if (chatId) {
-      try {
-        await createMessage({
-          chat_id: chatId,
-          user_id: user.id,
-          content: userMessage,
-          role: "user",
-          metadata: {
-            process_id: processId
-          },
-          image_paths: [],
-          model: chatSettings?.model || "gpt-4o-mini",
-          sequence_number: 0 // We'll let the DB handle sequence if possible, or 0 if not
-        })
-      } catch (error) {
-        console.error("Error saving user message:", error)
-      }
+    // Check if local RAG service is configured
+    if (!localRAGService.isConfigured()) {
+      return NextResponse.json(
+        { error: "El servicio de chat no está configurado. Falta la API key de OpenAI." },
+        { status: 503 }
+      )
     }
 
+    console.log(`🔍 [Local RAG] Procesando mensaje para proceso: ${processId}`)
+
     try {
-      // Stream response from RAG backend
-      const stream = await ragBackendService.streamChat({
-        message: userMessage,
-        workspace_id: processRecord.workspace_id,
-        process_id: processId,
-        search_type: "hybrid",
-        model: chatSettings?.model
-      })
-
-      // Convert the SSE stream to a text stream for the client
-      const textStream = new ReadableStream({
+      // Create a text stream from the local RAG service
+      const stream = new ReadableStream({
         async start(controller) {
-          const reader = stream.getReader()
-          const decoder = new TextDecoder()
-          let buffer = ""
-
           try {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
+            // Get conversation history from bodyMessages (excluding the current message)
+            const conversationHistory = bodyMessages
+              ?.filter(msg => msg.role !== "user" || msg.content !== userMessage)
+              ?.slice(-6) // Keep last 6 messages for context
 
-              const chunk = decoder.decode(value, { stream: true })
-              buffer += chunk
-
-              const lines = buffer.split("\n")
-              buffer = lines.pop() || "" // Keep the last partial line in the buffer
-
-              for (const line of lines) {
-                const trimmedLine = line.trim()
-                if (!trimmedLine.startsWith("data: ")) continue
-
-                try {
-                  const jsonStr = trimmedLine.slice(6)
-                  if (jsonStr === "[DONE]") continue
-
-                  const data = JSON.parse(jsonStr)
-
-                  // Only send text content to the client
-                  if (data.type === "text" && data.content) {
-                    controller.enqueue(data.content)
-                  }
-                } catch (e) {
-                  // Ignore parse errors for incomplete chunks or invalid json
-                }
-              }
+            // Stream from local RAG service
+            for await (const chunk of localRAGService.streamChat({
+              message: userMessage!,
+              process_id: processId,
+              workspace_id: processRecord.workspace_id,
+              model: chatSettings?.model,
+              conversationHistory
+            })) {
+              controller.enqueue(chunk)
             }
-          } catch (error) {
+          } catch (error: any) {
+            console.error("❌ Error en stream:", error)
             controller.error(error)
           } finally {
             controller.close()
-            try {
-              reader.releaseLock()
-            } catch (e) {
-              // Ignore if already released
-            }
           }
         }
       })
 
-      return new StreamingTextResponse(textStream, {
+      return new StreamingTextResponse(stream, {
         headers: {
           "X-Process-Id": processId
         }
       })
 
     } catch (ragError: any) {
-      console.error("❌ Error en RAG Backend:", ragError)
+      console.error("❌ Error en Local RAG:", ragError)
       return NextResponse.json(
         {
-          error: "Error al comunicarse con el asistente",
+          error: "Error al procesar la consulta",
           details: ragError.message
         },
         { status: 503 }

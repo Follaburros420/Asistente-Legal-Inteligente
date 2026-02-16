@@ -1,7 +1,6 @@
 "use client"
 import { FC, useEffect, useMemo, useState, useRef } from "react"
 import { useChat } from "ai/react"
-import { useScroll } from "@/components/chat/chat-hooks/use-scroll"
 import { ProcessChatStatus } from "@/components/processes/chat/process-chat-status"
 import { ProcessChatMessages } from "@/components/processes/chat/process-chat-messages"
 import { ProcessChatEmptyState } from "./ProcessChatEmptyState"
@@ -28,7 +27,7 @@ export const ProcessChat: FC<ProcessChatProps> = ({
   const [suggestionChips, setSuggestionChips] = useState<string[]>([])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { scrollToRef, scrollRef } = useScroll()
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const isReady = indexingStatus === "ready"
 
@@ -41,6 +40,13 @@ export const ProcessChat: FC<ProcessChatProps> = ({
     setSuggestionChips(suggestionChipsMemo)
   }, [suggestionChipsMemo])
 
+  // Scroll to bottom helper
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, error, setInput } = useChat({
     api: `/api/processes/${processId}/chat`,
     body: {
@@ -49,7 +55,7 @@ export const ProcessChat: FC<ProcessChatProps> = ({
     },
     initialMessages: [],
     onFinish: () => {
-      scrollToRef(messagesEndRef)
+      scrollToBottom()
     }
   })
 
@@ -71,9 +77,9 @@ export const ProcessChat: FC<ProcessChatProps> = ({
   // Auto-scroll on new messages
   useEffect(() => {
     if (messages.length > 0) {
-      scrollToRef(messagesEndRef)
+      scrollToBottom()
     }
-  }, [messages, scrollToRef])
+  }, [messages])
 
   const handleChipClick = (chip: string) => {
     setInput(chip)

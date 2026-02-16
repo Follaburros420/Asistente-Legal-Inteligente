@@ -6,18 +6,11 @@ import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
 import { Database } from "@/supabase/types"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
-import { encode } from "gpt-tokenizer"
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter"
-import OpenAI from "openai"
-import { getServerProfile } from "@/lib/server/server-chat-helpers"
-import { convertDocumentFromUrl } from "@/lib/docling"
 import { assertWorkspaceAccess } from "@/lib/server/workspaces/access"
-import { ragBackendService } from "@/lib/services/rag-backend"
-
-// Process-specific chunking: 500-800 tokens (using 650 as middle ground)
-// Overlap: 100 tokens (~15%)
-const PROCESS_CHUNK_SIZE = 650
-const PROCESS_CHUNK_OVERLAP = 100
+import { documentIngestionService } from "@/lib/services/document-ingestion-service"
+import { supabaseVectorStore } from "@/lib/services/supabase-vector-store"
+import { neo4jGraphService } from "@/lib/services/neo4j-graph-service"
+import { doclingService } from "@/lib/services/docling-service"
 
 export async function POST(
   request: Request,
@@ -58,9 +51,6 @@ export async function POST(
       .select("id,user_id,workspace_id,name,indexing_status")
       .eq("id", processId)
       .single()
-    // ... imports need to be added separately or I can try to add them if I replace the whole file? No, replace_file_content is better for chunks.
-    // I will use two calls. One for import, one for logic.
-
 
     if (processError || !processRecord) {
       return NextResponse.json(
@@ -88,9 +78,6 @@ export async function POST(
         { status: 403 }
       )
     }
-
-    // Get profile for API keys
-    const profile = await getServerProfile() as any
 
     // Get documents to process using admin client
     let documentsToProcess
@@ -141,91 +128,78 @@ export async function POST(
       })
     }
 
-    // Initialize OpenAI client
-    let openai: OpenAI
-    if (profile.use_azure_openai) {
-      openai = new OpenAI({
-        apiKey: profile.azure_openai_api_key || "",
-        baseURL: profile.azure_openai_endpoint || "https://api.openai.com/v1",
-        defaultHeaders: { "api-key": profile.azure_openai_api_key }
-      })
-    } else {
-      openai = new OpenAI({
-        apiKey: profile.openai_api_key || "",
-        organization: profile.openai_organization_id
-      })
+    // Check if services are configured
+    if (!documentIngestionService.isConfigured()) {
+      console.warn("⚠️ Document ingestion service not fully configured")
+      return NextResponse.json(
+        { error: "Servicio de ingestión no configurado (falta OPENAI_API_KEY)" },
+        { status: 503 }
+      )
     }
 
     // Process each document
+    const results = []
     for (const document of documentsToProcess) {
       try {
         console.log(`📄 Processing document: ${document.file_name} (${document.id})`)
 
-        // Update status to processing using admin client
+        // Update status to processing
         const { error: updateError } = await supabaseAdmin
           .from("process_documents")
           .update({ status: "processing" })
           .eq("id", document.id)
 
         if (updateError) {
-          console.error(`❌ Error updating document status to processing:`, updateError)
+          console.error(`❌ Error updating document status:`, updateError)
           throw new Error(`Error actualizando estado: ${updateError.message}`)
         }
 
-        // Bypassing local processing if requested (for external RAG backend)
+        // Skip processing if requested (for external RAG status)
         if (skipProcessing) {
-          console.log(`⏩ Skipping local processing for document: ${document.file_name} (using external RAG status)`)
+          console.log(`⏩ Skipping processing for document: ${document.file_name}`)
 
           if (providedMarkdown) {
-            console.log(`💾 Saving provided markdown (${providedMarkdown.length} chars)`)
-
-            // Save as a single section for retrieval
-            const { error: sectionError } = await supabaseAdmin
-              .from("process_document_sections")
-              .insert({
+            // Store the provided markdown
+            const result = await documentIngestionService.ingestDocument(
+              providedMarkdown,
+              {
                 process_id: processId,
                 document_id: document.id,
+                workspace_id: processRecord.workspace_id,
                 user_id: user.id,
-                content: providedMarkdown,
-                tokens: encode(providedMarkdown).length,
-                openai_embedding: [] as any, // Placeholder
-                metadata: {
-                  type: "full_markdown",
-                  file_name: document.file_name
-                }
-              })
+                file_name: document.file_name,
+                mime_type: document.mime_type || "text/markdown"
+              }
+            )
 
-            if (sectionError) {
-              console.warn(`⚠️ Error saving markdown section:`, sectionError)
+            if (!result.success) {
+              throw new Error(result.error || "Error en ingestión")
             }
+
+            results.push(result)
           }
 
-          // Update status to indexed immediately
-          const { error: indexedError } = await supabaseAdmin
+          // Update status to indexed
+          await supabaseAdmin
             .from("process_documents")
             .update({
               status: "indexed",
               error_message: null,
               metadata: {
                 ...(document.metadata || {}),
-                processed_with: "external_rag",
+                processed_with: "supabase_vector_neo4j",
                 processed_at: new Date().toISOString()
               },
               updated_at: new Date().toISOString()
             })
             .eq("id", document.id)
 
-          if (indexedError) {
-            throw new Error(`Error actualizando estado a indexed: ${indexedError.message}`)
-          }
-
-          console.log(`✅ Documento ${document.file_name} marcado como indexado (externo)`)
-          continue; // Create signed URL skipped, conversion skipped
+          continue
         }
 
+        // Download file from Supabase Storage (Wasabi)
         console.log(`🔗 Downloading file from storage: ${document.storage_path}`)
 
-        // Download file from Supabase Storage
         const { data: fileData, error: downloadError } = await supabaseAdmin.storage
           .from("files")
           .download(document.storage_path)
@@ -237,72 +211,71 @@ export async function POST(
 
         console.log(`✅ File downloaded successfully, size: ${fileData.size} bytes`)
 
-        // Create File object for ingestion
-        const file = new File([fileData], document.file_name, { type: document.mime_type })
+        // Convert file content to buffer
+        const fileBuffer = Buffer.from(await fileData.arrayBuffer())
+        const mimeType = document.mime_type || "application/octet-stream"
 
-        // Ingest to External RAG
-        console.log(`🚀 Ingesting ${document.file_name} to RAG backend...`)
-
-        const metadata = {
-          process_id: processId,
-          file_name: document.file_name,
-          mime_type: document.mime_type || "application/octet-stream",
-          user_id: user.id,
-          document_id: document.id
-        }
-
-        try {
-          await ragBackendService.ingestDocument(
-            file,
-            processRecord.workspace_id,
-            processId,
-            metadata
-          )
-
-          // Update status to indexed
-          const { error: indexedError } = await supabaseAdmin
-            .from("process_documents")
-            .update({
-              status: "indexed",
-              error_message: null,
-              metadata: {
-                ...(document.metadata || {}),
-                processed_with: "external_rag",
-                processed_at: new Date().toISOString()
-              },
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", document.id)
-
-          if (indexedError) {
-            throw new Error(`Error actualizando estado a indexed: ${indexedError.message}`)
+        // Ingest document using Docling for parsing
+        // For processes, we use both vector store AND graph (skipGraph: false)
+        const result = await documentIngestionService.ingestDocumentFromBuffer(
+          fileBuffer,
+          {
+            process_id: processId,
+            document_id: document.id,
+            workspace_id: processRecord.workspace_id,
+            user_id: user.id,
+            file_name: document.file_name,
+            mime_type: mimeType
+          },
+          {
+            skipGraph: false, // Processes use both vector store and graph
+            useDocling: true
           }
+        )
 
-          console.log(`✅ Documento ${document.file_name} indexado correctamente (externo)`)
-
-        } catch (ragError: any) {
-          console.error(`❌ Error ingesting to RAG backend:`, ragError)
-          throw new Error(`Error en ingestión externa: ${ragError.message}`)
+        if (!result.success) {
+          throw new Error(result.error || "Error en ingestión")
         }
+
+        results.push(result)
+
+        // Update status to indexed
+        const { error: indexedError } = await supabaseAdmin
+          .from("process_documents")
+          .update({
+            status: "indexed",
+            error_message: null,
+            metadata: {
+              ...(document.metadata || {}),
+              processed_with: "supabase_vector_neo4j",
+              chunks_created: result.chunksCreated,
+              entities_extracted: result.entitiesExtracted,
+              processed_at: new Date().toISOString()
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", document.id)
+
+        if (indexedError) {
+          throw new Error(`Error actualizando estado a indexed: ${indexedError.message}`)
+        }
+
+        console.log(`✅ Documento ${document.file_name} indexado correctamente`)
 
       } catch (error: any) {
         console.error(`❌ Error procesando documento ${document.file_name}:`, error)
-        console.error("Error stack:", error.stack)
 
-        // Provide user-friendly error message (don't expose internal details like DOCLING_BASE_URL)
+        // Provide user-friendly error message
         let userFriendlyMessage = error.message || "Error desconocido al procesar el documento"
 
-        // Sanitize error messages to avoid exposing internal details
-        if (userFriendlyMessage.includes("DOCLING_BASE_URL")) {
-          userFriendlyMessage = "Error de configuración del servicio de procesamiento"
+        if (userFriendlyMessage.includes("OPENAI_API_KEY")) {
+          userFriendlyMessage = "Error de configuración del servicio de embeddings"
         } else if (userFriendlyMessage.includes("Timeout")) {
           userFriendlyMessage = "El documento tardó demasiado en procesarse. Intenta con un archivo más pequeño."
-        } else if (userFriendlyMessage.includes("fetch") || userFriendlyMessage.includes("network")) {
-          userFriendlyMessage = "Error de conexión al procesar el documento. Por favor, inténtalo de nuevo."
         }
 
-        // Update document status to error using admin client
-        const { error: errorUpdateError } = await supabaseAdmin
+        // Update document status to error
+        await supabaseAdmin
           .from("process_documents")
           .update({
             status: "error",
@@ -311,107 +284,62 @@ export async function POST(
           })
           .eq("id", document.id)
 
-        if (errorUpdateError) {
-          console.error(`❌ Error updating document status to error:`, errorUpdateError)
-        }
-
-        // Continue processing other documents even if one fails
-        console.log(`⚠️ Continuing with other documents despite error in ${document.file_name}`)
+        results.push({
+          success: false,
+          documentId: document.id,
+          error: userFriendlyMessage
+        })
       }
     }
 
-    // Update process indexing_status based on all documents using admin client
+    // Update process indexing_status
     const { data: allDocuments } = await supabaseAdmin
       .from("process_documents")
       .select("*")
       .eq("process_id", processId)
-      .eq("status", "indexed")
 
-    const { data: pendingDocuments } = await supabaseAdmin
-      .from("process_documents")
-      .select("*")
-      .eq("process_id", processId)
-      .eq("status", "pending")
-
-    const { data: processingDocuments } = await supabaseAdmin
-      .from("process_documents")
-      .select("*")
-      .eq("process_id", processId)
-      .eq("status", "processing")
-
-    const { data: errorDocuments } = await supabaseAdmin
-      .from("process_documents")
-      .select("*")
-      .eq("process_id", processId)
-      .eq("status", "error")
-
-    const allDocsCount = allDocuments?.length || 0
-    const pendingDocsCount = pendingDocuments?.length || 0
-    const processingDocsCount = processingDocuments?.length || 0
-    const errorDocsCount = errorDocuments?.length || 0
-
-    console.log(`📊 Document status summary:`, {
-      indexed: allDocsCount,
-      pending: pendingDocsCount,
-      processing: processingDocsCount,
-      error: errorDocsCount
-    })
+    const indexedCount = allDocuments?.filter(d => d.status === "indexed").length || 0
+    const errorCount = allDocuments?.filter(d => d.status === "error").length || 0
+    const pendingCount = allDocuments?.filter(d => d.status === "pending").length || 0
+    const processingCount = allDocuments?.filter(d => d.status === "processing").length || 0
 
     let newIndexingStatus = "ready"
-    if (errorDocsCount > 0) {
+    if (errorCount > 0 && indexedCount === 0) {
       newIndexingStatus = "error"
-    } else if (processingDocsCount > 0 || pendingDocsCount > 0) {
+    } else if (processingCount > 0 || pendingCount > 0) {
       newIndexingStatus = "processing"
-    } else if (allDocsCount > 0) {
+    } else if (indexedCount > 0) {
       newIndexingStatus = "ready"
-      // Update last_indexed_at
-      const { error: updateError } = await supabaseAdmin
-        .from("processes")
-        .update({
-          indexing_status: "ready",
-          last_indexed_at: new Date().toISOString()
-        })
-        .eq("id", processId)
-
-      if (updateError) {
-        console.error("❌ Error updating process status to ready:", updateError)
-      } else {
-        console.log("✅ Process status updated to ready")
-      }
     } else {
       newIndexingStatus = "pending"
     }
 
-    if (newIndexingStatus !== "ready") {
-      const { error: updateError } = await supabaseAdmin
-        .from("processes")
-        .update({ indexing_status: newIndexingStatus })
-        .eq("id", processId)
+    await supabaseAdmin
+      .from("processes")
+      .update({
+        indexing_status: newIndexingStatus,
+        last_indexed_at: newIndexingStatus === "ready" ? new Date().toISOString() : undefined
+      })
+      .eq("id", processId)
 
-      if (updateError) {
-        console.error(`❌ Error updating process status to ${newIndexingStatus}:`, updateError)
-      } else {
-        console.log(`✅ Process status updated to ${newIndexingStatus}`)
-      }
-    }
+    console.log(`📊 Ingestion complete: ${indexedCount} indexed, ${errorCount} errors`)
 
     return NextResponse.json({
       success: true,
-      message: `Procesamiento completado. ${allDocsCount} documento(s) indexado(s).`,
-      indexed: allDocsCount,
-      errors: errorDocsCount,
-      pending: pendingDocsCount,
-      processing: processingDocsCount
+      message: `Procesamiento completado. ${indexedCount} documento(s) indexado(s).`,
+      indexed: indexedCount,
+      errors: errorCount,
+      pending: pendingCount,
+      processing: processingCount,
+      results
     })
 
   } catch (error: any) {
     console.error("❌ Error en ingestión:", error)
-    console.error("Error stack:", error.stack)
     return NextResponse.json(
       {
         error: "Error al procesar documentos",
-        details: error.message,
-        stack: process.env.NODE_ENV === "development" ? error.stack : undefined
+        details: error.message
       },
       { status: 500 }
     )

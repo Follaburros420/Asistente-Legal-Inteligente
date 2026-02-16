@@ -1,13 +1,17 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { ragBackendService } from '@/lib/services/rag-backend'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
+import { documentIngestionService } from '@/lib/services/document-ingestion-service'
+import { doclingService } from '@/lib/services/docling-service'
 
 /**
  * API Route: POST /api/rag/ingest
- * Ingesta de documentos al backend RAG
+ * Ingesta de documentos para el chat general
+ * 
+ * Este endpoint es para el chat general y SOLO usa vector store (no grafo)
+ * Para procesos legales, usar /api/processes/[processId]/ingest
  */
 export async function POST(req: NextRequest) {
     try {
@@ -35,16 +39,8 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        // Verificar configuración
-        if (!ragBackendService.isConfigured()) {
-            return NextResponse.json(
-                { error: 'Backend RAG no configurado. Agrega RAG_BACKEND_URL a las variables de entorno.' },
-                { status: 503 }
-            )
-        }
-
         // Parsear metadata si existe
-        let metadata: Record<string, any> | undefined
+        let metadata: Record<string, any> = {}
         if (metadataStr) {
             try {
                 metadata = JSON.parse(metadataStr)
@@ -53,29 +49,49 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // Agregar información del usuario a metadata
-        const enrichedMetadata = {
-            ...metadata,
-            user_id: user.id,
-            user_email: user.email,
-            uploaded_at: new Date().toISOString()
-        }
+        // Generate a unique document ID
+        const documentId = metadata.document_id || crypto.randomUUID()
 
-        // Extract process_id from metadata if available
-        const processId = metadata?.process_id
+        console.log(`📄 Processing document for chat ingestion: ${file.name}`)
 
-        // Ingestar documento en backend RAG
-        const response = await ragBackendService.ingestDocument(
-            file,
-            workspaceId,
-            processId,
-            enrichedMetadata
+        // Convert File to Buffer
+        const fileBuffer = Buffer.from(await file.arrayBuffer())
+        const mimeType = file.type || 'application/octet-stream'
+
+        // Ingest document using Docling for parsing
+        // For chat, we ONLY use vector store (skipGraph: true)
+        const result = await documentIngestionService.ingestDocumentFromBuffer(
+            fileBuffer,
+            {
+                process_id: metadata.process_id || 'chat-general',
+                document_id: documentId,
+                workspace_id: workspaceId,
+                user_id: user.id,
+                file_name: file.name,
+                mime_type: mimeType
+            },
+            {
+                skipGraph: true, // Chat general only uses vector store, not graph
+                useDocling: true
+            }
         )
+
+        if (!result.success) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: result.error || 'Error al procesar documento'
+                },
+                { status: 500 }
+            )
+        }
 
         return NextResponse.json({
             success: true,
-            message: 'Documento ingestado correctamente',
-            ...response
+            message: 'Documento ingestado correctamente en el vector store',
+            document_id: documentId,
+            chunks_created: result.chunksCreated,
+            processed_with: 'docling + supabase_vector'
         })
 
     } catch (error: any) {
