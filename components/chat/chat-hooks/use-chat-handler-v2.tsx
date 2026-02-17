@@ -48,7 +48,15 @@ export const useChatHandlerV2 = () => {
     setChatImages,
     isPromptPickerOpen,
     isFilePickerOpen,
-    isToolPickerOpen
+    isToolPickerOpen,
+    // LangGraph state
+    setLangGraphTodo,
+    setLangGraphEvidence,
+    setLangGraphInterrupt,
+    setLangGraphMode,
+    setLangGraphThreadId,
+    // Deep Research toggle
+    deepResearchEnabled
   } = useContext(ALIContext)
   
   useEffect(() => {
@@ -306,19 +314,45 @@ export const useChatHandlerV2 = () => {
           phase: "cancelled",
           completedAt: Date.now()
         }))
+      },
+      
+      // LangGraph callbacks
+      onTodoUpdate: (items, mode) => {
+        console.log("[ChatV2] 📋 Todo update:", items.length, "items, mode:", mode)
+        setLangGraphTodo(items)
+        if (mode) {
+          setLangGraphMode(mode)
+        }
+      },
+      
+      onEvidenceUpdate: (evidence) => {
+        console.log("[ChatV2] 🔍 Evidence update:", evidence)
+        setLangGraphEvidence(evidence)
+      },
+      
+      onInterrupt: (payload) => {
+        console.log("[ChatV2] ⏸️ Interrupt:", payload)
+        setLangGraphInterrupt(payload)
+        if (payload.thread_id) {
+          setLangGraphThreadId(payload.thread_id)
+        }
       }
     }
     
     try {
       // Ejecutar stream
       console.log("[ChatV2] 🌊 Starting streamChat...")
+      console.log("[ChatV2] 🔬 Deep Research enabled:", deepResearchEnabled)
+      
       const result = await streamChat(
         messageContent,
         history,
         {
           model: normalizeMModel(chatSettings?.model || M1_MODEL_ID),
           temperature: chatSettings?.temperature ?? 0.3,
-          maxTokens: chatSettings?.contextLength ?? 4000
+          maxTokens: chatSettings?.contextLength ?? 4000,
+          forceMode: deepResearchEnabled ? "investigate" : undefined,
+          deepResearch: deepResearchEnabled
         },
         abortController,
         callbacks
@@ -476,7 +510,15 @@ export const useChatHandlerV2 = () => {
     setUserInput,
     setSelectedChat,
     setChats,
-    setChatImages
+    setChatImages,
+    // LangGraph state setters
+    setLangGraphTodo,
+    setLangGraphEvidence,
+    setLangGraphInterrupt,
+    setLangGraphMode,
+    setLangGraphThreadId,
+    // Deep Research toggle
+    deepResearchEnabled
   ])
 
   const handleSendEdit = useCallback(async (

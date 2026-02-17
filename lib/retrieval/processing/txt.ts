@@ -1,6 +1,6 @@
 import { FileItemChunk } from "@/types"
 import { encode } from "gpt-tokenizer"
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter"
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters"
 import { CHUNK_OVERLAP, CHUNK_SIZE } from "."
 
 export const processTxt = async (txt: Blob): Promise<FileItemChunk[]> => {

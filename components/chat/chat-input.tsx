@@ -18,6 +18,7 @@ import { useChatHistoryHandler } from "./chat-hooks/use-chat-history"
 import { usePromptAndCommand } from "./chat-hooks/use-prompt-and-command"
 import { useSelectFileHandler } from "./chat-hooks/use-select-file-handler"
 import { CreateFileModal } from "../modals/CreateFileModal"
+import { DeepResearchToggle } from "./deep-research-toggle"
 
 interface ChatInputProps { }
 
@@ -54,7 +55,9 @@ export const ChatInput: FC<ChatInputProps> = ({ }) => {
     setSelectedTools,
     assistantImages,
     showPlaceholderSuggestions,
-    setShowPlaceholderSuggestions
+    setShowPlaceholderSuggestions,
+    deepResearchEnabled,
+    setDeepResearchEnabled
   } = useContext(ALIContext)
 
   const {
@@ -243,24 +246,31 @@ export const ChatInput: FC<ChatInputProps> = ({ }) => {
             "Escribe un derecho de petición para solicitar información pública"
           ]}
           leftElement={
-            <CreateFileModal onFileCreated={(file) => {
-              console.log('Archivo creado:', file)
-            }}>
-              <motion.div
-                whileHover={{ scale: 1.05, rotate: 90 }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                className={cn(
-                  "flex items-center justify-center",
-                  "w-10 h-10 rounded-xl",
-                  "bg-muted/50 hover:bg-muted",
-                  "cursor-pointer transition-colors duration-200",
-                  "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Plus className="w-5 h-5" />
-              </motion.div>
-            </CreateFileModal>
+            <div className="flex items-center gap-2">
+              <DeepResearchToggle
+                enabled={deepResearchEnabled}
+                onToggle={setDeepResearchEnabled}
+                disabled={streamPhase === "streaming" || streamPhase === "classifying" || streamPhase === "searching"}
+              />
+              <CreateFileModal onFileCreated={(file) => {
+                console.log('Archivo creado:', file)
+              }}>
+                <motion.div
+                  whileHover={{ scale: 1.05, rotate: 90 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                  className={cn(
+                    "flex items-center justify-center",
+                    "w-10 h-10 rounded-xl",
+                    "bg-muted/50 hover:bg-muted",
+                    "cursor-pointer transition-colors duration-200",
+                    "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Plus className="w-5 h-5" />
+                </motion.div>
+              </CreateFileModal>
+            </div>
           }
           rightElement={
             (streamPhase === "streaming" || streamPhase === "classifying" || streamPhase === "searching") ? (

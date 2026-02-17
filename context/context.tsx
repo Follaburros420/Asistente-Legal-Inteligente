@@ -10,7 +10,7 @@ import {
 } from "@/types"
 import { AssistantImage } from "@/types/images/assistant-image"
 import { VALID_ENV_KEYS } from "@/types/valid-keys"
-import { StreamState } from "@/lib/stream-protocol"
+import { StreamState, TodoItem, Evidence, InterruptPayload } from "@/lib/stream-protocol"
 import { Dispatch, SetStateAction, createContext } from "react"
 
 interface ALIContext {
@@ -157,6 +157,22 @@ interface ALIContext {
   setStreamPhase: Dispatch<SetStateAction<StreamState["phase"]>>
   streamMessage: string
   setStreamMessage: Dispatch<SetStateAction<string>>
+
+  // LANGGRAPH STATE STORE
+  langGraphTodo: TodoItem[]
+  setLangGraphTodo: Dispatch<SetStateAction<TodoItem[]>>
+  langGraphEvidence: Evidence
+  setLangGraphEvidence: Dispatch<SetStateAction<Evidence>>
+  langGraphInterrupt: InterruptPayload | null
+  setLangGraphInterrupt: Dispatch<SetStateAction<InterruptPayload | null>>
+  langGraphMode: "investigate" | "draft" | null
+  setLangGraphMode: Dispatch<SetStateAction<"investigate" | "draft" | null>>
+  langGraphThreadId: string | null
+  setLangGraphThreadId: Dispatch<SetStateAction<string | null>>
+
+  // DEEP RESEARCH TOGGLE STORE
+  deepResearchEnabled: boolean
+  setDeepResearchEnabled: Dispatch<SetStateAction<boolean>>
 }
 
 export const ALIContext = createContext<ALIContext>({
@@ -314,5 +330,21 @@ export const ALIContext = createContext<ALIContext>({
   streamPhase: "idle",
   setStreamPhase: () => { },
   streamMessage: "",
-  setStreamMessage: () => { }
+  setStreamMessage: () => { },
+
+  // LANGGRAPH STATE STORE
+  langGraphTodo: [],
+  setLangGraphTodo: () => { },
+  langGraphEvidence: { chunks: [], graph_refs: [], web_refs: [] },
+  setLangGraphEvidence: () => { },
+  langGraphInterrupt: null,
+  setLangGraphInterrupt: () => { },
+  langGraphMode: null,
+  setLangGraphMode: () => { },
+  langGraphThreadId: null,
+  setLangGraphThreadId: () => { },
+
+  // DEEP RESEARCH TOGGLE STORE
+  deepResearchEnabled: false,
+  setDeepResearchEnabled: () => { }
 })

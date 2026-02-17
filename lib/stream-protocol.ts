@@ -21,6 +21,9 @@ export type StreamEventType =
   | "done"
   | "error"
   | "cancelled"
+  | "todo_update"
+  | "evidence_update"
+  | "interrupt"
 
 export type StreamPhase =
   | "idle"           // Sin actividad
@@ -86,6 +89,93 @@ export interface StreamEventCancelled {
   reason?: string
 }
 
+// ============================================================================
+// LANGGRAPH EVENT TYPES
+// ============================================================================
+
+export interface TodoItem {
+  id: string
+  label: string
+  status: "pending" | "running" | "done" | "error"
+  details?: string
+  started_at?: string
+  completed_at?: string
+}
+
+export interface StreamEventTodoUpdate {
+  type: "todo_update"
+  items: TodoItem[]
+  mode?: "investigate" | "draft"
+}
+
+export interface EvidenceChunk {
+  id: string
+  text: string
+  source_id: string
+  doc_id: string
+  case_id?: string
+  score: number
+  metadata?: Record<string, any>
+}
+
+export interface GraphReference {
+  node_id: string
+  entity_type: string
+  name: string
+  relation_type?: string
+  properties?: Record<string, any>
+}
+
+export interface WebReference {
+  url: string
+  title: string
+  snippet: string
+  date?: string
+  score?: number
+  source_type?: string
+}
+
+export interface Evidence {
+  chunks: EvidenceChunk[]
+  graph_refs: GraphReference[]
+  web_refs: WebReference[]
+}
+
+export interface StreamEventEvidenceUpdate {
+  type: "evidence_update"
+  evidence: Evidence
+}
+
+export interface Question {
+  id: string
+  label: string
+  type: "yes_no" | "text" | "select"
+  default?: string | boolean
+  depends_on?: {
+    question_id: string
+    value: any
+  }
+  section?: string
+  required?: boolean
+  help?: string
+  options?: string[]
+}
+
+export interface InterruptPayload {
+  ui_type: "yes_no_list" | "text_input" | "document_preview"
+  title: string
+  why_needed: string
+  what_happens_next?: string
+  questions: Question[]
+  explain?: string
+  thread_id?: string
+}
+
+export interface StreamEventInterrupt {
+  type: "interrupt"
+  payload: InterruptPayload
+}
+
 export type StreamEvent =
   | StreamEventMeta
   | StreamEventStatus
@@ -94,6 +184,9 @@ export type StreamEvent =
   | StreamEventDone
   | StreamEventError
   | StreamEventCancelled
+  | StreamEventTodoUpdate
+  | StreamEventEvidenceUpdate
+  | StreamEventInterrupt
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ESTADO DEL STREAM
@@ -301,7 +394,10 @@ export function isValidStreamEvent(event: unknown): event is StreamEvent {
   const e = event as Record<string, unknown>
   if (!e.type || typeof e.type !== "string") return false
   
-  const validTypes: StreamEventType[] = ["meta", "status", "delta", "citations", "done", "error", "cancelled"]
+  const validTypes: StreamEventType[] = [
+    "meta", "status", "delta", "citations", "done", "error", "cancelled",
+    "todo_update", "evidence_update", "interrupt"
+  ]
   return validTypes.includes(e.type as StreamEventType)
 }
 

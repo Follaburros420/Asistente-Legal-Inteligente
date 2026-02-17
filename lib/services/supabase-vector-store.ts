@@ -55,7 +55,7 @@ export interface GraphRelation {
   metadata?: Record<string, any>
 }
 
-class SupabaseVectorStore {
+export class SupabaseVectorStore {
   private supabase: any
   private openai: OpenAI | null = null
 
@@ -175,6 +175,7 @@ class SupabaseVectorStore {
 
   /**
    * Vector similarity search
+   * Searches both document_chunks and ingestion_chunks tables
    */
   async similaritySearch(
     query: string,
@@ -191,62 +192,75 @@ class SupabaseVectorStore {
       // Generate embedding for query
       const queryEmbedding = await this.generateEmbedding(query)
 
-      // Build the RPC call for vector search
-      let queryBuilder = this.supabase
-        .rpc('match_documents', {
-          query_embedding: queryEmbedding,
-          match_threshold: threshold,
-          match_count: limit,
-          filter_process_id: processId || null,
-          filter_workspace_id: workspaceId || null
-        })
+      const allResults: SearchResult[] = []
 
-      const { data, error } = await queryBuilder
+      // 1. Search document_chunks via RPC
+      try {
+        const { data: docData, error: docError } = await this.supabase
+          .rpc('match_documents', {
+            query_embedding: `[${queryEmbedding.join(',')}]`,
+            match_threshold: threshold,
+            match_count: limit,
+            filter_process_id: processId || null,
+            filter_workspace_id: workspaceId || null
+          })
 
-      if (error) {
-        // If RPC doesn't exist, fall back to direct query
-        console.warn('⚠️ RPC match_documents not found, using fallback query')
-        return await this.fallbackSimilaritySearch(queryEmbedding, options)
+        if (!docError && docData && docData.length > 0) {
+          console.log(`📚 [VectorStore] match_documents returned ${docData.length} results`)
+          allResults.push(...docData)
+        } else if (docError) {
+          console.warn('⚠️ match_documents RPC error:', docError.message)
+        }
+      } catch (err: any) {
+        console.warn('⚠️ match_documents RPC failed:', err.message)
       }
 
-      return data || []
+      // 2. Search ingestion_chunks via RPC (newer ingestion pipeline)
+      try {
+        const { data: ingData, error: ingError } = await this.supabase
+          .rpc('match_ingestion_chunks', {
+            query_embedding: `[${queryEmbedding.join(',')}]`,
+            match_threshold: threshold,
+            match_count: limit,
+            filter_process_id: processId || null,
+            filter_workspace_id: workspaceId || null
+          })
+
+        if (!ingError && ingData && ingData.length > 0) {
+          console.log(`📚 [VectorStore] match_ingestion_chunks returned ${ingData.length} results`)
+          allResults.push(...ingData.map((item: any) => ({
+            id: item.id,
+            content: item.content,
+            metadata: item.metadata,
+            similarity: item.similarity,
+            process_id: item.process_id,
+            document_id: item.document_id
+          })))
+        } else if (ingError) {
+          console.warn('⚠️ match_ingestion_chunks RPC error:', ingError.message)
+        }
+      } catch (err: any) {
+        console.warn('⚠️ match_ingestion_chunks RPC failed:', err.message)
+      }
+
+      // Sort by similarity and deduplicate
+      const seen = new Set<string>()
+      const deduplicated = allResults
+        .sort((a, b) => b.similarity - a.similarity)
+        .filter(r => {
+          const key = `${r.id}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        .slice(0, limit)
+
+      console.log(`📚 [VectorStore] Total results: ${deduplicated.length} (from ${allResults.length} raw)`)
+      return deduplicated
     } catch (error: any) {
       console.error('❌ Error in similaritySearch:', error)
       return []
     }
-  }
-
-  /**
-   * Fallback similarity search using direct SQL
-   */
-  private async fallbackSimilaritySearch(
-    queryEmbedding: number[],
-    options: {
-      processId?: string
-      workspaceId?: string
-      limit?: number
-      threshold?: number
-    } = {}
-  ): Promise<SearchResult[]> {
-    const { processId, workspaceId, limit = 5, threshold = 0.7 } = options
-
-    // Use raw SQL for vector search
-    const { data, error } = await this.supabase
-      .from('document_chunks')
-      .select('id, content, metadata, process_id, document_id')
-      .eq(processId ? 'process_id' : 'id', processId || 'id')
-      .limit(limit)
-
-    if (error) {
-      console.error('❌ Error in fallback search:', error)
-      return []
-    }
-
-    // For now, return without similarity scores (would need RPC for proper cosine similarity)
-    return (data || []).map((item: any) => ({
-      ...item,
-      similarity: 1.0
-    }))
   }
 
   /**

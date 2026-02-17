@@ -14,7 +14,10 @@ import {
   parseStreamEvent, 
   isValidStreamEvent,
   logStreamEvent,
-  logStreamError 
+  logStreamError,
+  TodoItem,
+  Evidence,
+  InterruptPayload
 } from "@/lib/stream-protocol"
 import { Tables, TablesInsert } from "@/supabase/types"
 import {
@@ -240,17 +243,23 @@ export const handleHostedChat = async (
     throw err
   }
 
-  // Verificar si está en modo de redacción legal
+  // Verificar si está en modo de redacción legal o deep research
   const chatMode = typeof window !== 'undefined' ? localStorage.getItem('chatMode') : null
+  const deepResearchEnabled = typeof window !== 'undefined' 
+    ? localStorage.getItem('deepResearchEnabled') === 'true' 
+    : false
 
-  // Determinar endpoint: usar stream (único endpoint disponible)
-  let apiEndpoint = "/api/chat/stream"
+  // Determinar endpoint según el modo
+  let apiEndpoint = "/api/chat/simple" // Por defecto usar el endpoint simplificado
 
   if (chatMode === 'legal-writing') {
     apiEndpoint = "/api/chat/legal-writing"
+  } else if (deepResearchEnabled) {
+    apiEndpoint = "/api/chat/deep-research"
   }
   
   console.log("[handleHostedChat] 🌐 Endpoint:", apiEndpoint)
+  console.log("[handleHostedChat] 🔬 Deep Research:", deepResearchEnabled)
   console.log("[handleHostedChat] 🔍 window.location:", typeof window !== 'undefined' ? window.location.origin : 'SSR')
   
   // Verificar si la URL es correcta
@@ -260,7 +269,7 @@ export const handleHostedChat = async (
   console.log("[handleHostedChat] 🌐 Full URL:", fullUrl)
 
   // Construir requestBody según el endpoint
-  // El nuevo endpoint /api/chat/stream espera: { message, history, config }
+  // El endpoint /api/chat/simple espera: { message, history, config }
   const lastMessage = formattedMessages[formattedMessages.length - 1]
   const historyMessages = formattedMessages.slice(0, -1)
   
@@ -273,7 +282,9 @@ export const handleHostedChat = async (
     config: {
       model: payload.chatSettings.model,
       temperature: payload.chatSettings.temperature,
-      maxTokens: 4000
+      maxTokens: 4000,
+      enableWebSearch: true, // Habilitar búsqueda web para el endpoint simple
+      deepResearch: deepResearchEnabled
     }
   }
   
@@ -355,6 +366,10 @@ export interface StreamHandlers {
   onCitations?: (citations: BibliographyItem[]) => void
   onComplete?: (text: string, citations: BibliographyItem[]) => void
   onError?: (error: string) => void
+  // LangGraph event handlers
+  onTodoUpdate?: (items: TodoItem[], mode?: "investigate" | "draft") => void
+  onEvidenceUpdate?: (evidence: Evidence) => void
+  onInterrupt?: (payload: InterruptPayload) => void
 }
 
 export const processResponse = async (
@@ -452,6 +467,22 @@ export const processResponse = async (
         
       case "cancelled":
         currentPhase = "cancelled"
+        break
+        
+      // LangGraph event handlers
+      case "todo_update":
+        console.log("[processResponse] 📋 Evento TODO_UPDATE - items:", (event as any).items?.length)
+        streamHandlers?.onTodoUpdate?.((event as any).items, (event as any).mode)
+        break
+        
+      case "evidence_update":
+        console.log("[processResponse] 🔍 Evento EVIDENCE_UPDATE - evidence:", (event as any).evidence)
+        streamHandlers?.onEvidenceUpdate?.((event as any).evidence)
+        break
+        
+      case "interrupt":
+        console.log("[processResponse] ⏸️ Evento INTERRUPT - payload:", (event as any).payload)
+        streamHandlers?.onInterrupt?.((event as any).payload)
         break
     }
   }

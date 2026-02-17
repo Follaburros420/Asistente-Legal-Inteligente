@@ -389,6 +389,73 @@ export async function searchLegalSpecialized(query: string, numResults: number =
   
   const startTime = Date.now()
   
+  // Check if query is too simple (less than 3 meaningful words)
+  const meaningfulWords = query.split(' ').filter(w => w.length > 2).length
+  const isSimpleQuery = meaningfulWords < 2
+  
+  if (isSimpleQuery) {
+    console.log(`⚠️ Consulta simple detectada, usando búsqueda general`)
+    // For simple queries, use a basic search without complex site: operators
+    try {
+      const apiKey = process.env.SERPER_API_KEY
+      if (!apiKey) {
+        throw new Error('SERPER_API_KEY no configurada')
+      }
+      
+      const response = await fetch('https://google.serper.dev/search', {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          q: query,
+          num: numResults
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Serper API Error: ${response.status} ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.organic && data.organic.length > 0) {
+        const results: LegalSearchResult[] = data.organic.map((item: any) => ({
+          title: item.title || 'Sin título',
+          url: item.link || '',
+          snippet: item.snippet || item.description || 'Sin descripción',
+          source: 'Serper',
+          type: classifyLegalSource(item.link || '', item.title || ''),
+          relevance: calculateLegalRelevance(item.link || '', item.title || '', item.snippet || ''),
+          jurisdiction: 'Colombia'
+        }))
+        
+        const duration = Date.now() - startTime
+        console.log(`✅ Búsqueda simple exitosa (${duration}ms)`)
+        return {
+          success: true,
+          query,
+          results,
+          sources: results.map(r => r.url),
+          timestamp: new Date().toISOString(),
+          searchStrategy: 'Simple Search'
+        }
+      }
+    } catch (error) {
+      console.log(`❌ Error en búsqueda simple: ${error instanceof Error ? error.message : 'Unknown'}`)
+      return { 
+        success: false, 
+        query, 
+        results: [], 
+        sources: [], 
+        timestamp: new Date().toISOString(),
+        searchStrategy: 'Simple Search',
+        error: error instanceof Error ? error.message : 'Unknown'
+      }
+    }
+  }
+  
   // Estrategia 1: Fuentes oficiales (máxima prioridad)
   let result = await searchOfficialLegal(query, numResults)
   if (result.success && result.results.length > 0) {

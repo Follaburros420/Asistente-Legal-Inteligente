@@ -21,6 +21,9 @@ import { ChatInput } from "./chat-input"
 import { ChatMessages } from "./chat-messages"
 import { ChatSecondaryButtons } from "./chat-secondary-buttons"
 import { normalizeMModel } from "@/lib/models/m1-models"
+import { LangGraphSidebar, LangGraphMiniIndicator } from "@/components/langgraph/LangGraphSidebar"
+import { YesNoInterruptModal } from "@/components/langgraph/YesNoInterruptModal"
+import { DeepResearchMiniIndicator, DeepResearchProgress } from "@/components/langgraph/DeepResearchProgress"
 
 interface ChatUIProps { }
 
@@ -43,7 +46,11 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     setShowFilesDisplay,
     setUseRetrieval,
     setSelectedTools,
-    streamPhase
+    streamPhase,
+    // LangGraph state
+    langGraphInterrupt,
+    setLangGraphInterrupt,
+    langGraphThreadId
   } = useContext(ALIContext)
 
   const { handleNewChat, handleFocusChatInput } = useChatHandlerV2()
@@ -261,9 +268,13 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
     <div className="flex h-full flex-col bg-gradient-to-br from-background via-background to-primary/20 overflow-hidden">
       {/* Header: surface semitransparente + blur, sin border */}
       <header
-        className="flex-shrink-0 px-2 py-2.5 sm:px-3 md:px-6 md:py-4 pt-[max(0.5rem,env(safe-area-inset-top))] flex items-center justify-end relative bg-background/60 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.18)]"
+        className="flex-shrink-0 px-2 py-2.5 sm:px-3 md:px-6 md:py-4 pt-[max(0.5rem,env(safe-area-inset-top))] flex items-center justify-between relative bg-background/60 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.18)]"
         role="banner"
       >
+        <div className="flex items-center gap-2">
+          <LangGraphMiniIndicator />
+          <DeepResearchMiniIndicator />
+        </div>
         <div className="flex-shrink-0 z-20">
           <ModelSelectorToggle />
         </div>
@@ -314,6 +325,39 @@ export const ChatUI: FC<ChatUIProps> = ({ }) => {
       <div className="absolute bottom-2 right-2 hidden md:block lg:bottom-4 lg:right-4">
         <ChatHelp />
       </div>
+
+      {/* LangGraph Sidebar */}
+      <LangGraphSidebar />
+
+      {/* LangGraph Interrupt Modal */}
+      {langGraphInterrupt && (
+        <YesNoInterruptModal
+          payload={langGraphInterrupt}
+          onSubmit={async (answers) => {
+            // Resume the LangGraph pipeline with the answers
+            try {
+              const response = await fetch("/api/langgraph/resume", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  threadId: langGraphThreadId,
+                  answers
+                })
+              })
+              
+              if (!response.ok) {
+                throw new Error(`API error: ${response.status}`)
+              }
+              
+              setLangGraphInterrupt(null)
+            } catch (error) {
+              console.error("Error resuming LangGraph:", error)
+            }
+          }}
+          onCancel={() => setLangGraphInterrupt(null)}
+          isOpen={true}
+        />
+      )}
     </div>
   )
 }

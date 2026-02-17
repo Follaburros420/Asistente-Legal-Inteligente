@@ -15,6 +15,7 @@ export interface DeepResearchOptions {
   maxResearchRounds?: number
   maxSearchesPerRound?: number
   searchTimeoutMs?: number
+  onProgress?: (round: number, totalRounds: number, phase: string, message: string) => void
 }
 
 export interface ResearchSource {
@@ -98,7 +99,8 @@ export async function runDeepResearchWorkflow(
     model,
     maxResearchRounds = 5,
     maxSearchesPerRound = 6,
-    searchTimeoutMs = 35000
+    searchTimeoutMs = 35000,
+    onProgress
   } = options
 
   console.log(`\n🔍 INICIANDO INVESTIGACIÓN PROFUNDA MEJORADA`)
@@ -112,6 +114,7 @@ export async function runDeepResearchWorkflow(
 
   try {
     // FASE 1: Planificación inicial exhaustiva
+    onProgress?.(0, maxResearchRounds, "planning", "Planificando estrategia de investigación...")
     const { initialPlan, minRequiredRounds, mandatoryQueries } = await executePlanningPhase(
       client, model, userQuery
     )
@@ -119,10 +122,11 @@ export async function runDeepResearchWorkflow(
     // FASE 2: Ejecución iterativa exigente
     const { rounds, allSources, gapsIdentified } = await executeIterativePhase(
       client, model, userQuery, initialPlan, minRequiredRounds, mandatoryQueries,
-      maxResearchRounds, maxSearchesPerRound, searchTimeoutMs
+      maxResearchRounds, maxSearchesPerRound, searchTimeoutMs, onProgress
     )
 
     // FASE 3: Síntesis final mejorada
+    onProgress?.(rounds.length, maxResearchRounds, "synthesizing", "Sintetizando hallazgos...")
     const result = await executeSynthesisPhase(
       client, model, userQuery, allSources, rounds, startTime
     )
@@ -192,7 +196,8 @@ async function executeIterativePhase(
   mandatoryQueries: string[],
   maxResearchRounds: number,
   maxSearchesPerRound: number,
-  searchTimeoutMs: number
+  searchTimeoutMs: number,
+  onProgress?: (round: number, totalRounds: number, phase: string, message: string) => void
 ): Promise<{
   rounds: ResearchRound[];
   allSources: ResearchSource[];
@@ -209,6 +214,9 @@ async function executeIterativePhase(
   for (let round = 1; round <= maxResearchRounds; round++) {
     console.log(`\n🔍 RONDA ${round} DE INVESTIGACIÓN`)
     const roundStart = Date.now()
+    
+    // Report progress
+    onProgress?.(round, maxResearchRounds, "searching", `Ronda ${round}: Buscando fuentes...`)
     
     // Generar consultas específicas para esta ronda
     let queries: string[] = []
@@ -420,13 +428,12 @@ async function executeSearchRound(
   for (const query of queries.slice(0, maxSearchesPerRound)) {
     try {
       console.log(`🔍 Buscando: "${query}"`)
-      const searchResult = await searchLegalSpecialized(query, searchTimeoutMs)
+      // Use 5 results per query (second parameter is numResults, not timeout)
+      const searchResult = await searchLegalSpecialized(query, 5)
       
       if (searchResult.success && searchResult.results.length > 0) {
-        const enrichedResults = await enrichLegalResults(searchResult.results, searchTimeoutMs)
-        
-        // Convertir LegalSearchResult a ResearchSource
-        const researchSources: ResearchSource[] = enrichedResults.map(result => ({
+        // Skip enrichment for speed - use results directly
+        const researchSources: ResearchSource[] = searchResult.results.map(result => ({
           title: result.title,
           url: result.url,
           snippet: result.snippet,

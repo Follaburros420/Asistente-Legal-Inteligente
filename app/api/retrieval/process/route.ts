@@ -9,7 +9,7 @@ import {
   processTxt
 } from "@/lib/retrieval/processing"
 import mammoth from "mammoth"
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter"
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters"
 import { encode } from "gpt-tokenizer"
 import { CHUNK_SIZE, CHUNK_OVERLAP } from "@/lib/retrieval/processing"
 import { checkApiKey, getServerProfile } from "@/lib/server/server-chat-helpers"

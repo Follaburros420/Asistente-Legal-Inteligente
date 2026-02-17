@@ -1,7 +1,7 @@
 /**
  * Chat Streaming Real - Protocolo v3
  *
- * Usa /api/chat/stream con:
+ * Usa /api/chat/stream para chat normal y /api/chat/deep-research para investigación profunda
  * - Streaming real (no fake)
  * - Eventos del protocolo v2
  * - Cancelación end-to-end
@@ -9,7 +9,7 @@
  */
 
 import { BibliographyItem } from "@/types/chat-message";
-import { StreamEvent, isValidStreamEvent } from "@/lib/stream-protocol";
+import { StreamEvent, isValidStreamEvent, TodoItem, Evidence, InterruptPayload } from "@/lib/stream-protocol";
 import { toast } from "sonner";
 import {
   getErrorMessage,
@@ -29,6 +29,10 @@ export interface StreamCallbacks {
   onDone?: (metadata?: Record<string, unknown>) => void;
   onError?: (message: string, code?: string) => void;
   onCancelled?: (reason?: string) => void;
+  // LangGraph callbacks
+  onTodoUpdate?: (items: TodoItem[], mode?: "investigate" | "draft") => void;
+  onEvidenceUpdate?: (evidence: Evidence) => void;
+  onInterrupt?: (payload: InterruptPayload) => void;
 }
 
 export interface StreamChatResult {
@@ -45,19 +49,31 @@ export async function streamChat(
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    forceMode?: "investigate" | "draft";
+    threadId?: string;
+    caseContext?: Record<string, any>;
+    deepResearch?: boolean;
   },
   abortController: AbortController,
   callbacks: StreamCallbacks,
 ): Promise<StreamChatResult> {
   console.log("[streamChat] 🚀 Starting stream...");
+  console.log("[streamChat] 🔬 Deep Research:", config.deepResearch ? "enabled" : "disabled");
 
   let fullText = "";
   let citations: BibliographyItem[] = [];
   let cancelled = false;
   let error: string | undefined;
 
+  // Choose endpoint based on deep research flag
+  // Use /api/chat/simple for normal chat (faster, simpler)
+  // Use /api/chat/deep-research for deep research (multi-round searches)
+  const endpoint = config.deepResearch 
+    ? "/api/chat/deep-research" 
+    : "/api/chat/simple";
+
   try {
-    const response = await fetch("/api/chat/stream", {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -69,6 +85,10 @@ export async function streamChat(
           model: config.model || "openai/gpt-4o-mini",
           temperature: config.temperature ?? 0.3,
           maxTokens: config.maxTokens ?? 4000,
+          enableWebSearch: true, // Always enable web search for simple chat
+          forceMode: config.forceMode,
+          threadId: config.threadId,
+          caseContext: config.caseContext,
         },
       }),
       signal: abortController.signal,
@@ -162,6 +182,22 @@ export async function streamChat(
           case "cancelled":
             cancelled = true;
             callbacks.onCancelled?.((event as any).reason);
+            break;
+
+          // LangGraph events
+          case "todo_update":
+            console.log("[streamChat] 📋 Todo update:", (event as any).items?.length, "items");
+            callbacks.onTodoUpdate?.((event as any).items, (event as any).mode);
+            break;
+
+          case "evidence_update":
+            console.log("[streamChat] 🔍 Evidence update:", (event as any).evidence);
+            callbacks.onEvidenceUpdate?.((event as any).evidence);
+            break;
+
+          case "interrupt":
+            console.log("[streamChat] ⏸️ Interrupt:", (event as any).payload);
+            callbacks.onInterrupt?.((event as any).payload);
             break;
         }
       }

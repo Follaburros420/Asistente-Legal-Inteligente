@@ -80,7 +80,7 @@ export interface RelationExtraction {
   metadata?: Record<string, any>
 }
 
-class Neo4jGraphService {
+export class Neo4jGraphService {
   private driver: Driver | null = null
   private uri: string
   private username: string

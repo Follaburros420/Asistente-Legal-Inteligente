@@ -3,7 +3,7 @@
 "use client"
 
 import { ALIContext } from "@/context/context"
-import { StreamState, INITIAL_STREAM_STATE } from "@/lib/stream-protocol"
+import { StreamState, INITIAL_STREAM_STATE, TodoItem, Evidence, InterruptPayload } from "@/lib/stream-protocol"
 import { toast } from "sonner"
 import { getProfileByUserId } from "@/db/profile"
 import { getWorkspaceImageFromStorage } from "@/db/storage/workspace-images"
@@ -229,6 +229,16 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
   const [streamState, setStreamState] = useState<StreamState>(INITIAL_STREAM_STATE)
   const [streamPhase, setStreamPhase] = useState<StreamState["phase"]>("idle")
   const [streamMessage, setStreamMessage] = useState<string>("")
+
+  // LANGGRAPH STATE STORE
+  const [langGraphTodo, setLangGraphTodo] = useState<TodoItem[]>([])
+  const [langGraphEvidence, setLangGraphEvidence] = useState<Evidence>({ chunks: [], graph_refs: [], web_refs: [] })
+  const [langGraphInterrupt, setLangGraphInterrupt] = useState<InterruptPayload | null>(null)
+  const [langGraphMode, setLangGraphMode] = useState<"investigate" | "draft" | null>(null)
+  const [langGraphThreadId, setLangGraphThreadId] = useState<string | null>(null)
+
+  // DEEP RESEARCH TOGGLE STORE
+  const [deepResearchEnabled, setDeepResearchEnabled] = useState<boolean>(false)
 
   // Exponer estado para debuggear en consola (solo en desarrollo)
   useEffect(() => {
@@ -542,7 +552,23 @@ Responde SIEMPRE en español y con un enfoque 100% profesional específico para 
           streamPhase,
           setStreamPhase,
           streamMessage,
-          setStreamMessage
+          setStreamMessage,
+
+          // LANGGRAPH STATE STORE
+          langGraphTodo,
+          setLangGraphTodo,
+          langGraphEvidence,
+          setLangGraphEvidence,
+          langGraphInterrupt,
+          setLangGraphInterrupt,
+          langGraphMode,
+          setLangGraphMode,
+          langGraphThreadId,
+          setLangGraphThreadId,
+
+          // DEEP RESEARCH TOGGLE STORE
+          deepResearchEnabled,
+          setDeepResearchEnabled
         }}
       >
         {isLoading ? <LoadingScreen message={loadingMessage} /> : children}

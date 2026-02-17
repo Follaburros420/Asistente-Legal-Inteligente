@@ -11,6 +11,7 @@ import { PlaceholdersAndVanishInput, ModernSendIcon } from "@/components/ui/plac
 import { CreateFileModal } from "@/components/modals/CreateFileModal"
 import { cn } from "@/lib/utils"
 import { ThinkingIndicator } from "@/components/messages/thinking-indicator"
+import { DeepResearchToggle } from "@/components/chat/deep-research-toggle"
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUGGESTIONS CONFIG
@@ -68,7 +69,7 @@ interface WelcomeScreenProps {
 }
 
 export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
-  const { selectedWorkspace } = useContext(ALIContext)
+  const { selectedWorkspace, deepResearchEnabled, setDeepResearchEnabled } = useContext(ALIContext)
   const { handleNewChat, handleSendMessage } = useChatHandler()
   const [inputValue, setInputValue] = useState("")
   const [selectedShader, setSelectedShader] = useState(1)
@@ -316,21 +317,28 @@ export function WelcomeScreen({ mode = 'default' }: WelcomeScreenProps) {
             onSubmit={handleSubmit}
             value={inputValue}
             leftElement={
-              <CreateFileModal onFileCreated={(file) => console.log(file)}>
-                <motion.div
-                  whileHover={{ scale: 1.05, rotate: 90 }}
-                  whileTap={{ scale: 0.95 }}
-                  className={cn(
-                    "flex items-center justify-center",
-                    "w-10 h-10 rounded-xl",
-                    "bg-muted/50 hover:bg-muted",
-                    "cursor-pointer transition-colors",
-                    "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Plus className="w-5 h-5" />
-                </motion.div>
-              </CreateFileModal>
+              <div className="flex items-center gap-2">
+                <DeepResearchToggle
+                  enabled={deepResearchEnabled}
+                  onToggle={setDeepResearchEnabled}
+                  disabled={isSending}
+                />
+                <CreateFileModal onFileCreated={(file) => console.log(file)}>
+                  <motion.div
+                    whileHover={{ scale: 1.05, rotate: 90 }}
+                    whileTap={{ scale: 0.95 }}
+                    className={cn(
+                      "flex items-center justify-center",
+                      "w-10 h-10 rounded-xl",
+                      "bg-muted/50 hover:bg-muted",
+                      "cursor-pointer transition-colors",
+                      "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Plus className="w-5 h-5" />
+                  </motion.div>
+                </CreateFileModal>
+              </div>
             }
             rightElement={
               <ModernSendIcon
