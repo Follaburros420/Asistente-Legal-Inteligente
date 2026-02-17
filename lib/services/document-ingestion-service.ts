@@ -1,7 +1,7 @@
 /**
- * Document Ingestion Service
+ * Document Ingestion Service (Refactored)
  * 
- * This service handles document ingestion using:
+ * This service handles document ingestion using the new high-quality pipeline:
  * - Docling for document parsing and text extraction
  * - Supabase Vector Store for embeddings and similarity search
  * - Neo4j for knowledge graph
@@ -10,22 +10,32 @@
  * Architecture:
  * 1. Document uploaded to Wasabi (S3-compatible storage)
  * 2. Document parsed with Docling (PDF, DOCX, images, etc.)
- * 3. Document processed and chunked
+ * 3. Document processed with high-quality pipeline:
+ *    - Semantic chunking with structure preservation
+ *    - Stable IDs for idempotency
+ *    - Mention extraction with offsets
+ *    - Entity linking
+ *    - Relation extraction with evidence
  * 4. Embeddings generated and stored in Supabase Vector Store
- * 5. Entities extracted and stored in Neo4j knowledge graph
+ * 5. Entities and relations stored in Neo4j knowledge graph
+ * 6. Run tracking for auditing
  */
 
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
-import { encode } from 'gpt-tokenizer'
-import OpenAI from 'openai'
-import { supabaseVectorStore } from './supabase-vector-store'
-import { neo4jGraphService } from './neo4j-graph-service'
+import { 
+  IngestionService,
+  ingestionService,
+  IngestionResultDTO,
+  ChunkDTO,
+  EntityDTO,
+  RelationDTO,
+  MentionDTO,
+  RunExtraccionDTO,
+  EntityType,
+  RelCode
+} from '@/lib/ingestion'
 import { doclingService } from './docling-service'
-import { env } from '@/lib/env/runtime-env'
-
-// Chunking configuration for legal documents
-const CHUNK_SIZE = 650 // tokens
-const CHUNK_OVERLAP = 100 // tokens
+import { neo4jGraphService } from './neo4j-graph-service'
+import { supabaseVectorStore } from './supabase-vector-store'
 
 export interface IngestionResult {
   success: boolean
@@ -53,16 +63,21 @@ export interface IngestionOptions {
   fileBuffer?: Buffer
 }
 
+/**
+ * Refactored Document Ingestion Service
+ * Uses the new high-quality pipeline with:
+ * - Stable IDs for idempotency
+ * - Semantic chunking
+ * - Mention extraction with offsets
+ * - Entity linking
+ * - Relation extraction with evidence
+ * - Run tracking for auditing
+ */
 class DocumentIngestionService {
-  private openai: OpenAI | null = null
+  private ingestionService: IngestionService
 
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (apiKey) {
-      this.openai = new OpenAI({ apiKey })
-    } else {
-      console.warn('⚠️ OPENAI_API_KEY not configured - entity extraction will be limited')
-    }
+    this.ingestionService = ingestionService
   }
 
   /**
@@ -106,7 +121,7 @@ class DocumentIngestionService {
         content = fileBuffer.toString('utf-8')
       }
 
-      // Step 2: Ingest the parsed content
+      // Step 2: Ingest the parsed content using the new pipeline
       return this.ingestDocument(content, metadata, options)
     } catch (error: any) {
       console.error('❌ Error in ingestDocumentFromBuffer:', error)
@@ -121,7 +136,7 @@ class DocumentIngestionService {
   }
 
   /**
-   * Process and ingest a document
+   * Process and ingest a document using the high-quality pipeline
    */
   async ingestDocument(
     content: string,
@@ -131,92 +146,32 @@ class DocumentIngestionService {
     try {
       console.log(`📄 Starting ingestion for document: ${metadata.file_name}`)
 
-      // Step 1: Split document into chunks
-      const chunks = await this.splitDocument(content)
-      console.log(`📝 Created ${chunks.length} chunks`)
+      // Use the new high-quality pipeline
+      const result = await this.ingestionService.ingestFromText(content, {
+        fileName: metadata.file_name,
+        mimeType: metadata.mime_type,
+        processId: metadata.process_id,
+        workspaceId: metadata.workspace_id || '',
+        userId: metadata.user_id
+      })
 
-      // Step 2: Store chunks with embeddings in Supabase Vector Store
-      const chunksResult = await supabaseVectorStore.insertChunks(
-        chunks.map((chunk, index) => ({
-          process_id: metadata.process_id,
-          document_id: metadata.document_id,
-          workspace_id: metadata.workspace_id,
-          user_id: metadata.user_id,
-          content: chunk,
-          chunk_index: index,
-          metadata: {
-            file_name: metadata.file_name,
-            mime_type: metadata.mime_type
-          }
-        }))
-      )
-
-      if (!chunksResult.success) {
-        throw new Error(`Failed to store chunks: ${chunksResult.error}`)
-      }
-
-      console.log(`✅ Stored ${chunksResult.count} chunks in vector store`)
-
-      // Step 3: Extract entities using LLM (skip if skipGraph is true)
-      let entitiesExtracted = 0
-      
-      if (!options.skipGraph) {
-        const entities = await this.extractEntities(content, metadata.file_name)
-        console.log(`🔍 Extracted ${entities.length} entities`)
-
-        // Step 4: Store entities in Neo4j knowledge graph
-        for (const entity of entities) {
-          const entityId = crypto.randomUUID()
-          const result = await neo4jGraphService.createEntity({
-            entityId,
-            processId: metadata.process_id,
-            workspaceId: metadata.workspace_id,
-            name: entity.name,
-            type: entity.type,
-            summary: entity.summary,
-            metadata: entity.metadata
-          })
-
-          if (result.success) {
-            entitiesExtracted++
-
-            // Also store in Supabase for backup/query
-            await supabaseVectorStore.insertEntity({
-              id: entityId,
-              process_id: metadata.process_id,
-              workspace_id: metadata.workspace_id,
-              name: entity.name,
-              entity_type: entity.type,
-              summary: entity.summary,
-              neo4j_id: result.neo4jId,
-              metadata: entity.metadata
-            })
-          }
-        }
-
-        // Step 5: Create document node in Neo4j
-        await neo4jGraphService.upsertDocument({
+      if (!result.success) {
+        return {
+          success: false,
           documentId: metadata.document_id,
-          processId: metadata.process_id,
-          workspaceId: metadata.workspace_id,
-          fileName: metadata.file_name,
-          content: content.substring(0, 5000), // Store preview
-          metadata: {
-            chunk_count: chunks.length,
-            entity_count: entitiesExtracted
-          }
-        })
-      } else {
-        console.log(`⏩ Skipping graph storage (chat-only ingestion)`)
+          chunksCreated: 0,
+          entitiesExtracted: 0,
+          error: result.error
+        }
       }
 
-      console.log(`✅ Ingestion complete: ${chunksResult.count} chunks, ${entitiesExtracted} entities`)
+      console.log(`✅ Ingestion complete: ${result.chunksCreated} chunks, ${result.entitiesCreated} entities`)
 
       return {
         success: true,
-        documentId: metadata.document_id,
-        chunksCreated: chunksResult.count,
-        entitiesExtracted
+        documentId: result.documentId || metadata.document_id,
+        chunksCreated: result.chunksCreated,
+        entitiesExtracted: result.entitiesCreated
       }
     } catch (error: any) {
       console.error('❌ Error in ingestDocument:', error)
@@ -231,88 +186,11 @@ class DocumentIngestionService {
   }
 
   /**
-   * Split document into chunks
-   */
-  private async splitDocument(content: string): Promise<string[]> {
-    const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: CHUNK_SIZE * 4, // Approximate characters per token
-      chunkOverlap: CHUNK_OVERLAP * 4,
-      separators: ['\n\n', '\n', '. ', ' ', '']
-    })
-
-    const docs = await splitter.createDocuments([content])
-    return docs.map(doc => doc.pageContent)
-  }
-
-  /**
-   * Extract entities from document using LLM
-   */
-  private async extractEntities(
-    content: string,
-    fileName: string
-  ): Promise<Array<{
-    name: string
-    type: string
-    summary?: string
-    metadata?: Record<string, any>
-  }>> {
-    if (!this.openai) {
-      console.warn('⚠️ OpenAI not configured, skipping entity extraction')
-      return []
-    }
-
-    try {
-      const prompt = `Analiza el siguiente documento legal y extrae las entidades importantes.
-Para cada entidad, proporciona:
-- name: nombre de la entidad
-- type: tipo (persona, organización, fecha, dinero, ubicación, norma, artículo, hecho, documento)
-- summary: breve descripción de su relevancia en el documento
-
-Documento: ${fileName}
-
-Contenido (primeros 8000 caracteres):
-${content.substring(0, 8000)}
-
-Responde SOLO en formato JSON válido con un array de entidades:
-{"entities": [{"name": "...", "type": "...", "summary": "..."}]}`
-
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'Eres un experto en análisis de documentos legales colombianos. Extrae entidades de forma precisa y concisa.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' }
-      })
-
-      const result = JSON.parse(response.choices[0].message.content || '{"entities": []}')
-      return result.entities || []
-    } catch (error: any) {
-      console.error('❌ Error extracting entities:', error)
-      return []
-    }
-  }
-
-  /**
    * Delete a document and all its data
    */
   async deleteDocument(documentId: string, processId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // Delete from Supabase Vector Store
-      await supabaseVectorStore.deleteDocumentChunks(documentId)
-
-      // Delete from Neo4j
-      await neo4jGraphService.deleteDocument(documentId)
-
-      return { success: true }
+      return await this.ingestionService.deleteDocument(documentId)
     } catch (error: any) {
       console.error('❌ Error deleting document:', error)
       return { success: false, error: error.message }
@@ -324,13 +202,7 @@ Responde SOLO en formato JSON válido con un array de entidades:
    */
   async deleteProcess(processId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // Delete from Supabase Vector Store
-      await supabaseVectorStore.deleteProcessChunks(processId)
-
-      // Delete from Neo4j
-      await neo4jGraphService.deleteProcessGraph(processId)
-
-      return { success: true }
+      return await this.ingestionService.deleteProcess(processId)
     } catch (error: any) {
       console.error('❌ Error deleting process:', error)
       return { success: false, error: error.message }
@@ -341,9 +213,37 @@ Responde SOLO en formato JSON válido con un array de entidades:
    * Check if the service is configured
    */
   isConfigured(): boolean {
-    return supabaseVectorStore.isConfigured()
+    return this.ingestionService.isConfigured()
+  }
+
+  /**
+   * Get entities for a process (for backward compatibility)
+   */
+  async getProcessEntities(processId: string): Promise<any[]> {
+    try {
+      // Use the old neo4j service for backward compatibility
+      return await neo4jGraphService.getProcessGraph(processId).then(graph => graph.nodes)
+    } catch (error: any) {
+      console.error('❌ Error getting process entities:', error)
+      return []
+    }
+  }
+
+  /**
+   * Get the knowledge graph for a process (for backward compatibility)
+   */
+  async getProcessGraph(processId: string): Promise<{ nodes: any[]; edges: any[] }> {
+    try {
+      return await neo4jGraphService.getProcessGraph(processId)
+    } catch (error: any) {
+      console.error('❌ Error getting process graph:', error)
+      return { nodes: [], edges: [] }
+    }
   }
 }
 
 // Export singleton instance
 export const documentIngestionService = new DocumentIngestionService()
+
+// Re-export types for backward compatibility
+export type { IngestionResult as IngestionResultType }

@@ -32,7 +32,11 @@ const LAYER_OPTIONS = [
   { id: "hechos", label: "Hechos", color: "#8B5CF6" },
   { id: "pruebas", label: "Pruebas", color: "#22C55E" },
   { id: "normas", label: "Normas", color: "#3B82F6" },
-  { id: "personas", label: "Personas", color: "#EC4899" }
+  { id: "personas", label: "Personas", color: "#EC4899" },
+  { id: "conceptos", label: "Conceptos", color: "#6366F1" },
+  { id: "entidades", label: "Entidades", color: "#14B8A6" },
+  { id: "ubicaciones", label: "Ubicaciones", color: "#F59E0B" },
+  { id: "otros", label: "Otros", color: "#6B7280" }
 ]
 
 export const GraphSidePanel: FC<GraphSidePanelProps> = ({
@@ -45,7 +49,7 @@ export const GraphSidePanel: FC<GraphSidePanelProps> = ({
   className
 }) => {
   const [activeLayers, setActiveLayers] = useState<Set<string>>(
-    new Set(["hechos", "pruebas", "normas", "personas"])
+    new Set(["hechos", "pruebas", "normas", "personas", "conceptos", "entidades", "ubicaciones", "otros"])
   )
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)

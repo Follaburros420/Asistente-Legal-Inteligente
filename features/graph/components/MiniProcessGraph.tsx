@@ -31,32 +31,63 @@ interface MiniProcessGraphProps {
 }
 
 const NODE_COLORS: Record<string, string> = {
+  // Facts/Hechos - Purple
   hecho: "#8B5CF6",
   hechos: "#8B5CF6",
   fact: "#8B5CF6",
+  HECHO: "#8B5CF6",
+  // Evidence/Pruebas/Documentos - Green
   prueba: "#22C55E",
   pruebas: "#22C55E",
   evidence: "#22C55E",
   documento: "#22C55E",
   document: "#22C55E",
+  DOCUMENTO: "#22C55E",
+  // Norms/Laws - Blue
   norma: "#3B82F6",
   normas: "#3B82F6",
   law: "#3B82F6",
   articulo: "#3B82F6",
   artículo: "#3B82F6",
+  NORMA: "#3B82F6",
+  // People/Persons - Pink
   persona: "#EC4899",
   person: "#EC4899",
   organization: "#EC4899",
   organizacion: "#EC4899",
   organización: "#EC4899",
+  PERSONA_NATURAL: "#EC4899",
+  PERSONA_JURIDICA: "#EC4899",
+  // Legal Concepts - Indigo
+  CONCEPTO_JURIDICO: "#6366F1",
+  concepto_juridico: "#6366F1",
+  // Public Entities - Teal
+  ENTIDAD_PUBLICA: "#14B8A6",
+  entidad_publica: "#14B8A6",
+  DESPACHO_JUDICIAL: "#14B8A6",
+  despacho_judicial: "#14B8A6",
+  // Locations - Amber
+  fecha: "#F59E0B",
+  date: "#F59E0B",
+  location: "#F59E0B",
+  lugar: "#F59E0B",
+  UBICACION: "#F59E0B",
+  ubicacion: "#F59E0B",
+  // Other - Gray
+  OTRO: "#6B7280",
+  otro: "#6B7280",
   default: "#6B7280"
 }
 
 const CORE_LAYERS = [
-  { id: "hechos", types: ["hecho", "hechos", "fact"] },
-  { id: "pruebas", types: ["prueba", "pruebas", "evidence", "documento", "document"] },
-  { id: "normas", types: ["norma", "normas", "law", "articulo", "artículo"] },
-  { id: "personas", types: ["persona", "person", "organization", "organizacion", "organización"] }
+  { id: "hechos", types: ["hecho", "hechos", "fact", "HECHO"] },
+  { id: "pruebas", types: ["prueba", "pruebas", "evidence", "documento", "document", "DOCUMENTO"] },
+  { id: "normas", types: ["norma", "normas", "law", "articulo", "artículo", "NORMA"] },
+  { id: "personas", types: ["persona", "person", "organization", "organizacion", "organización", "PERSONA_NATURAL", "PERSONA_JURIDICA"] },
+  { id: "conceptos", types: ["CONCEPTO_JURIDICO", "concepto_juridico"] },
+  { id: "entidades", types: ["ENTIDAD_PUBLICA", "DESPACHO_JUDICIAL", "entidad_publica", "despacho_judicial"] },
+  { id: "ubicaciones", types: ["UBICACION", "ubicacion", "location", "lugar"] },
+  { id: "otros", types: ["OTRO", "otro", "FECHA", "fecha", "date"] }
 ]
 
 export const MiniProcessGraph: FC<MiniProcessGraphProps> = ({
@@ -65,7 +96,7 @@ export const MiniProcessGraph: FC<MiniProcessGraphProps> = ({
   onNodeClick,
   onNodeHover,
   highlightedNodeId,
-  activeLayers = new Set(["hechos", "pruebas", "normas", "personas"])
+  activeLayers = new Set(["hechos", "pruebas", "normas", "personas", "conceptos", "entidades", "ubicaciones", "otros"])
 }) => {
   const graphRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -146,7 +177,11 @@ export const MiniProcessGraph: FC<MiniProcessGraphProps> = ({
     const visibleTypes = new Set<string>()
     CORE_LAYERS.forEach((layer) => {
       if (activeLayers.has(layer.id)) {
-        layer.types.forEach((type) => visibleTypes.add(type.toLowerCase()))
+        // Add both lowercase and original case types for matching
+        layer.types.forEach((type) => {
+          visibleTypes.add(type.toLowerCase())
+          visibleTypes.add(type)
+        })
       }
     })
 
@@ -154,8 +189,9 @@ export const MiniProcessGraph: FC<MiniProcessGraphProps> = ({
 
     const visibleNodeIds = new Set<string>()
     const filteredNodes = graphData.nodes.filter((node) => {
-      const nodeType = node.type?.toLowerCase() || "default"
-      const isVisible = showAll || visibleTypes.has(nodeType) || nodeType === "default"
+      const nodeType = node.type || "default"
+      const nodeTypeLower = nodeType.toLowerCase()
+      const isVisible = showAll || visibleTypes.has(nodeType) || visibleTypes.has(nodeTypeLower) || nodeTypeLower === "default"
       if (isVisible) visibleNodeIds.add(node.id)
       return isVisible
     })

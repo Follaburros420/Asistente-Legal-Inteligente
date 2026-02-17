@@ -57,56 +57,81 @@ const GUIDED_VIEWS: Array<{
     id: "contradictions",
     label: es.graph.guidedViews.contradictions,
     description: es.graph.guidedDescriptions.contradictions,
-    layers: ["hechos", "pruebas", "normas", "personas"]
+    layers: ["hechos", "pruebas", "normas", "personas", "conceptos"]
   },
   {
     id: "critical-norms",
     label: es.graph.guidedViews.criticalNorms,
     description: es.graph.guidedDescriptions.criticalNorms,
-    layers: ["normas", "hechos"]
+    layers: ["normas", "hechos", "conceptos"]
   },
   {
     id: "facts-evidence",
     label: es.graph.guidedViews.factsEvidence,
     description: es.graph.guidedDescriptions.factsEvidence,
-    layers: ["hechos", "pruebas"]
+    layers: ["hechos", "pruebas", "documentos"]
   },
   {
     id: "key-people",
     label: es.graph.guidedViews.keyPeople,
     description: es.graph.guidedDescriptions.keyPeople,
-    layers: ["personas", "hechos"]
+    layers: ["personas", "hechos", "entidades"]
   }
 ]
 
 const NODE_COLORS: Record<string, string> = {
+  // Facts/Hechos - Purple
   hecho: "#8B5CF6",
   hechos: "#8B5CF6",
   fact: "#8B5CF6",
+  HECHO: "#8B5CF6",
+  // Evidence/Pruebas/Documentos - Green
   prueba: "#22C55E",
   pruebas: "#22C55E",
   evidence: "#22C55E",
   documento: "#22C55E",
   document: "#22C55E",
+  DOCUMENTO: "#22C55E",
+  // Norms/Laws - Blue
   norma: "#3B82F6",
   normas: "#3B82F6",
   law: "#3B82F6",
   articulo: "#3B82F6",
   artículo: "#3B82F6",
+  NORMA: "#3B82F6",
+  // People/Persons - Pink
   persona: "#EC4899",
   person: "#EC4899",
   organization: "#EC4899",
   organizacion: "#EC4899",
   organización: "#EC4899",
+  PERSONA_NATURAL: "#EC4899",
+  PERSONA_JURIDICA: "#EC4899",
+  // Legal Concepts - Indigo
+  CONCEPTO_JURIDICO: "#6366F1",
+  concepto_juridico: "#6366F1",
+  // Public Entities - Teal
+  ENTIDAD_PUBLICA: "#14B8A6",
+  entidad_publica: "#14B8A6",
+  DESPACHO_JUDICIAL: "#14B8A6",
+  despacho_judicial: "#14B8A6",
+  // Locations - Amber
   fecha: "#F59E0B",
   date: "#F59E0B",
   location: "#F59E0B",
   lugar: "#F59E0B",
+  UBICACION: "#F59E0B",
+  ubicacion: "#F59E0B",
+  // Money - Red
   money: "#EF4444",
   dinero: "#EF4444",
+  // Actions/Decisions - Cyan
   actuacion: "#06B6D4",
   decision: "#06B6D4",
   pretension: "#06B6D4",
+  // Other/OTRO - Gray
+  OTRO: "#6B7280",
+  otro: "#6B7280",
   default: "#6B7280"
 }
 
@@ -118,21 +143,45 @@ const EDGE_STYLES = {
 }
 
 const CORE_LAYERS = [
-  { id: "hechos", label: es.graph.layerLabels.facts, types: ["hecho", "hechos", "fact"] },
+  { 
+    id: "hechos", 
+    label: es.graph.layerLabels.facts, 
+    types: ["hecho", "hechos", "fact", "HECHO"] 
+  },
   {
     id: "pruebas",
     label: es.graph.layerLabels.evidence,
-    types: ["prueba", "pruebas", "evidence", "documento", "document"]
+    types: ["prueba", "pruebas", "evidence", "documento", "document", "DOCUMENTO"]
   },
   {
     id: "normas",
     label: es.graph.layerLabels.norms,
-    types: ["norma", "normas", "law", "articulo", "artículo"]
+    types: ["norma", "normas", "law", "articulo", "artículo", "NORMA"]
   },
   {
     id: "personas",
     label: es.graph.layerLabels.people,
-    types: ["persona", "person", "organization", "organizacion", "organización"]
+    types: ["persona", "person", "organization", "organizacion", "organización", "PERSONA_NATURAL", "PERSONA_JURIDICA"]
+  },
+  {
+    id: "conceptos",
+    label: "Conceptos Jurídicos",
+    types: ["CONCEPTO_JURIDICO", "concepto_juridico"]
+  },
+  {
+    id: "entidades",
+    label: "Entidades",
+    types: ["ENTIDAD_PUBLICA", "DESPACHO_JUDICIAL", "entidad_publica", "despacho_judicial"]
+  },
+  {
+    id: "ubicaciones",
+    label: "Ubicaciones",
+    types: ["UBICACION", "ubicacion", "location", "lugar"]
+  },
+  {
+    id: "otros",
+    label: "Otros",
+    types: ["OTRO", "otro", "FECHA", "fecha", "date"]
   }
 ]
 
@@ -156,7 +205,7 @@ export const ProcessGraph: FC<ProcessGraphProps> = ({
   const [showSidePanel, setShowSidePanel] = useState(false)
   const [guidedView, setGuidedView] = useState<GuidedViewId | null>(null)
 
-  const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(["hechos"]))
+  const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set(["hechos", "pruebas", "normas", "personas", "conceptos", "entidades", "ubicaciones", "otros"]))
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -303,7 +352,11 @@ export const ProcessGraph: FC<ProcessGraphProps> = ({
     const visibleTypes = new Set<string>()
     CORE_LAYERS.forEach((layer) => {
       if (activeLayers.has(layer.id)) {
-        layer.types.forEach((type) => visibleTypes.add(type.toLowerCase()))
+        // Add both lowercase and original case types for matching
+        layer.types.forEach((type) => {
+          visibleTypes.add(type.toLowerCase())
+          visibleTypes.add(type)
+        })
       }
     })
 
@@ -311,8 +364,9 @@ export const ProcessGraph: FC<ProcessGraphProps> = ({
 
     const visibleNodeIds = new Set<string>()
     const filteredNodes = graphData.nodes.filter((node) => {
-      const nodeType = node.type?.toLowerCase() || "default"
-      const isVisible = showAll || visibleTypes.has(nodeType) || nodeType === "default"
+      const nodeType = node.type || "default"
+      const nodeTypeLower = nodeType.toLowerCase()
+      const isVisible = showAll || visibleTypes.has(nodeType) || visibleTypes.has(nodeTypeLower) || nodeTypeLower === "default"
       if (isVisible) visibleNodeIds.add(node.id)
       return isVisible
     })

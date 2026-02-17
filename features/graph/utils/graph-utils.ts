@@ -2,13 +2,17 @@
 import type { ProcessInsights } from "@/lib/types"
 
 export const NODE_GROUPS = {
-  facts: ["hecho", "hechos", "fact"],
-  evidence: ["prueba", "pruebas", "evidence", "documento", "document"],
-  norms: ["norma", "normas", "law", "articulo", "artículo"],
-  people: ["persona", "person", "organization", "organizacion", "organización"]
+  facts: ["hecho", "hechos", "fact", "HECHO"],
+  evidence: ["prueba", "pruebas", "evidence", "documento", "document", "DOCUMENTO"],
+  norms: ["norma", "normas", "law", "articulo", "artículo", "NORMA"],
+  people: ["persona", "person", "organization", "organizacion", "organización", "PERSONA_NATURAL", "PERSONA_JURIDICA"],
+  concepts: ["CONCEPTO_JURIDICO", "concepto_juridico"],
+  entities: ["ENTIDAD_PUBLICA", "DESPACHO_JUDICIAL", "entidad_publica", "despacho_judicial"],
+  locations: ["UBICACION", "ubicacion", "location", "lugar"],
+  other: ["OTRO", "otro", "FECHA", "fecha", "date"]
 }
 
-export type NodeGroup = "facts" | "evidence" | "norms" | "people" | "other"
+export type NodeGroup = "facts" | "evidence" | "norms" | "people" | "concepts" | "entities" | "locations" | "other"
 
 export type EdgeKind = "fact-evidence" | "fact-norm" | "contradiction" | "default"
 
@@ -16,10 +20,17 @@ export const normalizeType = (value?: string) => (value || "").toLowerCase()
 
 export const getNodeGroup = (type?: string): NodeGroup => {
   const normalized = normalizeType(type)
-  if (NODE_GROUPS.facts.includes(normalized)) return "facts"
-  if (NODE_GROUPS.evidence.includes(normalized)) return "evidence"
-  if (NODE_GROUPS.norms.includes(normalized)) return "norms"
-  if (NODE_GROUPS.people.includes(normalized)) return "people"
+  // Check both normalized and original type for uppercase matches
+  const originalType = type || ""
+  
+  if (NODE_GROUPS.facts.some(t => t.toLowerCase() === normalized)) return "facts"
+  if (NODE_GROUPS.evidence.some(t => t.toLowerCase() === normalized)) return "evidence"
+  if (NODE_GROUPS.norms.some(t => t.toLowerCase() === normalized)) return "norms"
+  if (NODE_GROUPS.people.some(t => t.toLowerCase() === normalized)) return "people"
+  if (NODE_GROUPS.concepts.some(t => t.toLowerCase() === normalized || t === originalType)) return "concepts"
+  if (NODE_GROUPS.entities.some(t => t.toLowerCase() === normalized || t === originalType)) return "entities"
+  if (NODE_GROUPS.locations.some(t => t.toLowerCase() === normalized)) return "locations"
+  if (NODE_GROUPS.other.some(t => t.toLowerCase() === normalized || t === originalType)) return "other"
   return "other"
 }
 
