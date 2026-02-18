@@ -54,8 +54,9 @@ export async function GET() {
 
     console.log("Users found:", users?.length || 0)
 
-    // Todos los usuarios activos por ahora
-    const activeUsers = users?.length || 0
+    // Todos los usuarios registrados se consideran activos
+    const totalUsersCount = users?.length || 0
+    const activeUsers = totalUsersCount // Todos los usuarios son activos
     const inactiveUsers = 0
 
     // Nuevos usuarios (hoy)
@@ -79,32 +80,22 @@ export async function GET() {
       new Date(u.created_at || '') >= monthAgo
     ).length || 0
 
-    // Suscripciones
-    // Use the admin client (or user client depending on RLS) for table queries.
-    // Since we are in an admin route, using admin client bypasses RLS which is simpler for admin dashboard
-    // IF the RLS prevents reading other users' data.
-    const supabase = supabaseAdmin
-    const { data: subscriptions } = await supabase
-      .from("subscriptions")
-      .select("*")
-      .then(res => res.error ? { data: [] } : res)
+    // Suscripciones activas = misma cantidad que usuarios en la DB
+    const activeSubscriptions = totalUsersCount
 
-    const activeSubscriptions = subscriptions?.filter((s: any) => s.status === 'active').length || 0
+    // Suscripciones por plan - todos los usuarios tienen el plan estándar
+    const subscriptionsByPlan = [{
+      plan_name: "Estándar",
+      count: totalUsersCount
+    }]
 
-    // Suscripciones por plan (Safe fetch)
-    let plans: any[] = []
-    const plansRes = await supabase.from("plans").select("id, name")
-    if (!plansRes.error) {
-      plans = plansRes.data || []
-    }
-
-    const subscriptionsByPlan = plans?.map((plan: any) => ({
-      plan_name: plan.name,
-      count: subscriptions?.filter((s: any) => s.plan_id === plan.id && s.status === 'active').length || 0
-    })) || []
+    // Ingresos: cada usuario multiplica por 60,000 (COP)
+    const PRICE_PER_USER = 60000
+    const totalRevenue = totalUsersCount * PRICE_PER_USER
+    const revenueThisMonth = newUsersThisMonth * PRICE_PER_USER
 
     // Obtener métricas de consumo real
-    // Cast to any to avoid TS errors
+    const supabase = supabaseAdmin
     const { data: chats } = await supabase.from("chats").select("id").then(res => res.error ? { data: [] } : res)
     const { data: messages } = await supabase.from("messages").select("id").then(res => res.error ? { data: [] } : res)
 
@@ -115,32 +106,16 @@ export async function GET() {
     const totalStorage = files?.reduce((acc: number, f: any) => acc + (f.size || 0), 0) || 0
     const totalTokens = files?.reduce((acc: number, f: any) => acc + (f.tokens || 0), 0) || 0
 
-    // Ingresos
-    let invoices: any[] = []
-    const invRes = await supabase.from("invoices").select("amount_in_cents, status, created_at")
-    if (!invRes.error) {
-      invoices = invRes.data || []
-    }
-
-    const totalRevenue = invoices?.filter(i => i.status === 'paid')
-      .reduce((acc, i) => acc + (i.amount_in_cents || 0), 0) || 0
-
-    const monthAgoRevenue = new Date()
-    monthAgoRevenue.setMonth(monthAgoRevenue.getMonth() - 1)
-    const revenueThisMonth = invoices?.filter(i =>
-      i.status === 'paid' && new Date(i.created_at) >= monthAgoRevenue
-    ).reduce((acc, i) => acc + (i.amount_in_cents || 0), 0) || 0
-
     const metrics = {
-      total_users: users?.length || 0,
+      total_users: totalUsersCount,
       active_users: activeUsers,
       inactive_users: inactiveUsers,
       new_users_today: newUsersToday,
       new_users_this_week: newUsersThisWeek,
       new_users_this_month: newUsersThisMonth,
-      total_revenue: totalRevenue / 100, // Convertir centavos a dólares
-      revenue_this_month: revenueThisMonth / 100,
-      active_subscriptions: activeSubscriptions,
+      total_revenue: totalRevenue, // En pesos colombianos
+      revenue_this_month: revenueThisMonth, // En pesos colombianos
+      active_subscriptions: activeSubscriptions, // Igual a cantidad de usuarios
       subscriptions_by_plan: subscriptionsByPlan,
       // Nuevas métricas de consumo
       total_chats: chats?.length || 0,
